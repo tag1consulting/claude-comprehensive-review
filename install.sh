@@ -105,6 +105,11 @@ elif [[ "$VERSION" == "main" ]]; then
   REF="main"
   info "Installing development version from main branch"
 elif [[ -n "$VERSION" ]]; then
+  if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    error "Invalid version format: '$VERSION'"
+    error "Expected a semver tag (e.g. v1.0.0) or 'main'"
+    exit 1
+  fi
   REF="$VERSION"
   info "Installing version ${BOLD}$REF${NC}"
 else
@@ -120,6 +125,11 @@ else
       | grep '"tag_name"' | head -1 \
       | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' \
       || echo "")
+  fi
+
+  # Discard any extracted value that doesn't look like a semver tag
+  if [[ -n "$LATEST" && ! "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    LATEST=""
   fi
 
   if [[ -n "$LATEST" ]]; then
@@ -143,11 +153,15 @@ install_file() {
     cp "$SCRIPT_DIR/$rel_path" "$dest"
   else
     local url="https://raw.githubusercontent.com/${REPO}/${REF}/${rel_path}"
-    if ! curl -fsSL "$url" -o "$dest"; then
+    local tmp
+    tmp=$(mktemp "${dest}.XXXXXX")
+    if ! curl -fsSL "$url" -o "$tmp"; then
+      rm -f "$tmp"
       error "Failed to download: $url"
       error "Check that the version '${REF}' exists: https://github.com/${REPO}/releases"
       exit 1
     fi
+    mv "$tmp" "$dest"
   fi
 }
 
