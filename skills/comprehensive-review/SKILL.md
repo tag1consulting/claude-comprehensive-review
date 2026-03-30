@@ -21,7 +21,6 @@ allowed-tools:
   - mcp__github-pat__get_pull_request
   - mcp__github-pat__search_issues
   - mcp__github-pat__search_code
-disable-model-invocation: true
 ---
 
 # Comprehensive PR Review
