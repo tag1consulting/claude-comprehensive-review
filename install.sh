@@ -70,14 +70,23 @@ for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer;
 done
 
 # ---------------------------------------------------------------------------
+# Install pr-review-toolkit plugin
+# ---------------------------------------------------------------------------
+
+info "Installing pr-review-toolkit plugin..."
+if claude --print "/plugins install pr-review-toolkit@claude-plugins-official" &>/dev/null; then
+  info "Installed plugin: pr-review-toolkit@claude-plugins-official"
+else
+  warn "Could not auto-install plugin. Run this manually inside Claude Code:"
+  warn "  /plugins install pr-review-toolkit@claude-plugins-official"
+fi
+
+# ---------------------------------------------------------------------------
 # Post-install notes
 # ---------------------------------------------------------------------------
 
 echo ""
 info "Installation complete."
-echo ""
-echo "  REQUIRED: Enable the pr-review-toolkit plugin in Claude Code:"
-echo "    /plugins install pr-review-toolkit@claude-plugins-official"
 echo ""
 echo "  Usage:"
 echo "    /comprehensive-review               # full review, creates/updates PR"
