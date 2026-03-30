@@ -9,10 +9,10 @@ This repo distributes a Claude Code skill (`/comprehensive-review`) and four cus
 ## Installation (for testing changes locally)
 
 ```bash
-./install.sh
+./install.sh --local
 ```
 
-This copies `skills/comprehensive-review/SKILL.md` → `~/.claude/skills/comprehensive-review/` and the four agent files → `~/.claude/agents/`. Changes take effect immediately in the next Claude Code session.
+This copies files from the local working tree into `~/.claude/` without fetching from GitHub. Changes take effect immediately in the next Claude Code session. Omitting `--local` will fetch the latest release from GitHub instead.
 
 ## Architecture
 
