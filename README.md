@@ -27,15 +27,29 @@ When you run `/comprehensive-review` on a branch, it:
 ### Option 1: Install script (recommended)
 
 ```bash
-git clone https://github.com/your-org/claude-comprehensive-review.git
+git clone https://github.com/tag1consulting/claude-comprehensive-review.git
 cd claude-comprehensive-review
 ./install.sh
 ```
 
-Then install the required plugin inside Claude Code:
+The script automatically installs the latest release, fetching files directly from GitHub. The `pr-review-toolkit` plugin is installed automatically as well.
 
+**Install a specific version:**
+
+```bash
+./install.sh --version v1.2.0
 ```
-/plugins install pr-review-toolkit@claude-plugins-official
+
+**Install the development version from `main`:**
+
+```bash
+./install.sh --version main
+```
+
+**Install from local files** (for contributors testing changes):
+
+```bash
+./install.sh --local
 ```
 
 ### Option 2: Manual installation
