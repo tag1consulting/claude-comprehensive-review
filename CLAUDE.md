@@ -32,6 +32,22 @@ The skill coordinates two groups of agents:
    - `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer`
    - These are not in this repo and must not be duplicated here
 
+### Token-efficient context passing
+
+The orchestrator uses a tiered approach to minimize token consumption:
+
+- **Small diffs (under 500 lines)**: Full diff passed inline to all agents — reading it piecemeal would cost more.
+- **Medium/large diffs (500+ lines)**: Custom agents receive a structured **file manifest** (file list, categories, languages, line counts) and use selective `git diff <base>...HEAD -- <file>` reads. Toolkit agents (which we cannot modify) receive only the diff slices relevant to their specialty.
+
+The orchestrator also pre-reads CLAUDE.md and the commit log in Phase 0, passing condensed versions to agents so they don't fetch these independently.
+
+### Agent scope boundaries
+
+To reduce duplicate analysis and wasted tokens, each agent has explicit scope boundaries:
+- **security-reviewer** owns security implications of dependencies; **architecture-reviewer** owns architectural implications
+- **security-reviewer** does not report error handling quality issues — that's **silent-failure-hunter**'s domain
+- **architecture-reviewer** focuses on structural maintainability, not code-level style — that's **code-reviewer**'s domain
+
 ### Two-block output design
 
 The skill produces two distinct output blocks with different audiences:
