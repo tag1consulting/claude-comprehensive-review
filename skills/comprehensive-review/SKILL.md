@@ -65,6 +65,8 @@ Supported flags:
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--no-post`/`--local`,
      `--post-summary`, `--post-findings`, `--no-findings`
+   - **Flag conflict check:** if both `--post-findings` and `--no-findings` are present, report
+     "Error: --post-findings and --no-findings are mutually exclusive." and stop.
 
 **Help text (display when `--help` is passed):**
 
@@ -115,7 +117,7 @@ Examples
   /comprehensive-review --post-findings         Review + post findings on existing own PR
   /comprehensive-review --pr 42                 Review someone else's PR #42
   /comprehensive-review --pr 42 --post-summary  Review PR #42 and also post summary comment
-  /comprehensive-review --pr 42 --no-findings   Review PR #42 locally (dry run)
+  /comprehensive-review --pr 42 --no-findings   Review PR #42 locally, skip findings post
   /comprehensive-review --no-post               Review locally, skip all GitHub operations
 ```
 
@@ -131,8 +133,15 @@ Examples
       ```bash
       WORKTREE_PATH=$(mktemp -d /tmp/cr-pr-XXXXXXXX)
       rmdir "$WORKTREE_PATH"   # mktemp creates the dir; worktree add needs it absent
-      git worktree add "$WORKTREE_PATH" --detach
-      (cd "$WORKTREE_PATH" && gh pr checkout <N>)
+      git worktree add "$WORKTREE_PATH" --detach || {
+        echo "Error: failed to create worktree at $WORKTREE_PATH" >&2
+        exit 1
+      }
+      (cd "$WORKTREE_PATH" && gh pr checkout <N>) || {
+        git worktree remove "$WORKTREE_PATH" --force 2>/dev/null
+        echo "Error: failed to check out PR #<N> into worktree" >&2
+        exit 1
+      }
       ```
       Track WORKTREE_PATH for cleanup in Phase 5.
    e. All subsequent `git diff`, `git log`, and `git show` commands in this workflow must use
@@ -142,6 +151,8 @@ Examples
    The actual diff and branch context come from the worktree.
 
 3. Run `git diff --name-only <base>...HEAD` to confirm the changed file list.
+   In `--pr` mode, prefix with `git -C "$WORKTREE_PATH"`: `git -C "$WORKTREE_PATH" diff --name-only <base>...HEAD`
+   All `git diff`, `git log`, and `git show` commands from this point forward use `git -C "$WORKTREE_PATH"` in `--pr` mode.
 
 4. If there are no changed files, report "No changes found between current branch and `<base>`" and stop.
 
@@ -449,6 +460,10 @@ Else (own-branch mode):
     PR_EXISTS = false
     POST_SUMMARY = false  (creating the PR IS posting the summary)
     POST_FINDINGS = false  (never post findings on new PR creation)
+    If --post-findings was passed, warn: "Note: --post-findings has no effect when no PR exists.
+    Findings will be shown locally. Create a PR first, then re-run with --post-findings."
+    If --post-summary was passed, warn: "Note: --post-summary has no effect when no PR exists.
+    The summary will be used as the new PR's description."
 
   If command fails for any other reason (auth, network, permissions):
     Report "GitHub API error: <error>. Use --no-post to skip GitHub operations." and skip Phase 4.
@@ -482,7 +497,6 @@ gh pr comment <PR_NUMBER> --body "$(cat <<'CEOF'
 CEOF
 )"
 ```
-Note: for own-branch mode on an existing PR, `gh pr comment` (without specifying number) also works.
 
 ### Phase 4b: Post Findings as Inline Review
 

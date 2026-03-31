@@ -65,6 +65,7 @@ Both blocks are always shown locally. What gets posted to GitHub depends on cont
 | Existing own PR + `--post-findings` | Not posted | Inline GitHub review (`COMMENT` event) |
 | `--pr <N>` mode (default) | Not posted | Inline GitHub review (`REQUEST_CHANGES` if Medium+, `COMMENT` if Low) |
 | `--pr <N>` + `--post-summary` | PR comment | Inline GitHub review |
+| `--pr <N>` + `--no-findings` | Not posted | Not posted |
 | Any + `--no-post`/`--local` | Not posted | Not posted |
 
 The key invariant: Block A is auto-posted only when *creating* a new PR. On existing PRs, both blocks require explicit opt-in flags. Block B is never hidden from the terminal.

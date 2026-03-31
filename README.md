@@ -143,8 +143,8 @@ Run from any git repository, on the branch you want to review:
 # Review PR #42 and also post the summary as a comment
 /comprehensive-review --pr 42 --post-summary
 
-# Dry-run: review PR #42 locally before posting anything
-/comprehensive-review --pr 42 --no-findings --no-post
+# Dry-run: review PR #42 locally, skip the findings review post
+/comprehensive-review --pr 42 --no-findings
 
 # Review against a non-default base
 /comprehensive-review --base develop
