@@ -52,18 +52,48 @@ To reduce duplicate analysis and wasted tokens, each agent has explicit scope bo
 
 The skill produces two distinct output blocks with different audiences:
 
-- **Block A** (informational) — summary, walkthrough table, Mermaid diagrams, related issues — posted to GitHub as the PR description or comment. Contains no findings.
-- **Block B** (findings) — severity-ranked issues from all agents — displayed locally only, never posted to GitHub. The author fixes these before requesting review.
+- **Block A** (informational) — summary, walkthrough table, Mermaid diagrams, related issues. Contains no findings.
+- **Block B** (findings) — severity-ranked issues from all agents. Always displayed in the terminal.
 
-This separation is intentional and load-bearing. Do not merge the blocks or post Block B to GitHub.
+Both blocks are always shown locally. What gets posted to GitHub depends on context:
+
+| Scenario | Block A | Block B |
+|----------|---------|---------|
+| No PR exists (tool creates it) | PR description | Not posted |
+| Existing own PR (default) | Not posted | Not posted |
+| Existing own PR + `--post-summary` | PR comment | Not posted |
+| Existing own PR + `--post-findings` | Not posted | Inline GitHub review (`COMMENT` event) |
+| `--pr <N>` mode (default) | Not posted | Inline GitHub review (`REQUEST_CHANGES` if Medium+, `COMMENT` if Low) |
+| `--pr <N>` + `--post-summary` | PR comment | Inline GitHub review |
+| `--pr <N>` + `--no-findings` | Not posted | Not posted |
+| Any + `--no-post`/`--local` | Not posted | Not posted |
+
+The key invariant: Block A is auto-posted only when *creating* a new PR. On existing PRs, both blocks require explicit opt-in flags. Block B is never hidden from the terminal.
 
 ### Severity normalization
 
 Each agent uses its own severity scale. The skill's `SKILL.md` defines a normalization table (Phase 2) that maps agent-specific scales to a unified Critical/High/Medium/Low scale, and deduplicates findings when two agents flag the same `file:line`.
 
-### Conditional agent launch
+### Agent tiers
 
-The skill only spawns some agents when the diff contains relevant patterns — e.g., `silent-failure-hunter` only runs if the diff contains `catch`, `try {`, `if err`, etc. These conditions are defined in Phase 1 of `skills/comprehensive-review/SKILL.md`.
+Agents are divided into three tiers:
+
+1. **Always-run:** pr-summarizer, code-reviewer — run in every mode including `--quick`
+2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, comment-analyzer, type-design-analyzer, issue-linker
+3. **Conditional (run in both full and `--quick` when triggered by diff content):** silent-failure-hunter (error patterns), pr-test-analyzer (test files)
+
+The `--quick` flag eliminates the two expensive Opus review agents and the lower-value conditional agents, reducing cost by ~65% while preserving the core code review and error/test analysis.
+
+### External PR review mode
+
+When `--pr <N>` is passed, the skill:
+1. Fetches the PR metadata via `gh pr view`
+2. Creates a temporary worktree and checks out the PR branch
+3. Runs the standard analysis pipeline against the worktree
+4. Posts findings as an inline GitHub review (REQUEST_CHANGES if Medium+ findings, COMMENT if Low only)
+5. Cleans up the worktree in Phase 5
+
+This allows reviewing any accessible PR without being on that branch locally.
 
 ## File layout
 
@@ -82,3 +112,5 @@ install.sh                             ← copies files into ~/.claude/
 - **Agent files** define what each agent does and its scope boundaries. Agents reference each other only to delineate responsibility boundaries — coordination and context passing happens entirely in `SKILL.md`. Agent task descriptions reference the file-manifest protocol (receiving manifests, using `git diff <base>...HEAD -- <file>` for selective reads); changes to the context-passing strategy in `SKILL.md` require corresponding updates to agent task descriptions.
 - **`README.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
 - When adding a new agent to the skill, add it to: the agent roster table in `README.md`, the Phase 1 launch conditions in `SKILL.md`, and the severity normalization table in `SKILL.md` if it uses a non-standard scale.
+- The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
+- When modifying `--quick` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and the `--help` text block in Phase 0.
