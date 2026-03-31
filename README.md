@@ -1,17 +1,41 @@
 # comprehensive-review
 
-A Claude Code skill that runs a full CodeRabbit-style pre-PR review using a parallel fleet of specialized agents. Produces a structured PR summary posted to GitHub and a private findings report for the author.
+A Claude Code skill that runs a full CodeRabbit-style PR review using a parallel fleet of specialized agents. Produces a structured PR summary and a findings report. Supports reviewing your own branch before opening a PR, or reviewing an existing PR by number.
 
 ## What it does
 
 When you run `/comprehensive-review` on a branch, it:
 
-1. Launches up to 9 specialized review agents **in parallel**, using token-efficient context passing
+1. Launches specialized review agents **in parallel**, using token-efficient context passing
 2. Normalizes and deduplicates their findings into a unified severity ranking
 3. Assembles two output blocks:
-   - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams, effort estimate, related issues/PRs — posted as the PR description or a comment
-   - **Block B (findings)** — Critical/High/Medium/Low findings, architectural insights, security analysis, recommended actions — displayed locally only, never posted to GitHub
-4. Creates the PR (or comments on an existing one) with Block A
+   - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams, effort estimate, related issues/PRs
+   - **Block B (findings)** — Critical/High/Medium/Low findings, architectural insights, security analysis, recommended actions
+4. Posts Block A and/or Block B to GitHub based on the flags and scenario (see [Posting behavior](#posting-behavior))
+
+## Why this vs. pr-review-toolkit alone?
+
+The `pr-review-toolkit` plugin provides excellent code-level agents (bug detection, error handling, test coverage, comment quality, type design). This skill layers on top of it to provide:
+
+| Capability | pr-review-toolkit | comprehensive-review |
+|------------|-------------------|---------------------|
+| Code-level bug and style review | Yes (code-reviewer) | Yes (reuses code-reviewer) |
+| Error handling analysis | Yes (silent-failure-hunter) | Yes (reused) |
+| Test coverage gaps | Yes (pr-test-analyzer) | Yes (reused) |
+| Comment quality | Yes (comment-analyzer) | Yes (reused) |
+| Type design analysis | Yes (type-design-analyzer) | Yes (reused) |
+| **OWASP-class security analysis** | No | Yes (security-reviewer, Opus) |
+| **Architecture and coupling analysis** | No | Yes (architecture-reviewer, Opus) |
+| **PR summary + walkthrough table** | No | Yes (pr-summarizer) |
+| **Mermaid sequence diagrams** | No | Yes (pr-summarizer) |
+| **Related issue/PR discovery** | No | Yes (issue-linker) |
+| **Unified severity ranking** | Per-agent only | Normalized across all agents, deduplicated |
+| **Inline GitHub PR review posting** | No | Yes (`--post-findings`, `--pr`) |
+| **External PR review (others' PRs)** | No | Yes (`--pr <N>`) |
+| **PR description auto-creation** | No | Yes (creates PR from Block A) |
+| **Token-efficient context passing** | Per-agent | Coordinated (manifest, shared context, sliced diffs) |
+
+In short: pr-review-toolkit agents handle tactical code review. This skill orchestrates them alongside higher-level analysis agents, produces a cohesive report, and handles all GitHub operations — including posting findings as inline reviews on any PR.
 
 ## Requirements
 
@@ -88,20 +112,39 @@ Run from any git repository, on the branch you want to review:
 | Flag | Effect |
 |------|--------|
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
-| `--quick` | Skip issue-linker and sequence diagrams — roughly half the agent cost |
+| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, comment, and type analysis. ~65% cheaper. |
 | `--security-only` | Run only the security-reviewer agent |
 | `--summary-only` | Run only the pr-summarizer agent |
+| `--post-summary` | Post Block A (summary) as a comment on an existing PR |
+| `--post-findings` | Post Block B (findings) as inline review comments on an existing own PR |
+| `--no-findings` | Suppress posting findings as a review (useful for dry-run with `--pr`) |
 | `--no-post` / `--local` | Display everything locally, skip all GitHub operations |
+| `--pr <number>` | Review an existing PR by number (external review mode) |
 | `--help` | Show usage |
 
 ### Examples
 
 ```bash
-# Full review — creates or updates PR with informational summary
+# Full review — creates PR if none exists, findings shown locally
 /comprehensive-review
 
-# Quick check before pushing
+# Fast review — ~65% cheaper, skips security and architecture agents
 /comprehensive-review --quick --local
+
+# Review your own open PR and share findings with co-reviewers
+/comprehensive-review --post-findings
+
+# Review + post both summary and findings on your own open PR
+/comprehensive-review --post-summary --post-findings
+
+# Review someone else's PR #42 (posts findings as inline review)
+/comprehensive-review --pr 42
+
+# Review PR #42 and also post the summary as a comment
+/comprehensive-review --pr 42 --post-summary
+
+# Dry-run: review PR #42 locally before posting anything
+/comprehensive-review --pr 42 --no-findings --no-post
 
 # Review against a non-default base
 /comprehensive-review --base develop
@@ -110,19 +153,42 @@ Run from any git repository, on the branch you want to review:
 /comprehensive-review --security-only --local
 ```
 
+## Posting behavior
+
+| Scenario | Block A posted? | Block B posted? | Review event |
+|----------|----------------|----------------|--------------|
+| No PR exists (tool creates it) | Yes — PR description | No | N/A |
+| Existing own PR (default) | No | No | N/A |
+| Existing own PR + `--post-summary` | Yes — PR comment | No | N/A |
+| Existing own PR + `--post-findings` | No | Yes — inline review | `COMMENT` |
+| Existing own PR + both flags | Yes — PR comment | Yes — inline review | `COMMENT` |
+| `--pr <N>` (default) | No | Yes — inline review | `REQUEST_CHANGES` if Medium+ findings; `COMMENT` if Low only |
+| `--pr <N>` + `--post-summary` | Yes — PR comment | Yes — inline review | (same) |
+| `--pr <N>` + `--no-findings` | No | No | N/A |
+| Any + `--no-post` / `--local` | No | No | N/A |
+
+**Inline comment cap:** The top 25 findings by severity are posted as inline comments. Any additional findings appear in the review body. This prevents API throttling on large finding sets.
+
 ## Agent roster
+
+### Full run
 
 | Agent | Model | Purpose | When it runs | Context |
 |-------|-------|---------|--------------|---------|
 | **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams, effort score | Always | Manifest + selective reads ² |
-| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Always (skip with `--quick`) | Commit log + branch name + manifest + repo slug |
-| **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Always | Manifest + selective reads ² |
-| **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Always | Manifest + selective reads ² |
-| **code-reviewer** ¹ | — | Tactical bugs, style violations, project conventions | Always | Full diff |
+| **code-reviewer** ¹ | Opus | Tactical bugs, style violations, project conventions | Always | Full diff |
+| **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Full run only | Manifest + selective reads ² |
+| **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Full run only | Manifest + selective reads ² |
 | **silent-failure-hunter** ¹ | — | Silent failures, inadequate error handling | If diff has error-handling patterns | Relevant file slices |
 | **pr-test-analyzer** ¹ | — | Test coverage gaps | If test files appear in the diff | Relevant file slices |
-| **comment-analyzer** ¹ | — | Comment accuracy and rot | If diff adds or modifies comments | Relevant file slices |
-| **type-design-analyzer** ¹ | — | Type/struct/interface invariants | If diff adds type definitions | Relevant file slices |
+| **comment-analyzer** ¹ | — | Comment accuracy and rot | Full run + if diff adds/modifies comments | Relevant file slices |
+| **type-design-analyzer** ¹ | — | Type/struct/interface invariants | Full run + if diff adds type definitions | Relevant file slices |
+| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Full run only | Commit log + branch + manifest |
+
+### `--quick` mode
+
+Skips: architecture-reviewer, security-reviewer, comment-analyzer, type-design-analyzer, issue-linker.
+Still runs: pr-summarizer (no diagrams), code-reviewer, and triggered silent-failure-hunter / pr-test-analyzer.
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
 ² For small diffs (under 500 lines), the full diff is passed inline instead.
@@ -160,6 +226,12 @@ GitHub PR description (Block A only — no findings):
 ## Related Issues & PRs
 ```
 
+GitHub inline review (Block B — when `--post-findings` or `--pr` mode):
+```
+Inline comments on specific diff lines, plus a review body summary.
+Uses REQUEST_CHANGES (Medium+ findings) or COMMENT (Low only).
+```
+
 ## Files installed
 
 ```
@@ -180,8 +252,7 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **Medium/large diffs (500+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
 - **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
-
-For PRs with 500+ lines of changes, the selective reading strategy avoids passing the full diff to agents that only need a subset, reducing per-agent input token counts. The savings are largest for custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer); code-reviewer still receives the full diff since its general scope cannot be meaningfully sliced.
+- **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer) and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~65% vs. full run.
 
 ## Updating
 

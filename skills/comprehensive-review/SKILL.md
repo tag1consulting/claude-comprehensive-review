@@ -2,13 +2,16 @@
 name: comprehensive-review
 description: >
   Run a comprehensive CodeRabbit-style PR review using specialized agents.
-  Produces a unified report with high-level summary, file walkthrough, sequence
-  diagrams, related issue discovery, linked issue assessment, effort estimation,
-  architectural insights, security analysis, and detailed per-file review comments.
-  By default, creates the PR (or posts to existing PR) with the informational sections
-  as the PR description or comment. Findings are displayed locally for the author.
+  Produces a structured PR summary and a findings report. Supports reviewing
+  your own branch (pre-PR) or an existing PR by number (--pr <N>).
 
-  Use before opening a pull request. Available globally for all projects.
+  Default behavior:
+    No PR exists:      Creates PR with Block A as description; findings shown locally only.
+    Existing own PR:   Everything shown locally. Use --post-summary/--post-findings to post.
+    --pr <N>:          Findings posted as inline review; summary local unless --post-summary.
+
+  Use before opening a pull request or to review an existing PR.
+  Available globally for all projects.
 allowed-tools:
   - Bash
   - Read
@@ -21,20 +24,26 @@ allowed-tools:
   - mcp__github-pat__get_pull_request
   - mcp__github-pat__search_issues
   - mcp__github-pat__search_code
+  - mcp__github-pat__create_pull_request_review
+  - mcp__github-pat__get_pull_request_files
 ---
 
 # Comprehensive PR Review
 
-Run a full CodeRabbit-style review of all changes on the current branch.
+Run a full CodeRabbit-style review of all changes on the current branch (or a specified PR).
 
 **Arguments:** `$ARGUMENTS`
 
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — skip issue-linker and sequence diagrams (faster, ~half the time)
+- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, comment, and type analysis (~65% cheaper)
 - `--security-only` — run security-reviewer only
 - `--summary-only` — run pr-summarizer only
+- `--post-summary` — post Block A (informational summary) as a comment on an existing PR
+- `--post-findings` — post Block B (findings) as inline GitHub review on an existing own PR
+- `--no-findings` — suppress posting findings as a review (useful for dry-run with `--pr`)
 - `--no-post` / `--local` — display everything locally, skip all GitHub operations
+- `--pr <number>` — review an existing PR by number (external review mode)
 - `--help` — show this usage
 
 ## Pre-flight Context
@@ -51,14 +60,92 @@ Supported flags:
 ### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
+   - If `--help` is present, display the help text below and **stop immediately** — do not continue.
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
-   - Note any mode flags: `--quick`, `--security-only`, `--summary-only`, `--no-post`/`--local`
+   - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
+   - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--no-post`/`--local`,
+     `--post-summary`, `--post-findings`, `--no-findings`
 
-2. Run `git diff --name-only <base>...HEAD` to confirm the changed file list.
+**Help text (display when `--help` is passed):**
 
-3. If there are no changed files, report "No changes found between current branch and `<base>`" and stop.
+```
+/comprehensive-review — Comprehensive PR Review
 
-4. **Build the file manifest** — run `git diff --stat <base>...HEAD` and construct a structured summary:
+Run a full CodeRabbit-style review using specialized agents.
+
+Usage
+  /comprehensive-review [flags]
+
+Flags
+  --base <branch>    Compare against a different base branch (default: auto-detect or main)
+  --quick            Fast mode: run only pr-summarizer + code-reviewer + triggered
+                     error/test agents. Skips security, architecture, comment, and type
+                     analysis. ~65% cheaper than full run.
+  --security-only    Run security-reviewer only
+  --summary-only     Run pr-summarizer only
+
+  --post-summary     Post the informational summary (Block A) as a comment on an existing PR
+  --post-findings    Post findings (Block B) as inline review comments on an existing own PR
+  --no-findings      Suppress posting findings on external PR reviews (--pr mode)
+  --no-post / --local  Skip all GitHub operations, display everything locally
+  --pr <number>      Review an existing PR by number (external review mode)
+
+  --help             Show this help
+
+Default behavior
+  No PR exists:      Creates PR with summary as description. Findings shown locally.
+  Existing own PR:   Everything shown locally. Use --post-summary and/or --post-findings to post.
+  --pr <N>:          Findings posted as inline review (REQUEST_CHANGES if Medium+, COMMENT if Low only).
+                     Summary shown locally unless --post-summary is also passed.
+
+Agents — full run
+  Always:            pr-summarizer, code-reviewer, architecture-reviewer, security-reviewer
+  Conditional:       silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer
+  Optional:          issue-linker
+
+Agents — --quick mode
+  Always:            pr-summarizer (no diagrams), code-reviewer
+  Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
+  Skipped:           architecture-reviewer, security-reviewer, comment-analyzer,
+                     type-design-analyzer, issue-linker
+
+Examples
+  /comprehensive-review                         Review current branch, create PR if needed
+  /comprehensive-review --quick                 Fast review, skip expensive agents
+  /comprehensive-review --post-findings         Review + post findings on existing own PR
+  /comprehensive-review --pr 42                 Review someone else's PR #42
+  /comprehensive-review --pr 42 --post-summary  Review PR #42 and also post summary comment
+  /comprehensive-review --pr 42 --no-findings   Review PR #42 locally (dry run)
+  /comprehensive-review --no-post               Review locally, skip all GitHub operations
+```
+
+2. **If `--pr <N>` was passed** (external review mode):
+
+   a. Fetch PR metadata:
+      ```bash
+      gh pr view <N> --json number,title,baseRefName,headRefName,state
+      ```
+   b. If PR state is `CLOSED` or `MERGED`, report "PR #<N> is <state> — cannot review a closed PR." and stop.
+   c. Set BASE to the PR's `baseRefName`.
+   d. Create a temporary worktree and check out the PR branch:
+      ```bash
+      WORKTREE_PATH=$(mktemp -d /tmp/cr-pr-XXXXXXXX)
+      rmdir "$WORKTREE_PATH"   # mktemp creates the dir; worktree add needs it absent
+      git worktree add "$WORKTREE_PATH" --detach
+      (cd "$WORKTREE_PATH" && gh pr checkout <N>)
+      ```
+      Track WORKTREE_PATH for cleanup in Phase 5.
+   e. All subsequent `git diff`, `git log`, and `git show` commands in this workflow must use
+      `git -C "$WORKTREE_PATH"` to operate against the PR branch, not the invoking branch.
+
+   **Note:** The pre-flight context above reflects the invoking branch, not the PR branch.
+   The actual diff and branch context come from the worktree.
+
+3. Run `git diff --name-only <base>...HEAD` to confirm the changed file list.
+
+4. If there are no changed files, report "No changes found between current branch and `<base>`" and stop.
+
+5. **Build the file manifest** — run `git diff --stat <base>...HEAD` and construct a structured summary:
    - Detect languages from file extensions
    - Categorize each file into exactly one of: **Source**, **Tests**, **Config**, **Docs**, **Dependency**
      (Source = application/library code; Tests = test files; Config = build/CI/tool config;
@@ -76,17 +163,17 @@ Supported flags:
      ```
      Omit categories with no files. For binary or generated files, list under a **Other** category.
 
-5. **Read project context** — if CLAUDE.md exists in the repository root, read it and extract
+6. **Read project context** — if CLAUDE.md exists in the repository root, read it and extract
    a condensed project-context block (architecture, conventions, key constraints — ~500 tokens max).
    Also check for CLAUDE.md in subdirectories of changed files.
    If no CLAUDE.md exists, set the project context to: "No project-specific context available.
    Apply general best practices."
 
-6. **Capture the commit log** — store the output of `git log --oneline <base>...HEAD` (already
-   available from pre-flight context). This will be passed to agents that need it, so they do
-   not need to fetch it themselves.
+7. **Capture the commit log** — store the output of `git log --oneline <base>...HEAD` (already
+   available from pre-flight context for own-branch reviews; captured fresh for `--pr` mode).
+   This will be passed to agents that need it, so they do not need to fetch it themselves.
 
-7. **Determine diff size tier** — count total changed lines (insertions + deletions) from
+8. **Determine diff size tier** — count total changed lines (insertions + deletions) from
    `git diff --stat`. 500 lines is approximately 2K tokens of diff; below this, inline
    passing costs less than multiple selective `git diff -- <file>` tool calls.
    - **Small** (under 500 changed lines): full diff will be passed inline to agents
@@ -94,7 +181,7 @@ Supported flags:
    - If the line count cannot be reliably determined, default to **Medium/Large** (selective
      reads are always safe; passing a too-large diff inline risks blowing context windows)
 
-8. Determine which agents to run (see Phase 1).
+9. Determine which agents to run (see Phase 1).
 
 ### Phase 1: Launch Agents in Parallel
 
@@ -115,10 +202,10 @@ individually exceeds the cost of including the diff at this size.
 
 **Medium and large diffs (500+ lines):** Do NOT pass the full diff inline. Instead, each agent
 receives:
-- The **file manifest** (from Phase 0 step 4)
+- The **file manifest** (from Phase 0 step 5)
 - The **base branch name** (so agents can run `git diff <base>...HEAD -- <file>` selectively)
-- The **condensed project context** (from Phase 0 step 5)
-- The **commit log** (from Phase 0 step 6) — only for agents that need it
+- The **condensed project context** (from Phase 0 step 6)
+- The **commit log** (from Phase 0 step 7) — only for agents that need it
 
 Custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer) will
 use selective `git diff <base>...HEAD -- <specific-file>` reads to examine only the files
@@ -144,44 +231,37 @@ the corresponding agent. If the slice is empty, skip that agent.
 
 #### Agent Roster
 
-**Always-run agents** (unless `--security-only` or `--summary-only` limits scope).
-These agents run regardless of `--quick`. The `--quick` flag only affects the conditional
-agents listed below.
+**Mode flag effects:**
+
+| Flag | Agents that run |
+|------|-----------------|
+| (none) | All always-run + all triggered conditional agents |
+| `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer |
+| `--security-only` | security-reviewer only |
+| `--summary-only` | pr-summarizer only |
+
+**Always-run agents** (in all modes unless `--security-only` or `--summary-only` limits scope):
 
 - **pr-summarizer** — pass the file manifest, commit log, and project context.
   For small diffs: also include the full diff inline.
   For medium/large diffs: the agent will read files selectively using the manifest.
+  **In `--quick` mode:** add the instruction "Note: --quick mode active. Omit the Sequence Diagrams section entirely."
 
 - **code-reviewer** (pr-review-toolkit) — pass the full diff regardless of size tier
   (its general scope means slicing is not meaningful).
+
+**Full-run-only agents** (skipped when `--quick` is passed):
 
 - **architecture-reviewer** — pass the file manifest, commit log, and project context.
   For small diffs: also include the full diff inline.
   For medium/large diffs: the agent will read files selectively using the manifest.
 
-- **security-reviewer** — always run (security review is always warranted). Pass the file
-  manifest, commit log, detected languages, and project context.
+- **security-reviewer** — pass the file manifest, commit log, detected languages, and project context.
   For small diffs: also include the full diff inline.
   For medium/large diffs: the agent will read files selectively, prioritizing auth, crypto,
   input handling, and dependency files.
 
-**Mode flag effects:**
-| Flag | Agents that run |
-|------|-----------------|
-| (none) | All always-run + all triggered conditional agents |
-| `--quick` | All always-run + triggered content-based conditional agents (skip issue-linker) |
-| `--security-only` | security-reviewer only |
-| `--summary-only` | pr-summarizer only |
-
-**Conditional agents — skip with `--quick`:**
-
-- **issue-linker** — pass the commit log, branch name, base branch name, file manifest, and
-  GitHub repo slug (owner/repo). Does not receive the diff inline — it extracts keywords from
-  commit messages and file names. It may use `git diff <base>...HEAD -- <file>` if it needs
-  to verify specific code changes against an issue's requirements.
-
-**Conditional agents — based on diff content** (run in both full and `--quick` modes when
-their trigger patterns match):
+**Conditional agents — triggered by diff content, run in both full and `--quick` modes:**
 
 To detect trigger patterns for medium/large diffs without loading the full diff into the
 conversation, grep the temp diff file directly:
@@ -200,6 +280,8 @@ whether each agent should launch.
   `*.spec.ts`, `spec/`, or `__tests__/` files appear in the changed file list.
   Pass only the diff for test files and their likely source counterparts.
 
+**Conditional agents — full-run only** (skip in `--quick` and when not triggered):
+
 - **comment-analyzer** (pr-review-toolkit) — only if the diff adds or modifies comment lines
   (lines starting with `//`, `#`, `/*`, `*`, `"""`, `'''`).
   Pass only the diff for files with comment changes.
@@ -208,7 +290,13 @@ whether each agent should launch.
   definitions (look for `type ... struct`, `type ... interface`, `interface `, `class `, `enum `).
   Pass only the diff for files with type definitions.
 
-Track which conditional agents were skipped (not triggered) for reporting in Phase 5.
+- **issue-linker** — pass the commit log, branch name, base branch name, file manifest, and
+  GitHub repo slug (owner/repo). Does not receive the diff inline — it extracts keywords from
+  commit messages and file names. It may use `git diff <base>...HEAD -- <file>` if it needs
+  to verify specific code changes against an issue's requirements.
+  **Skip in `--quick` mode and in `--pr` mode** (issue context is less relevant for external reviews).
+
+Track which agents were skipped and why (pattern not triggered vs. `--quick` mode) for Phase 5 reporting.
 
 Launch all applicable agents simultaneously using parallel Agent tool calls.
 
@@ -226,7 +314,7 @@ Wait for all agents to complete. **Check each agent's output before proceeding:*
    missing from the report."
 4. Track the number of agents that failed or returned empty results for Phase 5.
 
-Then normalize severity levels to a unified scale (inclusive ranges):
+**Normalize severity levels** to a unified scale (inclusive ranges):
 
 | Agent | Their Scale | Maps To |
 |-------|-------------|---------|
@@ -250,17 +338,33 @@ Then normalize severity levels to a unified scale (inclusive ranges):
 Note: Custom agents (security-reviewer, architecture-reviewer) report Medium+ only.
 Toolkit agents (pr-test-analyzer, type-design-analyzer) may still produce Low-severity findings.
 
-Deduplicate: if two agents flag the same `file:line`, keep the highest severity entry
+**Deduplicate:** if two agents flag the same `file:line`, keep the highest severity entry
 and add a note "(also flagged by [agent2])". For findings that reference a file without
 a specific line number, deduplicate by `file` + finding category.
+
+**Collect findings as structured data.** For each finding, record:
+```
+{
+  severity:    "Critical" | "High" | "Medium" | "Low"
+  agent:       <agent-name>
+  file:        <relative-file-path> or null
+  line:        <integer> or null
+  finding:     <description text>
+  remediation: <remediation text if provided by agent, otherwise null>
+}
+```
+This structured list is used to render Block B (markdown display) and to build the inline
+comment array in Phase 4b. The markdown format of each finding is unchanged:
+`- **[agent]** <finding> — \`file:line\``
 
 ### Phase 3: Assemble the Reports
 
 Build two separate output blocks:
 
-#### Block A — Informational (will be posted to GitHub)
+#### Block A — Informational (conditionally posted to GitHub)
 
-Assemble the pr-summarizer and issue-linker outputs into this format:
+Assemble the pr-summarizer and issue-linker outputs into this format.
+**If `--quick` was passed, omit the `## Sequence Diagrams` section** (pr-summarizer was told not to generate it):
 
 ```markdown
 ## Summary
@@ -278,14 +382,14 @@ Assemble the pr-summarizer and issue-linker outputs into this format:
 
 ## Sequence Diagrams
 
-<from pr-summarizer>
+<from pr-summarizer — omit this section entirely if --quick was passed>
 
 ## Related Issues & PRs
 
-<from issue-linker, or omitted if --quick was used>
+<from issue-linker, or omit if issue-linker was skipped>
 ```
 
-#### Block B — Findings (local terminal output only, never posted to GitHub)
+#### Block B — Findings (always displayed in terminal; optionally posted to GitHub as a review)
 
 ```markdown
 ---
@@ -308,11 +412,11 @@ Assemble the pr-summarizer and issue-linker outputs into this format:
 
 ### Architectural Insights
 
-<condensed output from architecture-reviewer>
+<condensed output from architecture-reviewer, or omit if skipped>
 
 ### Security Analysis
 
-<condensed output from security-reviewer>
+<condensed output from security-reviewer, or omit if skipped>
 
 ### Positive Observations
 
@@ -326,25 +430,38 @@ Assemble the pr-summarizer and issue-linker outputs into this format:
 ---
 ```
 
-### Phase 4: PR Creation and Summary Comment
+### Phase 4: PR Operations
 
 **Skip Phase 4 entirely if `--no-post` or `--local` was passed.**
 
-Check whether a PR already exists for the current branch:
+Determine the PR state and set posting variables:
 
-```bash
-gh pr view --json number,title,body
+```
+If --pr mode:
+  PR already exists (fetched in Phase 0) — set PR_NUMBER from --pr arg
+  POST_SUMMARY = (--post-summary was passed)
+  POST_FINDINGS = (--no-findings was NOT passed)
+
+Else (own-branch mode):
+  gh pr view --json number,title,body
+
+  If command fails with "no pull requests found":
+    PR_EXISTS = false
+    POST_SUMMARY = false  (creating the PR IS posting the summary)
+    POST_FINDINGS = false  (never post findings on new PR creation)
+
+  If command fails for any other reason (auth, network, permissions):
+    Report "GitHub API error: <error>. Use --no-post to skip GitHub operations." and skip Phase 4.
+
+  If command succeeds (PR exists):
+    PR_EXISTS = true
+    PR_NUMBER = <number from json output>
+    POST_SUMMARY = (--post-summary was passed)
+    POST_FINDINGS = (--post-findings was passed)
 ```
 
-- If the command succeeds, a PR exists — proceed with the "PR already exists" path.
-- If it fails with "no pull requests found", no PR exists — proceed with creation.
-- If it fails for any other reason (auth, network, permissions), report the error:
-  "GitHub API error: <error message>. Use `--no-post` to skip GitHub operations."
-  Then skip the rest of Phase 4.
-
-**If NO PR exists:**
-Create the PR with Block A as the description. Use a concise title from the Summary (under 70 chars).
-Capture the PR URL from the output for Phase 5 reporting.
+**Create new PR (own-branch mode, no PR exists):**
+Use a concise title from the Summary (under 70 chars). Capture the PR URL for Phase 5.
 
 ```bash
 gh pr create --title "<title>" --base "<base>" --body "$(cat <<'PREOF'
@@ -353,18 +470,94 @@ PREOF
 )"
 ```
 
-**If a PR already exists:**
-Post Block A as a PR comment. Check the existing body for `## Summary` and `## Walkthrough`:
+**Post Block A as comment (if POST_SUMMARY is true):**
+Check the existing PR body for `## Summary` and `## Walkthrough`:
 - If NOT present (first run): use `## PR Review Summary` as the heading
 - If already present (re-run): use `## PR Review Summary (Updated)` as the heading
 
 ```bash
-gh pr comment --body "$(cat <<'CEOF'
-## PR Review Summary            ← or "## PR Review Summary (Updated)" on re-runs
+gh pr comment <PR_NUMBER> --body "$(cat <<'CEOF'
+## PR Review Summary
 <Block A content>
 CEOF
 )"
 ```
+Note: for own-branch mode on an existing PR, `gh pr comment` (without specifying number) also works.
+
+### Phase 4b: Post Findings as Inline Review
+
+**Skip if POST_FINDINGS is false or `--no-post`/`--local` was passed.**
+
+1. **Parse the diff for valid inline comment targets.** A GitHub inline comment can only be placed
+   on lines that appear in the diff (added, deleted, or context lines). Parse the diff to build
+   a per-file lookup of valid line numbers:
+
+   - The diff is already captured in DIFF_FILE from Phase 1. Read it.
+   - For each hunk header `@@ -old_start,old_count +new_start,new_count @@`, the RIGHT-side
+     (new file) lines `new_start` through `new_start + new_count - 1` are valid comment targets.
+   - Build a lookup: `{file_path → set of valid line numbers}`
+
+2. **Partition findings into two groups:**
+   - **INLINE:** findings where `file` and `line` are both set, and `line` is in the valid set
+     for that file → will become an inline comment
+   - **BODY:** findings where `file` is null, `line` is null, OR the line is not in the diff
+     → will appear in the review body text
+
+3. **Apply the 25-comment cap:**
+   - Sort INLINE findings by severity: Critical → High → Medium → Low
+   - Take the top 25 for inline comments
+   - Move remaining INLINE findings to the BODY group with the note:
+     "(inline comment limit reached — remaining findings listed here)"
+
+4. **Determine the review event:**
+   - **Own PR** (`--post-findings`): always use `"COMMENT"` (GitHub rejects `APPROVE` and it's
+     inappropriate to `REQUEST_CHANGES` on your own PR)
+   - **External PR** (`--pr` mode): use `"REQUEST_CHANGES"` if any Critical, High, or Medium
+     findings exist; use `"COMMENT"` if only Low findings exist
+
+5. **Build the review body:**
+   ```markdown
+   ## Comprehensive Review Findings
+
+   **Overall Risk:** <severity>
+   **Review mode:** <--quick if applicable, else full>
+   **Agents:** <comma-separated list of agents that ran>
+
+   ### Findings not attached to specific lines
+   <BODY findings as markdown list, or "None — all findings are attached inline." if BODY is empty>
+   ```
+
+6. **Build the comments array.** Each entry:
+   ```json
+   {
+     "path": "<relative file path>",
+     "line": <line number>,
+     "body": "**[Severity]** **[agent-name]** Finding description.\n\n**Remediation:** <remediation text, or omit if null>"
+   }
+   ```
+
+7. **Submit the review** using `mcp__github-pat__create_pull_request_review`:
+   - `owner`: repo owner from pre-flight
+   - `repo`: repo name from pre-flight
+   - `pull_number`: PR_NUMBER
+   - `event`: determined in step 4
+   - `body`: review body from step 5
+   - `comments`: array from step 6
+
+   **If the MCP tool fails**, fall back to `gh api`:
+   ```bash
+   REVIEW_BODY=$(cat <<'RBEOF'
+   <review body>
+   RBEOF
+   )
+   COMMENTS_JSON='[<json comments array>]'
+   gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews \
+     -f event="<event>" \
+     -f body="$REVIEW_BODY" \
+     -F comments="$COMMENTS_JSON"
+   ```
+
+8. Report (for Phase 5): "Review posted to PR #<N>: <N> inline findings, <M> findings in review body"
 
 ### Phase 5: Final Output
 
@@ -373,24 +566,26 @@ CEOF
 rm -f "$DIFF_FILE" "$SLICE_FILE_1" "$SLICE_FILE_2" ...
 ```
 
+**If `--pr` mode:** Remove the temporary worktree created in Phase 0.
+```bash
+git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
+```
+
 Display to the user in the terminal:
 
-1. If Phase 4 ran:
-   - "PR created/updated: <URL>" (or "Summary comment posted to PR #<N>")
-
-2. Always display Block B (findings) in the terminal.
-
-3. If any conditional agents were skipped (not triggered by diff content), list them:
-   - "Skipped agents (no matching patterns in diff): <agent-name>, <agent-name>"
-
-4. If there are Critical or High findings:
+1. If a new PR was created: "PR created: <URL>"
+2. If Block A was posted as a comment: "Summary comment posted to PR #<N>"
+3. If Phase 4b ran: "Review posted to PR #<N>: <N> inline findings, <M> in review body"
+4. Always display Block B (findings) in the terminal.
+5. Report skipped agents in two categories:
+   - "--quick mode skipped: <agent-name>, <agent-name>" (if `--quick`)
+   - "Skipped (no matching patterns in diff): <agent-name>, <agent-name>"
+6. If there are Critical or High findings:
    - "⚠ Address the Critical/High findings above before requesting review."
-
-5. If any agents failed or returned empty results (from Phase 2 checks):
+7. If any agents failed or returned empty results (from Phase 2 checks):
    - "⚠ Review incomplete — <N> agent(s) failed or returned empty results.
      Do not treat this review as comprehensive."
-
-6. If there are no findings AND no agent failures:
+8. If there are no findings AND no agent failures:
    - "No significant issues found. This PR is ready for review."
 
 ## Notes
@@ -398,4 +593,6 @@ Display to the user in the terminal:
 - This skill runs globally and is project-agnostic. The orchestrator reads CLAUDE.md at pre-flight and passes a condensed project context to agents — agents should not read CLAUDE.md themselves unless they need additional detail from subdirectory CLAUDE.md files.
 - The pr-review-toolkit agents (code-reviewer, silent-failure-hunter, etc.) are reused as-is.
 - GitHub write operations use `gh` CLI. GitHub read operations may use either `gh` or the GitHub MCP tools.
-- Never post findings to GitHub — those are for the author's eyes only until fixed.
+- Findings are posted to GitHub only in two cases: (1) own PR with `--post-findings`, using a `COMMENT`-type review; (2) external PR via `--pr`, using `REQUEST_CHANGES` if Medium+ findings exist or `COMMENT` if only Low. When creating a new PR, findings are always local — the author should fix them before others see the PR. Use `--no-post` to suppress all GitHub operations.
+- Inline comments are capped at 25 per review (top findings by severity). Overflow goes to the review body. This prevents GitHub API throttling on large finding sets.
+- `--pr` mode creates a temporary worktree and checks out the PR branch. The worktree is removed in Phase 5. If the skill is interrupted, clean up manually with `git worktree list` and `git worktree remove`.
