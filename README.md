@@ -6,7 +6,7 @@ A Claude Code skill that runs a full CodeRabbit-style pre-PR review using a para
 
 When you run `/comprehensive-review` on a branch, it:
 
-1. Launches up to 8 specialized review agents **in parallel** against your diff
+1. Launches up to 9 specialized review agents **in parallel**, using token-efficient context passing
 2. Normalizes and deduplicates their findings into a unified severity ranking
 3. Assembles two output blocks:
    - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams, effort estimate, related issues/PRs — posted as the PR description or a comment
@@ -112,19 +112,20 @@ Run from any git repository, on the branch you want to review:
 
 ## Agent roster
 
-| Agent | Model | Purpose | When it runs |
-|-------|-------|---------|--------------|
-| **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams, effort score | Always |
-| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Always (skip with `--quick`) |
-| **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Always |
-| **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Always |
-| **code-reviewer** ¹ | — | Tactical bugs, style violations, project conventions | Always |
-| **silent-failure-hunter** ¹ | — | Silent failures, inadequate error handling | If diff has error-handling patterns |
-| **pr-test-analyzer** ¹ | — | Test coverage gaps | If test files appear in the diff |
-| **comment-analyzer** ¹ | — | Comment accuracy and rot | If diff adds or modifies comments |
-| **type-design-analyzer** ¹ | — | Type/struct/interface invariants | If diff adds type definitions |
+| Agent | Model | Purpose | When it runs | Context |
+|-------|-------|---------|--------------|---------|
+| **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams, effort score | Always | Manifest + selective reads ² |
+| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Always (skip with `--quick`) | Commit log + branch name + manifest + repo slug |
+| **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Always | Manifest + selective reads ² |
+| **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Always | Manifest + selective reads ² |
+| **code-reviewer** ¹ | — | Tactical bugs, style violations, project conventions | Always | Full diff |
+| **silent-failure-hunter** ¹ | — | Silent failures, inadequate error handling | If diff has error-handling patterns | Relevant file slices |
+| **pr-test-analyzer** ¹ | — | Test coverage gaps | If test files appear in the diff | Relevant file slices |
+| **comment-analyzer** ¹ | — | Comment accuracy and rot | If diff adds or modifies comments | Relevant file slices |
+| **type-design-analyzer** ¹ | — | Type/struct/interface invariants | If diff adds type definitions | Relevant file slices |
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
+² For small diffs (under 500 lines), the full diff is passed inline instead.
 
 ## Output structure
 
@@ -170,6 +171,17 @@ GitHub PR description (Block A only — no findings):
 ```
 
 The `pr-review-toolkit` plugin installs its agents to `~/.claude/plugins/` automatically.
+
+## Token efficiency
+
+The skill uses a tiered context-passing strategy to minimize token consumption:
+
+- **Small diffs (<500 lines):** Full diff passed inline to all agents — the overhead of selective reads exceeds the cost.
+- **Medium/large diffs (500+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
+- **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
+- **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
+
+For PRs with 500+ lines of changes, the selective reading strategy avoids passing the full diff to agents that only need a subset, reducing per-agent input token counts. The savings are largest for custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer); code-reviewer still receives the full diff since its general scope cannot be meaningfully sliced.
 
 ## Updating
 

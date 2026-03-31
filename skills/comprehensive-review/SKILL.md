@@ -42,13 +42,13 @@ Supported flags:
 - **Repository:** !`git remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|; s|.*github.com[:/]||'`
 - **Branch:** !`git branch --show-current 2>/dev/null`
 - **Upstream base:** !`git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"`
-- **Changed files:** !`git diff --name-only main...HEAD 2>/dev/null | head -40`
-- **Diff stats:** !`git diff --stat main...HEAD 2>/dev/null | tail -3`
-- **Commit log:** !`git log --oneline main...HEAD 2>/dev/null | head -20`
+- **Changed files:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40`
+- **Diff stats:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3`
+- **Commit log:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
 
 ## Review Workflow
 
-### Phase 0: Pre-flight
+### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
@@ -58,56 +58,201 @@ Supported flags:
 
 3. If there are no changed files, report "No changes found between current branch and `<base>`" and stop.
 
-4. Determine which agents to run (see Phase 1).
+4. **Build the file manifest** — run `git diff --stat <base>...HEAD` and construct a structured summary:
+   - Detect languages from file extensions
+   - Categorize each file into exactly one of: **Source**, **Tests**, **Config**, **Docs**, **Dependency**
+     (Source = application/library code; Tests = test files; Config = build/CI/tool config;
+     Docs = documentation/markdown; Dependency = package manifests like go.mod, package.json, Gemfile)
+   - Count total changed lines (insertions + deletions) from the stat output
+   - Format as a compact manifest (LANGUAGES is comma-separated, capitalized):
+     ```
+     BASE: <base>  |  LANGUAGES: Go, TypeScript  |  FILES: <N>  |  LINES: +<added>/-<removed>
+
+     Source:  path/to/file.go (+45/-12), path/to/other.go (+30/-5), ...
+     Tests:   path/to/file_test.go (+20/-0)
+     Config:  .github/workflows/ci.yml (+5/-2)
+     Deps:    go.mod (+2/-1)
+     Docs:    README.md (+10/-3)
+     ```
+     Omit categories with no files. For binary or generated files, list under a **Other** category.
+
+5. **Read project context** — if CLAUDE.md exists in the repository root, read it and extract
+   a condensed project-context block (architecture, conventions, key constraints — ~500 tokens max).
+   Also check for CLAUDE.md in subdirectories of changed files.
+   If no CLAUDE.md exists, set the project context to: "No project-specific context available.
+   Apply general best practices."
+
+6. **Capture the commit log** — store the output of `git log --oneline <base>...HEAD` (already
+   available from pre-flight context). This will be passed to agents that need it, so they do
+   not need to fetch it themselves.
+
+7. **Determine diff size tier** — count total changed lines (insertions + deletions) from
+   `git diff --stat`. 500 lines is approximately 2K tokens of diff; below this, inline
+   passing costs less than multiple selective `git diff -- <file>` tool calls.
+   - **Small** (under 500 changed lines): full diff will be passed inline to agents
+   - **Medium/Large** (500+ changed lines): agents will receive the file manifest and read files selectively
+   - If the line count cannot be reliably determined, default to **Medium/Large** (selective
+     reads are always safe; passing a too-large diff inline risks blowing context windows)
+
+8. Determine which agents to run (see Phase 1).
 
 ### Phase 1: Launch Agents in Parallel
 
-**Always-run agents** (unless a specific mode flag limits scope):
-- **pr-summarizer** — pass the full `git diff <base>...HEAD` output, the changed file list, and `git log --oneline <base>...HEAD`
-- **code-reviewer** (pr-review-toolkit) — pass the diff for general code quality review
-- **architecture-reviewer** — pass the diff and note the location of CLAUDE.md files
+#### Token-Efficient Context Passing
 
-**Conditional agents** — include unless `--quick`:
-- **issue-linker** — pass commit messages, branch name, and the GitHub repo slug (owner/repo)
+**Important: Do not display raw diffs to the user.** When you need to capture a diff (full or
+per-file), write it to a temporary file using `mktemp`, then read it with the Read tool:
+```bash
+DIFF_FILE=$(mktemp /tmp/cr-diff-XXXXXXXX.txt)
+git diff <base>...HEAD > "$DIFF_FILE"
+```
+`mktemp` creates files with unpredictable names and mode 0600, avoiding symlink attacks and
+collisions. Track all created temp files for cleanup in Phase 5.
 
-**Conditional agents** — based on what changed:
-- **security-reviewer** — always run (security review is always warranted)
+**Small diffs (under 500 lines total):** Capture `git diff <base>...HEAD` once to a temp file,
+read it, and pass the content inline to all agents. The overhead of agents reading files
+individually exceeds the cost of including the diff at this size.
+
+**Medium and large diffs (500+ lines):** Do NOT pass the full diff inline. Instead, each agent
+receives:
+- The **file manifest** (from Phase 0 step 4)
+- The **base branch name** (so agents can run `git diff <base>...HEAD -- <file>` selectively)
+- The **condensed project context** (from Phase 0 step 5)
+- The **commit log** (from Phase 0 step 6) — only for agents that need it
+
+Custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer) will
+use selective `git diff <base>...HEAD -- <specific-file>` reads to examine only the files
+relevant to their analysis.
+
+For pr-review-toolkit agents that we cannot modify (code-reviewer, silent-failure-hunter,
+pr-test-analyzer, comment-analyzer, type-design-analyzer), pass **relevant file slices** of
+the diff rather than the full diff:
+- **code-reviewer** — full diff (general scope, cannot be meaningfully sliced)
+- **silent-failure-hunter** — only diff for files containing error-handling patterns
+- **pr-test-analyzer** — only diff for test files and their source counterparts
+- **comment-analyzer** — only diff for files with comment changes
+- **type-design-analyzer** — only diff for files with type/struct/interface definitions
+
+To produce a file slice, write to a temp file with a per-agent suffix and read it:
+```bash
+SLICE_FILE=$(mktemp /tmp/cr-slice-sfh-XXXXXXXX.txt)   # sfh = silent-failure-hunter
+git diff <base>...HEAD -- <file1> <file2> ... > "$SLICE_FILE"
+```
+Use a different suffix for each agent's slice (e.g., `cr-slice-sfh-`, `cr-slice-ca-`,
+`cr-slice-tda-`). After writing a slice file, verify it is non-empty before launching
+the corresponding agent. If the slice is empty, skip that agent.
+
+#### Agent Roster
+
+**Always-run agents** (unless `--security-only` or `--summary-only` limits scope).
+These agents run regardless of `--quick`. The `--quick` flag only affects the conditional
+agents listed below.
+
+- **pr-summarizer** — pass the file manifest, commit log, and project context.
+  For small diffs: also include the full diff inline.
+  For medium/large diffs: the agent will read files selectively using the manifest.
+
+- **code-reviewer** (pr-review-toolkit) — pass the full diff regardless of size tier
+  (its general scope means slicing is not meaningful).
+
+- **architecture-reviewer** — pass the file manifest, commit log, and project context.
+  For small diffs: also include the full diff inline.
+  For medium/large diffs: the agent will read files selectively using the manifest.
+
+- **security-reviewer** — always run (security review is always warranted). Pass the file
+  manifest, commit log, detected languages, and project context.
+  For small diffs: also include the full diff inline.
+  For medium/large diffs: the agent will read files selectively, prioritizing auth, crypto,
+  input handling, and dependency files.
+
+**Mode flag effects:**
+| Flag | Agents that run |
+|------|-----------------|
+| (none) | All always-run + all triggered conditional agents |
+| `--quick` | All always-run + triggered content-based conditional agents (skip issue-linker) |
+| `--security-only` | security-reviewer only |
+| `--summary-only` | pr-summarizer only |
+
+**Conditional agents — skip with `--quick`:**
+
+- **issue-linker** — pass the commit log, branch name, base branch name, file manifest, and
+  GitHub repo slug (owner/repo). Does not receive the diff inline — it extracts keywords from
+  commit messages and file names. It may use `git diff <base>...HEAD -- <file>` if it needs
+  to verify specific code changes against an issue's requirements.
+
+**Conditional agents — based on diff content** (run in both full and `--quick` modes when
+their trigger patterns match):
+
+To detect trigger patterns for medium/large diffs without loading the full diff into the
+conversation, grep the temp diff file directly:
+```bash
+grep -l 'catch\|if err\|try {\|rescue\|Result<\|unwrap\|\.error\|\.expect(\|?\|runCatching\|guard\|throws' "$DIFF_FILE"
+```
+Do NOT read the diff file into the conversation for this check — just use grep to determine
+whether each agent should launch.
+
 - **silent-failure-hunter** (pr-review-toolkit) — only if diff contains error handling patterns:
-  look for `catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, `.error`
-- **pr-test-analyzer** (pr-review-toolkit) — only if any `*_test.go`, `test_*.py`, `*.test.ts`,
-  `*.spec.ts`, `spec/`, or `__tests__/` files appear in the changed file list
-- **comment-analyzer** (pr-review-toolkit) — only if the diff adds or modifies comment lines
-  (lines starting with `//`, `#`, `/*`, `*`, `"""`, `'''`)
-- **type-design-analyzer** (pr-review-toolkit) — only if the diff adds type/struct/interface
-  definitions (look for `type ... struct`, `type ... interface`, `interface `, `class `, `enum `)
+  `catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, `.error`, `.expect(`, `?`
+  (Rust), `runCatching`, `guard`, `throws`.
+  Pass only the diff for files containing these patterns.
 
-Launch all applicable agents simultaneously using parallel Agent tool calls. Each agent
-receives the relevant portion of the diff as part of its prompt. For diffs over 3000 lines,
-pass only the diff for files relevant to each agent's specialty.
+- **pr-test-analyzer** (pr-review-toolkit) — only if any `*_test.go`, `test_*.py`, `*.test.ts`,
+  `*.spec.ts`, `spec/`, or `__tests__/` files appear in the changed file list.
+  Pass only the diff for test files and their likely source counterparts.
+
+- **comment-analyzer** (pr-review-toolkit) — only if the diff adds or modifies comment lines
+  (lines starting with `//`, `#`, `/*`, `*`, `"""`, `'''`).
+  Pass only the diff for files with comment changes.
+
+- **type-design-analyzer** (pr-review-toolkit) — only if the diff adds type/struct/interface
+  definitions (look for `type ... struct`, `type ... interface`, `interface `, `class `, `enum `).
+  Pass only the diff for files with type definitions.
+
+Track which conditional agents were skipped (not triggered) for reporting in Phase 5.
+
+Launch all applicable agents simultaneously using parallel Agent tool calls.
 
 ### Phase 2: Collect and Normalize Results
 
-Wait for all agents to complete. Then normalize severity levels to a unified scale:
+Wait for all agents to complete. **Check each agent's output before proceeding:**
+
+1. If an agent returned structured output matching its expected format, proceed with normalization.
+2. If an agent returned empty output or output missing expected section headers (e.g., no
+   `## Security Analysis`, no `## Architectural Analysis`), flag it:
+   "WARNING: <agent-name> returned no results. This may indicate an analysis failure rather
+   than a clean result. Consider re-running with the relevant `--*-only` flag."
+3. If an agent call itself failed (tool error, timeout), flag it:
+   "ERROR: <agent-name> failed to execute. Reason: <error>. Findings from this agent are
+   missing from the report."
+4. Track the number of agents that failed or returned empty results for Phase 5.
+
+Then normalize severity levels to a unified scale (inclusive ranges):
 
 | Agent | Their Scale | Maps To |
 |-------|-------------|---------|
-| code-reviewer | confidence 91–100 | Critical |
-| code-reviewer | confidence 80–90 | High |
+| code-reviewer | confidence [91, 100] | Critical |
+| code-reviewer | confidence [80, 90] | High |
+| code-reviewer | confidence [0, 79] | Medium |
 | silent-failure-hunter | CRITICAL | Critical |
 | silent-failure-hunter | HIGH | High |
 | silent-failure-hunter | MEDIUM | Medium |
-| pr-test-analyzer | gap rating 8–10 | Critical |
-| pr-test-analyzer | gap rating 5–7 | High |
-| pr-test-analyzer | gap rating 3–4 | Medium |
-| pr-test-analyzer | gap rating 1–2 | Low |
-| type-design-analyzer | rating < 3 | High |
-| type-design-analyzer | rating 3–5 | Medium |
-| type-design-analyzer | rating > 5 | Low |
-| architecture-reviewer | pass through directly |
-| security-reviewer | pass through directly |
+| comment-analyzer | Critical/High/Medium/Low | pass through directly |
+| pr-test-analyzer | gap rating [8, 10] | Critical |
+| pr-test-analyzer | gap rating [5, 7] | High |
+| pr-test-analyzer | gap rating [3, 4] | Medium |
+| pr-test-analyzer | gap rating [1, 2] | Low |
+| type-design-analyzer | rating [1, 2] | High |
+| type-design-analyzer | rating [3, 5] | Medium |
+| type-design-analyzer | rating [6, 10] | Low |
+| architecture-reviewer | Critical/High/Medium | pass through directly |
+| security-reviewer | Critical/High/Medium | pass through directly |
+
+Note: Custom agents (security-reviewer, architecture-reviewer) report Medium+ only.
+Toolkit agents (pr-test-analyzer, type-design-analyzer) may still produce Low-severity findings.
 
 Deduplicate: if two agents flag the same `file:line`, keep the highest severity entry
-and add a note "(also flagged by [agent2])".
+and add a note "(also flagged by [agent2])". For findings that reference a file without
+a specific line number, deduplicate by `file` + finding category.
 
 ### Phase 3: Assemble the Reports
 
@@ -188,48 +333,45 @@ Assemble the pr-summarizer and issue-linker outputs into this format:
 Check whether a PR already exists for the current branch:
 
 ```bash
-gh pr view --json number,title,body 2>/dev/null
+gh pr view --json number,title,body
 ```
 
+- If the command succeeds, a PR exists — proceed with the "PR already exists" path.
+- If it fails with "no pull requests found", no PR exists — proceed with creation.
+- If it fails for any other reason (auth, network, permissions), report the error:
+  "GitHub API error: <error message>. Use `--no-post` to skip GitHub operations."
+  Then skip the rest of Phase 4.
+
 **If NO PR exists:**
-1. Create the PR using `gh pr create`, passing Block A as the PR description body.
-   Use a concise title derived from the Summary section (under 70 characters).
-   Set the base branch to the detected `<base>`.
+Create the PR with Block A as the description. Use a concise title from the Summary (under 70 chars).
+Capture the PR URL from the output for Phase 5 reporting.
 
-   ```bash
-   gh pr create --title "<title>" --base "<base>" --body "$(cat <<'PREOF'
-   <Block A content>
-   PREOF
-   )"
-   ```
-
-2. Report the PR URL to the user.
+```bash
+gh pr create --title "<title>" --base "<base>" --body "$(cat <<'PREOF'
+<Block A content>
+PREOF
+)"
+```
 
 **If a PR already exists:**
-1. Check whether the PR description body already contains the informational sections
-   (look for `## Summary` and `## Walkthrough` in the existing body).
+Post Block A as a PR comment. Check the existing body for `## Summary` and `## Walkthrough`:
+- If NOT present (first run): use `## PR Review Summary` as the heading
+- If already present (re-run): use `## PR Review Summary (Updated)` as the heading
 
-2. If NOT already present:
-   Post Block A as a PR comment:
-   ```bash
-   gh pr comment --body "$(cat <<'CEOF'
-   ## PR Review Summary
-   <Block A content>
-   CEOF
-   )"
-   ```
-
-3. If already present (previous run):
-   Post an updated Block A as a new PR comment with a note:
-   ```bash
-   gh pr comment --body "$(cat <<'CEOF'
-   ## PR Review Summary (Updated)
-   <Block A content>
-   CEOF
-   )"
-   ```
+```bash
+gh pr comment --body "$(cat <<'CEOF'
+## PR Review Summary            ← or "## PR Review Summary (Updated)" on re-runs
+<Block A content>
+CEOF
+)"
+```
 
 ### Phase 5: Final Output
+
+**Cleanup:** Remove all temporary diff and slice files created during this run.
+```bash
+rm -f "$DIFF_FILE" "$SLICE_FILE_1" "$SLICE_FILE_2" ...
+```
 
 Display to the user in the terminal:
 
@@ -238,15 +380,22 @@ Display to the user in the terminal:
 
 2. Always display Block B (findings) in the terminal.
 
-3. If there are Critical or High findings:
+3. If any conditional agents were skipped (not triggered by diff content), list them:
+   - "Skipped agents (no matching patterns in diff): <agent-name>, <agent-name>"
+
+4. If there are Critical or High findings:
    - "⚠ Address the Critical/High findings above before requesting review."
 
-4. If there are no findings:
+5. If any agents failed or returned empty results (from Phase 2 checks):
+   - "⚠ Review incomplete — <N> agent(s) failed or returned empty results.
+     Do not treat this review as comprehensive."
+
+6. If there are no findings AND no agent failures:
    - "No significant issues found. This PR is ready for review."
 
 ## Notes
 
-- This skill runs globally and is project-agnostic. Agents read CLAUDE.md at runtime for project-specific context.
+- This skill runs globally and is project-agnostic. The orchestrator reads CLAUDE.md at pre-flight and passes a condensed project context to agents — agents should not read CLAUDE.md themselves unless they need additional detail from subdirectory CLAUDE.md files.
 - The pr-review-toolkit agents (code-reviewer, silent-failure-hunter, etc.) are reused as-is.
 - GitHub write operations use `gh` CLI. GitHub read operations may use either `gh` or the GitHub MCP tools.
 - Never post findings to GitHub — those are for the author's eyes only until fixed.
