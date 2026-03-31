@@ -82,7 +82,7 @@ Produce exactly these sections in order, with no preamble:
 
 ## Related Issues & PRs
 
-<!-- issue-linker output will be merged here -->
+<!-- issue-linker output will be merged here — the orchestrator replaces this placeholder -->
 ```
 
 Output only the sections above. No findings or review feedback.

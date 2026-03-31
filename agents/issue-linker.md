@@ -20,7 +20,7 @@ Produce a `## Related Issues & PRs` section for the PR description.
 
 Scan commit messages and the branch name for issue references:
 - `#123`, `GH-123`
-- `fix(es) #123`, `close(s) #123`, `resolve(s) #123`
+- `fixes #123`, `fix #123`, `closes #123`, `close #123`, `resolves #123`, `resolve #123`
 - Branch name patterns like `fix/issue-123-description`, `feature/123-description`
 
 ## Step 2: Assess Linked Issue Resolution

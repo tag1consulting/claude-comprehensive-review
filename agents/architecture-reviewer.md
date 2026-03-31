@@ -14,7 +14,7 @@ the project well over time.
 
 ## Your Task
 
-You will receive a file manifest, base branch, commit summary, and condensed project
+You will receive a file manifest (which includes the base branch), commit log, and condensed project
 context. Use `git diff <base>...HEAD -- <file>` to read specific files relevant to
 architectural analysis. Prioritize files that introduce new abstractions, modify public
 APIs, change dependency relationships, or restructure modules.
