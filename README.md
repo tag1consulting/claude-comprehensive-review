@@ -115,7 +115,7 @@ Run from any git repository, on the branch you want to review:
 | Agent | Model | Purpose | When it runs | Context |
 |-------|-------|---------|--------------|---------|
 | **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams, effort score | Always | Manifest + selective reads ² |
-| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Always (skip with `--quick`) | Commit log + manifest only |
+| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Always (skip with `--quick`) | Commit log + manifest + repo slug |
 | **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Always | Manifest + selective reads ² |
 | **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Always | Manifest + selective reads ² |
 | **code-reviewer** ¹ | — | Tactical bugs, style violations, project conventions | Always | Full diff |
@@ -181,7 +181,7 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
 
-For a moderate PR with a ~5K-token diff, this architecture reduces total input tokens by approximately 40-60% compared to passing the full diff to every agent.
+For a moderate PR with a ~5K-token diff, this architecture significantly reduces total input tokens compared to passing the full diff to every agent. The savings are largest for custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer); code-reviewer still receives the full diff since its general scope cannot be meaningfully sliced.
 
 ## Updating
 

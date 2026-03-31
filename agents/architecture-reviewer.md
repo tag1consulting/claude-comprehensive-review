@@ -32,6 +32,7 @@ APIs, change dependency relationships, or restructure modules.
 - Do the changes increase coupling between modules that should be independent?
 - Are responsibilities clearly separated, or is logic bleeding into the wrong layer?
 - Do new dependencies flow in the right direction (e.g., business logic should not depend on infrastructure)?
+- Are new interfaces narrow enough to avoid accidental coupling?
 
 ### 3. Public API and Interface Design
 
@@ -53,6 +54,7 @@ attacks) to security-reviewer.
 
 - Are there N+1 query patterns or unbounded loops that would degrade under load?
 - Is pagination missing where results could be large?
+- Are there missing caches or unnecessary re-computation?
 - Are goroutine/thread lifetimes and resource cleanup handled correctly?
 
 ### 6. Maintainability
@@ -66,6 +68,7 @@ code-reviewer.
 
 - Do the changes introduce TODO/FIXME items that should be tracked as issues?
 - Are there shortcuts that work now but will cause pain at scale?
+- Does the change reduce or increase the existing debt?
 
 ## Severity Classification
 

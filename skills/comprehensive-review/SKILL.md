@@ -90,9 +90,17 @@ Supported flags:
 
 #### Token-Efficient Context Passing
 
-**Small diffs (under 500 lines total):** Run `git diff <base>...HEAD` once and pass the full
-diff inline to all agents. The overhead of agents reading files individually exceeds the
-cost of including the diff at this size.
+**Important: Do not display raw diffs to the user.** When you need to capture a diff (full or
+per-file), write it to a temporary file, then read it with the Read tool:
+```bash
+git diff <base>...HEAD > /tmp/cr-diff-$$.txt
+```
+Use `$$` (shell PID) or a unique suffix to avoid collisions. This avoids flooding the
+terminal with diff output.
+
+**Small diffs (under 500 lines total):** Capture `git diff <base>...HEAD` once to a temp file,
+read it, and pass the content inline to all agents. The overhead of agents reading files
+individually exceeds the cost of including the diff at this size.
 
 **Medium and large diffs (500+ lines):** Do NOT pass the full diff inline. Instead, each agent
 receives:
@@ -114,7 +122,10 @@ the diff rather than the full diff:
 - **comment-analyzer** — only diff for files with comment changes
 - **type-design-analyzer** — only diff for files with type/struct/interface definitions
 
-To produce a file slice: `git diff <base>...HEAD -- <file1> <file2> ...`
+To produce a file slice, write to a temp file and read it:
+```bash
+git diff <base>...HEAD -- <file1> <file2> ... > /tmp/cr-slice-$$.txt
+```
 
 #### Agent Roster
 
@@ -124,26 +135,25 @@ To produce a file slice: `git diff <base>...HEAD -- <file1> <file2> ...`
   For small diffs: also include the full diff inline.
   For medium/large diffs: the agent will read files selectively using the manifest.
 
-- **code-reviewer** (pr-review-toolkit) — pass the diff (full for small diffs, full for
-  medium diffs since its scope is general and cannot be sliced).
+- **code-reviewer** (pr-review-toolkit) — pass the full diff regardless of size tier
+  (its general scope means slicing is not meaningful).
 
 - **architecture-reviewer** — pass the file manifest, commit log, and project context.
   For small diffs: also include the full diff inline.
   For medium/large diffs: the agent will read files selectively using the manifest.
-
-**Conditional agents** — include unless `--quick`:
-
-- **issue-linker** — pass the commit log, branch name, file manifest, and GitHub repo slug
-  (owner/repo). Does NOT need the diff — it extracts keywords from commit messages and
-  file names.
-
-**Conditional agents** — based on what changed:
 
 - **security-reviewer** — always run (security review is always warranted). Pass the file
   manifest, detected languages, and project context.
   For small diffs: also include the full diff inline.
   For medium/large diffs: the agent will read files selectively, prioritizing auth, crypto,
   input handling, and dependency files.
+
+**Conditional agents** — include unless `--quick`:
+
+- **issue-linker** — pass the commit log, branch name, file manifest, and GitHub repo slug
+  (owner/repo). Does not receive the diff inline — it extracts keywords from commit messages
+  and file names. It may use `git diff <base>...HEAD -- <file>` if it needs to verify
+  specific code changes against an issue's requirements.
 
 - **silent-failure-hunter** (pr-review-toolkit) — only if diff contains error handling patterns:
   look for `catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, `.error`.
@@ -183,6 +193,9 @@ Wait for all agents to complete. Then normalize severity levels to a unified sca
 | type-design-analyzer | rating > 5 | Low |
 | architecture-reviewer | pass through directly |
 | security-reviewer | pass through directly |
+
+Note: Custom agents (security-reviewer, architecture-reviewer) report Medium+ only.
+Toolkit agents (pr-test-analyzer, type-design-analyzer) may still produce Low-severity findings.
 
 Deduplicate: if two agents flag the same `file:line`, keep the highest severity entry
 and add a note "(also flagged by [agent2])".
@@ -271,6 +284,7 @@ gh pr view --json number,title,body 2>/dev/null
 
 **If NO PR exists:**
 Create the PR with Block A as the description. Use a concise title from the Summary (under 70 chars).
+Capture the PR URL from the output for Phase 5 reporting.
 
 ```bash
 gh pr create --title "<title>" --base "<base>" --body "$(cat <<'PREOF'
@@ -280,13 +294,13 @@ PREOF
 ```
 
 **If a PR already exists:**
-Post Block A as a PR comment. If the body already contains `## Summary` and `## Walkthrough`
-(from a previous run), prefix the comment with "## PR Review Summary (Updated)"; otherwise
-use "## PR Review Summary".
+Post Block A as a PR comment. Check the existing body for `## Summary` and `## Walkthrough`:
+- If NOT present (first run): use `## PR Review Summary` as the heading
+- If already present (re-run): use `## PR Review Summary (Updated)` as the heading
 
 ```bash
 gh pr comment --body "$(cat <<'CEOF'
-## PR Review Summary
+## PR Review Summary            ← or "## PR Review Summary (Updated)" on re-runs
 <Block A content>
 CEOF
 )"

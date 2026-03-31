@@ -79,6 +79,6 @@ install.sh                             ← copies files into ~/.claude/
 ## Editing guidelines
 
 - **`SKILL.md`** is the source of truth for workflow logic, flag handling, severity normalization, and the Phase 0–5 execution order. Changes to agent behavior or output format must be reflected here.
-- **Agent files** define what each agent does in isolation. They are unaware of each other — coordination happens entirely in `SKILL.md`.
+- **Agent files** define what each agent does and its scope boundaries. Agents reference each other only to delineate responsibility boundaries — coordination and context passing happens entirely in `SKILL.md`.
 - **`README.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
 - When adding a new agent to the skill, add it to: the agent roster table in `README.md`, the Phase 1 launch conditions in `SKILL.md`, and the severity normalization table in `SKILL.md` if it uses a non-standard scale.
