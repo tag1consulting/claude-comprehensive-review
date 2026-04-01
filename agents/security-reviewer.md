@@ -84,6 +84,10 @@ Detect which languages are present and apply these additional checks:
 
 Do NOT report: error handling quality (silent-failure-hunter's domain), architectural dependency analysis (architecture-reviewer). Report error handling only where it creates a security vulnerability (e.g., swallowed auth failures, stack traces leaked to users).
 
+## Empty State
+
+If you find no security vulnerabilities at Medium or higher, output EXACTLY the word `NONE` and nothing else.
+
 ## Severity Classification
 
 - **Critical**: Directly exploitable in a default configuration; high impact (RCE, auth bypass, credential theft)

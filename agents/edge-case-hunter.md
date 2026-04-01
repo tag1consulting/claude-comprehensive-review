@@ -72,6 +72,10 @@ than to report one that is impossible in practice.
 
 Do NOT assess: code style/naming (code-reviewer), error handling *quality* (silent-failure-hunter — you only check if a handler *exists*), security implications of gaps (security-reviewer), architecture/coupling (architecture-reviewer), test coverage (pr-test-analyzer).
 
+## Empty State
+
+If no gaps survive Pass 2, output EXACTLY the word `NONE` and nothing else.
+
 ## Severity Classification
 
 - **Critical**: Gap that will cause a crash, data corruption, or infinite loop under

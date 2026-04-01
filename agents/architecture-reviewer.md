@@ -70,6 +70,10 @@ APIs, change dependency relationships, or restructure modules.
 
 Do NOT assess: security implications of dependencies (security-reviewer), code-level style/formatting (code-reviewer), error handling quality (silent-failure-hunter), test coverage (pr-test-analyzer).
 
+## Empty State
+
+If you have no findings at Medium or higher, output EXACTLY the word `NONE` and nothing else.
+
 ## Severity Classification
 
 - **Critical**: Design flaw that will cause failures or make the system unmaintainable

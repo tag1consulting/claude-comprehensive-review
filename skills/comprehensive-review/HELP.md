@@ -10,6 +10,8 @@ Flags
   --quick            Fast mode: pr-summarizer + code-reviewer + triggered error/test agents.
                      Skips security, architecture, blind-hunter, edge-case-hunter, comment,
                      and type analysis. ~75% cheaper.
+  --diagrams         Include Mermaid sequence diagrams in the summary (default: omitted;
+                     always omitted in --quick)
   --security-only    Run security-reviewer only
   --summary-only     Run pr-summarizer only
 

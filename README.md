@@ -9,7 +9,7 @@ When you run `/comprehensive-review` on a branch, it:
 1. Launches specialized review agents **in parallel**, using token-efficient context passing
 2. Normalizes and deduplicates their findings into a unified severity ranking
 3. Assembles two output blocks:
-   - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams, effort estimate, related issues/PRs
+   - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams (opt-in via `--diagrams`), effort estimate, related issues/PRs
    - **Block B (findings)** — Critical/High/Medium/Low findings, architectural insights, security analysis, recommended actions
 4. Posts Block A and/or Block B to GitHub based on the flags and scenario (see [Posting behavior](#posting-behavior))
 
@@ -29,7 +29,7 @@ The `pr-review-toolkit` plugin provides excellent code-level agents (bug detecti
 | **Context-free "fresh eyes" review** | No | Yes (blind-hunter, Sonnet) |
 | **Mechanical boundary-condition tracing** | No | Yes (edge-case-hunter, Sonnet) |
 | **PR summary + walkthrough table** | No | Yes (pr-summarizer) |
-| **Mermaid sequence diagrams** | No | Yes (pr-summarizer) |
+| **Mermaid sequence diagrams** | No | Yes (pr-summarizer, opt-in via `--diagrams`) |
 | **Related issue/PR discovery** | No | Yes (issue-linker) |
 | **Unified severity ranking** | Per-agent only | Normalized across all agents, deduplicated |
 | **Inline GitHub PR review posting** | No | Yes (`--post-findings`, `--pr`) |
@@ -133,6 +133,7 @@ Run from any git repository, on the branch you want to review:
 |------|--------|
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
 | `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. ~75% cheaper. |
+| `--diagrams` | Include Mermaid sequence diagrams in Block A. Default is omitted (saves hundreds of output tokens). Always omitted in `--quick`. |
 | `--security-only` | Run only the security-reviewer agent |
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--create-pr` | Create a PR using Block A as the description. Without this flag, no PR is created. |
@@ -201,7 +202,7 @@ Run from any git repository, on the branch you want to review:
 
 | Agent | Model | Purpose | When it runs | Context |
 |-------|-------|---------|--------------|---------|
-| **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams, effort score | Always | Manifest + selective reads ² |
+| **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams (opt-in), effort score | Always | Manifest + selective reads ² |
 | **code-reviewer** ¹ | Opus | Tactical bugs, style violations, project conventions | Always | Full diff |
 | **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Full run only | Manifest + selective reads ² |
 | **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Full run only | Manifest + selective reads ² |
@@ -250,7 +251,7 @@ GitHub PR description (Block A only — no findings):
 ```
 ## Summary
 ## Walkthrough
-## Sequence Diagrams
+## Sequence Diagrams  (only with --diagrams)
 ## Related Issues & PRs
 ```
 

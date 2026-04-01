@@ -37,6 +37,7 @@ Run a full CodeRabbit-style review of all changes on the current branch (or a sp
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
 - `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~75% cheaper)
+- `--diagrams` — include Mermaid sequence diagrams in Block A (default: omitted; always omitted in `--quick`)
 - `--security-only` — run security-reviewer only
 - `--summary-only` — run pr-summarizer only
 - `--create-pr` — create a PR using Block A as the description (without this flag, no PR is created)
@@ -51,10 +52,7 @@ Supported flags:
 
 - **Repository:** !`git remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|; s|.*github.com[:/]||'`
 - **Branch:** !`git branch --show-current 2>/dev/null`
-- **Upstream base:** !`git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"`
-- **Changed files:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40`
-- **Diff stats:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3`
-- **Commit log:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
+- **Branch context:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
 
 ## Review Workflow
 
@@ -64,7 +62,7 @@ Supported flags:
    - If `--help` is present, display the help text below and **stop immediately** — do not continue.
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
-   - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--create-pr`,
+   - Note mode flags: `--quick`, `--diagrams`, `--security-only`, `--summary-only`, `--create-pr`,
      `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`
    - **Flag conflict checks:**
      - If both `--post-findings` and `--no-findings` are present, report
@@ -90,7 +88,8 @@ Supported flags:
 
 3. Run `git diff --name-only <base>...HEAD` to confirm changed files (in `--pr` mode: `git -C "$WORKTREE_PATH" diff --name-only <base>...HEAD`). If none, report and stop.
 
-4. **Build the file manifest** from `git diff --stat <base>...HEAD`:
+4. **Build the file manifest** from `git diff --stat <base>...HEAD -- ':!*lock.json' ':!*lock.yaml' ':!vendor/*' ':!*.sum' ':!node_modules/*'`:
+   Lockfiles, vendor directories, and checksum files are excluded — the full DIFF_FILE still includes them.
    - Detect languages from extensions; categorize files as **Source**, **Tests**, **Config**, **Docs**, or **Dependency**
    - Format:
      ```
@@ -112,7 +111,7 @@ Supported flags:
    pre-flight for own-branch; captured fresh for `--pr` mode). Passed to agents so they
    don't fetch independently.
 
-7. **Determine diff size tier** from `git diff --stat` total changed lines:
+7. **Determine diff size tier** from the manifest's total changed lines (lockfiles excluded):
    - **Small** (under 300 lines): full diff passed inline to agents
    - **Medium/Large** (300+ lines): agents receive file manifest and read selectively
    - Default to **Medium/Large** if line count is ambiguous
@@ -144,7 +143,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 | Flag | Agents that run |
 |------|-----------------|
-| (none) | All always-run + all triggered conditional agents |
+| (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) |
 | `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer |
 | `--security-only` | security-reviewer only |
 | `--summary-only` | pr-summarizer only |
@@ -152,7 +151,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
 - **pr-summarizer** — pass manifest, commit log, project context. Small diffs: also full diff inline.
-  In `--quick` mode: add "Omit the Sequence Diagrams section entirely."
+  Unless `--diagrams` is passed (and not `--quick`): add "Omit the Sequence Diagrams section entirely."
 - **code-reviewer** (pr-review-toolkit) — always pass the full diff.
 
 **Full-run-only agents** (skipped with `--quick`):
@@ -162,7 +161,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 - **blind-hunter** — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
-  Medium/large (`--pr` mode): orchestrator collects per-file diffs via `git -C "$WORKTREE_PATH" diff <base>...HEAD -- <file>`, concatenates to a temp file, passes inline (agent has no worktree knowledge).
+  Medium/large (`--pr` mode): `git -C "$WORKTREE_PATH" diff <base>...HEAD > /tmp/cr-diff-blind.txt`, passes inline (agent has no worktree knowledge).
 - **edge-case-hunter** — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Has full codebase read access for surrounding context.
 
@@ -187,7 +186,8 @@ Track skipped agents and reasons for Phase 5. Launch all applicable agents simul
 ### Phase 2: Collect and Normalize Results
 
 Wait for all agents. Check each output:
-- Empty or missing expected headers → "WARNING: <agent> returned no results."
+- Exactly `NONE` (trimmed) → mark as clean (no findings). Omit from Block B. Not an error.
+- Empty or missing expected headers (and not NONE) → "WARNING: <agent> returned no results."
 - Tool error/timeout → "ERROR: <agent> failed. Reason: <error>."
 - Track failures for Phase 5.
 
@@ -214,7 +214,8 @@ Build two separate output blocks:
 #### Block A — Informational (conditionally posted to GitHub)
 
 Assemble the pr-summarizer and issue-linker outputs into this format.
-**If `--quick` was passed, omit the `## Sequence Diagrams` section** (pr-summarizer was told not to generate it):
+**Omit the `## Sequence Diagrams` section unless `--diagrams` was passed** (pr-summarizer was told not to generate it).
+If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs` section entirely.
 
 ```markdown
 ## Summary
@@ -232,7 +233,7 @@ Assemble the pr-summarizer and issue-linker outputs into this format.
 
 ## Sequence Diagrams
 
-<from pr-summarizer — omit this section entirely if --quick was passed>
+<from pr-summarizer — include only if --diagrams was passed and not --quick>
 
 ## Related Issues & PRs
 
@@ -262,11 +263,11 @@ Assemble the pr-summarizer and issue-linker outputs into this format.
 
 ### Architectural Insights
 
-<condensed output from architecture-reviewer, or omit if skipped>
+<condensed output from architecture-reviewer, or omit if skipped or NONE>
 
 ### Security Analysis
 
-<condensed output from security-reviewer, or omit if skipped>
+<condensed output from security-reviewer, or omit if skipped or NONE>
 
 ### Positive Observations
 

@@ -47,6 +47,10 @@ If `gh` commands fail or return no results, note it and output the section with 
 you found. Do not fabricate issue references. If GitHub API is unavailable, output:
 "GitHub API unavailable — manual issue linking required."
 
+## Empty State
+
+If no explicit issue references are found AND no related issues or PRs are discovered, output EXACTLY the word `NONE` and nothing else.
+
 ## Output Format
 
 ```markdown

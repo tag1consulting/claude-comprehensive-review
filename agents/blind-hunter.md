@@ -85,6 +85,10 @@ developers who know the codebase:
 
 Do NOT assess: project convention conformance (invisible to you), architectural fitness (no context), in-depth security vulnerabilities (security-reviewer), test coverage (pr-test-analyzer). Overlap with other agents is expected — deduplication happens downstream.
 
+## Empty State
+
+If you find no issues, output EXACTLY the word `NONE` and nothing else.
+
 ## Severity Classification
 
 - **Critical**: Logic that is almost certainly wrong regardless of any project context

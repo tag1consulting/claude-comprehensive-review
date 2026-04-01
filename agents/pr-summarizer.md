@@ -58,6 +58,10 @@ Skip files that are purely data structures, configuration, documentation, test f
 or minor cosmetic edits. If no files have meaningful control flow changes, write:
 > No significant control flow changes in this PR.
 
+## Empty State
+
+If no diff or changed files are provided, output EXACTLY the word `NONE` and nothing else.
+
 ## Output Format
 
 Produce exactly these sections in order, with no preamble:
