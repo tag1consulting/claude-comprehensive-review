@@ -4,7 +4,7 @@ description: |
   Discover related GitHub issues and PRs for the current branch changes, and assess
   whether issues referenced in commit messages or the branch name are actually resolved
   by the code changes. Uses gh CLI and GitHub MCP tools for API access.
-model: sonnet
+model: haiku
 color: cyan
 ---
 
@@ -46,6 +46,10 @@ relevance, and status (open/closed/merged).
 If `gh` commands fail or return no results, note it and output the section with whatever
 you found. Do not fabricate issue references. If GitHub API is unavailable, output:
 "GitHub API unavailable — manual issue linking required."
+
+## Empty State
+
+If no explicit issue references are found AND no related issues or PRs are discovered, output EXACTLY the word `NONE` and nothing else.
 
 ## Output Format
 

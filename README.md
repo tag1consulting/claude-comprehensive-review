@@ -9,7 +9,7 @@ When you run `/comprehensive-review` on a branch, it:
 1. Launches specialized review agents **in parallel**, using token-efficient context passing
 2. Normalizes and deduplicates their findings into a unified severity ranking
 3. Assembles two output blocks:
-   - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams, effort estimate, related issues/PRs
+   - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams (opt-in via `--diagrams`), effort estimate, related issues/PRs
    - **Block B (findings)** — Critical/High/Medium/Low findings, architectural insights, security analysis, recommended actions
 4. Posts Block A and/or Block B to GitHub based on the flags and scenario (see [Posting behavior](#posting-behavior))
 
@@ -29,7 +29,7 @@ The `pr-review-toolkit` plugin provides excellent code-level agents (bug detecti
 | **Context-free "fresh eyes" review** | No | Yes (blind-hunter, Sonnet) |
 | **Mechanical boundary-condition tracing** | No | Yes (edge-case-hunter, Sonnet) |
 | **PR summary + walkthrough table** | No | Yes (pr-summarizer) |
-| **Mermaid sequence diagrams** | No | Yes (pr-summarizer) |
+| **Mermaid sequence diagrams** | No | Yes (pr-summarizer, opt-in via `--diagrams`) |
 | **Related issue/PR discovery** | No | Yes (issue-linker) |
 | **Unified severity ranking** | Per-agent only | Normalized across all agents, deduplicated |
 | **Inline GitHub PR review posting** | No | Yes (`--post-findings`, `--pr`) |
@@ -101,6 +101,7 @@ Copy files to your Claude config directory (default: `~/.claude`):
 # Skill
 mkdir -p ~/.claude/skills/comprehensive-review
 cp skills/comprehensive-review/SKILL.md ~/.claude/skills/comprehensive-review/
+cp skills/comprehensive-review/HELP.md ~/.claude/skills/comprehensive-review/
 
 # Agents
 mkdir -p ~/.claude/agents
@@ -132,6 +133,7 @@ Run from any git repository, on the branch you want to review:
 |------|--------|
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
 | `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. ~75% cheaper. |
+| `--diagrams` | Include Mermaid sequence diagrams in Block A. Default is omitted (saves hundreds of output tokens). Always omitted in `--quick`. |
 | `--security-only` | Run only the security-reviewer agent |
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--create-pr` | Create a PR using Block A as the description. Without this flag, no PR is created. |
@@ -200,7 +202,7 @@ Run from any git repository, on the branch you want to review:
 
 | Agent | Model | Purpose | When it runs | Context |
 |-------|-------|---------|--------------|---------|
-| **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams, effort score | Always | Manifest + selective reads ² |
+| **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams (opt-in), effort score | Always | Manifest + selective reads ² |
 | **code-reviewer** ¹ | Opus | Tactical bugs, style violations, project conventions | Always | Full diff |
 | **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Full run only | Manifest + selective reads ² |
 | **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Full run only | Manifest + selective reads ² |
@@ -210,7 +212,7 @@ Run from any git repository, on the branch you want to review:
 | **type-design-analyzer** ¹ | — | Type/struct/interface invariants | Full run only, if diff adds type definitions | Relevant file slices |
 | **blind-hunter** | Sonnet | Context-free "fresh eyes" review: catches issues familiarity blinds other agents to | Full run only | Raw diff only (no project context) |
 | **edge-case-hunter** | Sonnet | Mechanical path tracing: missing else/default, unguarded inputs, off-by-one, overflow, race conditions, resource leaks | Full run only | Manifest + selective reads ² |
-| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Full run only | Commit log + branch + manifest |
+| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues on GitHub | Full run only | Commit log + branch + manifest |
 
 ### `--quick` mode
 
@@ -218,7 +220,7 @@ Skips: architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter,
 Still runs: pr-summarizer (no diagrams), code-reviewer, and triggered silent-failure-hunter / pr-test-analyzer.
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
-² For small diffs (under 500 lines), the full diff is passed inline instead.
+² For small diffs (under 300 lines), the full diff is passed inline instead.
 
 ## Output structure
 
@@ -249,7 +251,7 @@ GitHub PR description (Block A only — no findings):
 ```
 ## Summary
 ## Walkthrough
-## Sequence Diagrams
+## Sequence Diagrams  (only with --diagrams)
 ## Related Issues & PRs
 ```
 
@@ -269,6 +271,7 @@ implementation detail of Claude Code and may change between versions).
 
 ```
 ~/.claude/skills/comprehensive-review/SKILL.md
+~/.claude/skills/comprehensive-review/HELP.md
 ~/.claude/agents/pr-summarizer.md
 ~/.claude/agents/issue-linker.md
 ~/.claude/agents/security-reviewer.md
@@ -283,8 +286,8 @@ The `pr-review-toolkit` plugin installs its agents to `~/.claude/plugins/` autom
 
 The skill uses a tiered context-passing strategy to minimize token consumption:
 
-- **Small diffs (<500 lines):** Full diff passed inline to all agents — the overhead of selective reads exceeds the cost.
-- **Medium/large diffs (500+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
+- **Small diffs (<300 lines):** Full diff passed inline to all agents — the overhead of selective reads exceeds the cost.
+- **Medium/large diffs (300+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
 - **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
 - **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~75% vs. full run (measured: ~79K agent tokens for --quick vs ~317K for a full run on a documentation PR; code-heavy PRs with deeper Opus analysis yield higher savings).

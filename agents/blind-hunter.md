@@ -83,14 +83,11 @@ developers who know the codebase:
 
 ## Scope Boundaries
 
-You do NOT assess:
-- Conformance to project conventions (you cannot see them)
-- Architectural fitness (no project context available)
-- Security vulnerabilities in depth (security-reviewer handles this)
-- Test coverage (pr-test-analyzer handles this)
+Do NOT assess: project convention conformance (invisible to you), architectural fitness (no context), in-depth security vulnerabilities (security-reviewer), test coverage (pr-test-analyzer). Overlap with other agents is expected — deduplication happens downstream.
 
-Overlap with other agents is expected and is NOT a problem. Your independent perspective
-is the point. Deduplication happens downstream.
+## Empty State
+
+If you find no issues, output EXACTLY the word `NONE` and nothing else.
 
 ## Severity Classification
 

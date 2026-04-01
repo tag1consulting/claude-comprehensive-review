@@ -65,8 +65,6 @@ on unchanged lines.
 - Missing TLS verification or certificate pinning bypass
 
 ### Supply Chain and Dependencies
-Focus on SECURITY implications only — leave architectural dependency analysis (coupling,
-weight, circular deps) to architecture-reviewer.
 - New dependencies: check if from trusted sources
 - Unpinned dependency versions that could pull malicious updates
 - Use of `latest` image tags in container definitions
@@ -82,12 +80,13 @@ Detect which languages are present and apply these additional checks:
 - **PHP**: `eval` injection, `$_GET`/`$_POST` in queries/paths/output, `include`/`require` with user paths, `preg_replace` with `e` modifier, `unserialize` on untrusted data, missing `htmlspecialchars`
 - **Shell**: unquoted variables in command substitution, `eval` with variables, curl-pipe-bash without integrity verification, world-writable temp files
 
-## Error Handling Boundary
+## Scope Boundaries
 
-Do not report error handling quality issues (empty catch blocks, missing error logging) —
-those are covered by silent-failure-hunter. Report error handling only where it creates a
-SECURITY vulnerability (e.g., catch block that swallows auth failures, error messages
-that leak stack traces or sensitive data to users).
+Do NOT report: error handling quality (silent-failure-hunter's domain), architectural dependency analysis (architecture-reviewer). Report error handling only where it creates a security vulnerability (e.g., swallowed auth failures, stack traces leaked to users).
+
+## Empty State
+
+If you find no security vulnerabilities at Medium or higher, output EXACTLY the word `NONE` and nothing else.
 
 ## Severity Classification
 

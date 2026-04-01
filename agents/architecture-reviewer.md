@@ -44,8 +44,6 @@ APIs, change dependency relationships, or restructure modules.
 
 ### 4. Dependency Management
 
-Focus on ARCHITECTURAL implications — leave security implications (CVEs, supply chain
-attacks) to security-reviewer.
 - Do new external dependencies justify their weight (maintenance burden, license)?
 - Are new internal dependencies between packages appropriate?
 - Is there any circular dependency risk introduced?
@@ -59,8 +57,6 @@ attacks) to security-reviewer.
 
 ### 6. Maintainability
 
-Focus on structural maintainability — leave code-level style and formatting to
-code-reviewer.
 - Are complex invariants documented with comments?
 - Will a new contributor understand the design intent?
 
@@ -69,6 +65,14 @@ code-reviewer.
 - Do the changes introduce TODO/FIXME items that should be tracked as issues?
 - Are there shortcuts that work now but will cause pain at scale?
 - Does the change reduce or increase the existing debt?
+
+## Scope Boundaries
+
+Do NOT assess: security implications of dependencies (security-reviewer), code-level style/formatting (code-reviewer), error handling quality (silent-failure-hunter), test coverage (pr-test-analyzer).
+
+## Empty State
+
+If you have no findings at Medium or higher, output EXACTLY the word `NONE` and nothing else.
 
 ## Severity Classification
 
