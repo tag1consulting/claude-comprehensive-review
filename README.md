@@ -50,7 +50,21 @@ In short: pr-review-toolkit agents handle tactical code review. This skill orche
 
 ## Installation
 
-### Option 1: Install script (recommended)
+### Option 1: Plugin install (recommended)
+
+Inside Claude Code:
+
+```
+/plugins install comprehensive-review@tag1consulting
+```
+
+Then install the required dependency:
+
+```
+/plugins install pr-review-toolkit@claude-plugins-official
+```
+
+### Option 2: Install script (legacy)
 
 ```bash
 git clone https://github.com/tag1consulting/claude-comprehensive-review.git
@@ -78,7 +92,7 @@ The script automatically installs the latest release, fetching files directly fr
 ./install.sh --local
 ```
 
-### Option 2: Manual installation
+### Option 3: Manual installation
 
 Copy files to your Claude config directory (default: `~/.claude`):
 
@@ -97,7 +111,7 @@ cp agents/blind-hunter.md ~/.claude/agents/
 cp agents/edge-case-hunter.md ~/.claude/agents/
 ```
 
-Then install the plugin inside Claude Code:
+Then install the dependency plugin inside Claude Code:
 
 ```
 /plugins install pr-review-toolkit@claude-plugins-official
@@ -246,8 +260,14 @@ Uses REQUEST_CHANGES (Medium+ findings) or COMMENT (Low only).
 
 ## Files installed
 
+**Plugin install** (Option 1) — files are managed by Claude Code's plugin system.
+The skill and agents are auto-discovered from the plugin cache (exact path is an
+implementation detail of Claude Code and may change between versions).
+
+**Legacy install** (Option 2/3) — files copied directly:
+
 ```
-~/.claude/skills/comprehensive-review/SKILL.md   ← the /comprehensive-review command
+~/.claude/skills/comprehensive-review/SKILL.md
 ~/.claude/agents/pr-summarizer.md
 ~/.claude/agents/issue-linker.md
 ~/.claude/agents/security-reviewer.md
@@ -282,9 +302,25 @@ minimum-findings mandate, and integrate tightly with our manifest and context-pa
 
 ## Updating
 
+**Plugin install:**
+
+```
+/plugins update comprehensive-review@tag1consulting
+```
+
+**Legacy install:**
+
 Pull the latest version and re-run `./install.sh`. Existing agent files will be overwritten.
 
 ## Uninstalling
+
+**Plugin install:**
+
+```
+/plugins uninstall comprehensive-review@tag1consulting
+```
+
+**Legacy install:**
 
 ```bash
 rm -rf ~/.claude/skills/comprehensive-review

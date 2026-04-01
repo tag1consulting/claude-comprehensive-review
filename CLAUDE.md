@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents. There is no build system, test suite, or compiled output — the deliverables are markdown files copied into a user's `~/.claude/` directory.
+This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents as a Claude Code plugin. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace or copied into `~/.claude/` by a legacy install script.
 
 ## Installation (for testing changes locally)
 
@@ -12,7 +12,7 @@ This repo distributes a Claude Code skill (`/comprehensive-review`) and six cust
 ./install.sh --local
 ```
 
-This copies files from the local working tree into `~/.claude/` without fetching from GitHub. Changes take effect immediately in the next Claude Code session. Omitting `--local` will fetch the latest release from GitHub instead.
+This copies files from the local working tree into `~/.claude/` without fetching from GitHub. Changes take effect immediately in the next Claude Code session. This is the recommended method for contributors testing local changes. For end-user installation, use `/plugins install comprehensive-review@tag1consulting` inside Claude Code.
 
 ## Architecture
 
@@ -101,9 +101,23 @@ When `--pr <N>` is passed, the skill:
 
 This allows reviewing any accessible PR without being on that branch locally.
 
+## Distribution
+
+This project is distributed as a Claude Code plugin via the `tag1consulting` marketplace (hosted at `tag1consulting/claude-plugins` on GitHub). The `install.sh` script is maintained as a legacy fallback.
+
+### Version management
+
+When releasing a new version:
+1. Update `version` in `.claude-plugin/plugin.json`
+2. Update the plugin entry's `version` in the `tag1consulting/claude-plugins` marketplace repo
+3. Tag this repo with `v<version>` (e.g., `v1.0.0`)
+
+Plugin versions use semver without the `v` prefix (e.g., `1.0.0`). Git tags use the `v` prefix (e.g., `v1.0.0`).
+
 ## File layout
 
 ```
+.claude-plugin/plugin.json             ← plugin manifest (name, version, author, keywords)
 skills/comprehensive-review/SKILL.md   ← orchestrator: phases 0–5, all workflow logic
 agents/pr-summarizer.md                ← Block A generation
 agents/issue-linker.md                 ← GitHub issue cross-referencing
@@ -111,7 +125,7 @@ agents/security-reviewer.md            ← security analysis
 agents/architecture-reviewer.md        ← architectural analysis
 agents/blind-hunter.md                 ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
 agents/edge-case-hunter.md             ← boundary-condition path tracing (adapted from BMAD-METHOD)
-install.sh                             ← copies files into ~/.claude/
+install.sh                             ← legacy file-copy installer (recommends plugin install)
 ```
 
 ## Editing guidelines

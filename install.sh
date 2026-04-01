@@ -63,6 +63,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---------------------------------------------------------------------------
+# Recommend plugin install
+# ---------------------------------------------------------------------------
+
+info ""
+info "NOTE: Plugin install is now the recommended method:"
+info "  /plugins install comprehensive-review@tag1consulting"
+info ""
+info "Continuing with legacy file-copy installation..."
+info ""
+
+# ---------------------------------------------------------------------------
 # Pre-flight checks
 # ---------------------------------------------------------------------------
 
