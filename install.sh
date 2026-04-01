@@ -177,7 +177,7 @@ info "Installed skill  → $CLAUDE_DIR/skills/comprehensive-review/SKILL.md"
 # Install agents
 # ---------------------------------------------------------------------------
 
-for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer; do
+for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer blind-hunter edge-case-hunter; do
   dest="$CLAUDE_DIR/agents/${agent}.md"
   if [[ -f "$dest" ]]; then
     warn "Agent already exists, overwriting: $dest"
@@ -210,7 +210,7 @@ fi
 echo ""
 echo "  Usage:"
 echo "    /comprehensive-review               # full review, creates/updates PR"
-echo "    /comprehensive-review --quick       # skip issue discovery, no diagrams"
+echo "    /comprehensive-review --quick       # skip expensive agents, ~75% cheaper"
 echo "    /comprehensive-review --local       # review only, no GitHub operations"
 echo "    /comprehensive-review --help        # show all flags"
 echo ""

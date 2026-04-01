@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and four custom agents. There is no build system, test suite, or compiled output — the deliverables are markdown files copied into a user's `~/.claude/` directory.
+This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents. There is no build system, test suite, or compiled output — the deliverables are markdown files copied into a user's `~/.claude/` directory.
 
 ## Installation (for testing changes locally)
 
@@ -27,6 +27,8 @@ The skill coordinates two groups of agents:
    - `issue-linker` — cross-references GitHub issues and PRs
    - `security-reviewer` — OWASP-class security analysis (runs Opus)
    - `architecture-reviewer` — design pattern and coupling analysis (runs Opus)
+   - `blind-hunter` — context-free "fresh eyes" review; receives only the raw diff (small diffs), a plain file list (large diffs in normal mode), or a concatenated per-file diff assembled by the orchestrator (large diffs in `--pr` mode) — no project context in any case (runs Sonnet). Adapted from BMAD-METHOD.
+   - `edge-case-hunter` — mechanical boundary-condition path tracing (runs Sonnet). Adapted from BMAD-METHOD.
 
 2. **pr-review-toolkit agents** — external dependency, installed separately via `/plugins install pr-review-toolkit@claude-plugins-official`:
    - `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer`
@@ -47,6 +49,8 @@ To reduce duplicate analysis and wasted tokens, each agent has explicit scope bo
 - **security-reviewer** owns security implications of dependencies; **architecture-reviewer** owns architectural implications
 - **security-reviewer** does not report error handling quality issues — that's **silent-failure-hunter**'s domain
 - **architecture-reviewer** focuses on structural maintainability, not code-level style — that's **code-reviewer**'s domain
+- **blind-hunter** receives zero project context by design; it is orthogonal to all other agents. Overlap is expected and handled by deduplication. Do not try to scope-limit it — the independent perspective is the point.
+- **edge-case-hunter** asks "does a handling path exist?"; **silent-failure-hunter** asks "is the existing error handling adequate?" — these are distinct questions with minimal overlap. **edge-case-hunter** does not report security implications of gaps (that's **security-reviewer**'s domain).
 
 ### Two-block output design
 
@@ -79,10 +83,10 @@ Each agent uses its own severity scale. The skill's `SKILL.md` defines a normali
 Agents are divided into three tiers:
 
 1. **Always-run:** pr-summarizer, code-reviewer — run in every mode including `--quick`
-2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, comment-analyzer, type-design-analyzer, issue-linker
+2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker
 3. **Conditional (run in both full and `--quick` when triggered by diff content):** silent-failure-hunter (error patterns), pr-test-analyzer (test files)
 
-The `--quick` flag eliminates the two expensive Opus review agents and the lower-value conditional agents, reducing cost by ~65% while preserving the core code review and error/test analysis.
+The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~75% while preserving the core code review and error/test analysis.
 
 ### External PR review mode
 
@@ -103,6 +107,8 @@ agents/pr-summarizer.md                ← Block A generation
 agents/issue-linker.md                 ← GitHub issue cross-referencing
 agents/security-reviewer.md            ← security analysis
 agents/architecture-reviewer.md        ← architectural analysis
+agents/blind-hunter.md                 ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
+agents/edge-case-hunter.md             ← boundary-condition path tracing (adapted from BMAD-METHOD)
 install.sh                             ← copies files into ~/.claude/
 ```
 
@@ -110,7 +116,9 @@ install.sh                             ← copies files into ~/.claude/
 
 - **`SKILL.md`** is the source of truth for workflow logic, flag handling, severity normalization, and the Phase 0–5 execution order. Changes to agent behavior or output format must be reflected here.
 - **Agent files** define what each agent does and its scope boundaries. Agents reference each other only to delineate responsibility boundaries — coordination and context passing happens entirely in `SKILL.md`. Agent task descriptions reference the file-manifest protocol (receiving manifests, using `git diff <base>...HEAD -- <file>` for selective reads); changes to the context-passing strategy in `SKILL.md` require corresponding updates to agent task descriptions.
-- **`README.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
+- **`README.md` and `CLAUDE.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
 - When adding a new agent to the skill, add it to: the agent roster table in `README.md`, the Phase 1 launch conditions in `SKILL.md`, and the severity normalization table in `SKILL.md` if it uses a non-standard scale.
 - The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
 - When modifying `--quick` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and the `--help` text block in Phase 0.
+- **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
+- **BMAD attribution**: `blind-hunter` and `edge-case-hunter` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in both agent files and in README.md. Do not remove attribution when editing these agents.
