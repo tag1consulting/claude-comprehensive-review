@@ -52,15 +52,16 @@ In short: pr-review-toolkit agents handle tactical code review. This skill orche
 
 ### Option 1: Plugin install (recommended)
 
-Inside Claude Code:
+First, add the Tag1 Consulting marketplace (one-time setup, run in your terminal):
+
+```bash
+claude plugin marketplace add tag1consulting/claude-plugins
+```
+
+Then inside Claude Code, install the plugin and its dependency:
 
 ```
 /plugins install comprehensive-review@tag1consulting
-```
-
-Then install the required dependency:
-
-```
 /plugins install pr-review-toolkit@claude-plugins-official
 ```
 
