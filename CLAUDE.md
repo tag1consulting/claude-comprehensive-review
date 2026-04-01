@@ -86,7 +86,7 @@ Agents are divided into three tiers:
 2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker
 3. **Conditional (run in both full and `--quick` when triggered by diff content):** silent-failure-hunter (error patterns), pr-test-analyzer (test files)
 
-The `--quick` flag eliminates the two expensive Opus review agents and the lower-value conditional agents, reducing cost by ~65% while preserving the core code review and error/test analysis.
+The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~65%+ while preserving the core code review and error/test analysis.
 
 ### External PR review mode
 
@@ -116,7 +116,7 @@ install.sh                             ← copies files into ~/.claude/
 
 - **`SKILL.md`** is the source of truth for workflow logic, flag handling, severity normalization, and the Phase 0–5 execution order. Changes to agent behavior or output format must be reflected here.
 - **Agent files** define what each agent does and its scope boundaries. Agents reference each other only to delineate responsibility boundaries — coordination and context passing happens entirely in `SKILL.md`. Agent task descriptions reference the file-manifest protocol (receiving manifests, using `git diff <base>...HEAD -- <file>` for selective reads); changes to the context-passing strategy in `SKILL.md` require corresponding updates to agent task descriptions.
-- **`README.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
+- **`README.md` and `CLAUDE.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
 - When adding a new agent to the skill, add it to: the agent roster table in `README.md`, the Phase 1 launch conditions in `SKILL.md`, and the severity normalization table in `SKILL.md` if it uses a non-standard scale.
 - The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
 - When modifying `--quick` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and the `--help` text block in Phase 0.

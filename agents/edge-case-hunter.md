@@ -149,7 +149,7 @@ You do NOT assess:
 ### Pass 1: Path Walk
 
 Traced <N> functions/methods across <M> files. Found <P> branching constructs.
-<N> candidates identified for Pass 2 validation.
+<N> candidates identified; <M> confirmed as findings after Pass 2, <K> discarded.
 
 ### Pass 2: Validated Findings
 

@@ -36,7 +36,7 @@ Run a full CodeRabbit-style review of all changes on the current branch (or a sp
 
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~65% cheaper)
+- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~65%+ cheaper)
 - `--security-only` — run security-reviewer only
 - `--summary-only` — run pr-summarizer only
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR
@@ -82,7 +82,7 @@ Flags
   --base <branch>    Compare against a different base branch (default: auto-detect or main)
   --quick            Fast mode: run only pr-summarizer + code-reviewer + triggered
                      error/test agents. Skips security, architecture, blind-hunter,
-                     edge-case-hunter, comment, and type analysis. ~65% cheaper than full run.
+                     edge-case-hunter, comment, and type analysis. ~65%+ cheaper than full run.
   --security-only    Run security-reviewer only
   --summary-only     Run pr-summarizer only
 
@@ -282,10 +282,14 @@ the corresponding agent. If the slice is empty, skip that agent.
   value depends entirely on receiving zero project context — it catches issues that
   familiarity blinds the other agents to.
   For small diffs: pass only the full diff content inline.
-  For medium/large diffs: pass only the base branch name and a plain file list
-  (from `git diff --name-only <base>...HEAD`, NOT the categorized manifest with
-  languages/categories/line counts). The agent uses `git diff <base>...HEAD -- <file>`
+  For medium/large diffs (non-`--pr` mode): pass only the base branch name and a plain
+  file list (from `git diff --name-only <base>...HEAD`, NOT the categorized manifest
+  with languages/categories/line counts). The agent uses `git diff <base>...HEAD -- <file>`
   to read files selectively.
+  For medium/large diffs in `--pr` mode: the orchestrator must collect per-file diffs
+  itself using `git -C "$WORKTREE_PATH" diff <base>...HEAD -- <file>` for each file,
+  concatenate them into a temp file, and pass that content inline — do NOT rely on the
+  agent to run git commands, as it has no knowledge of WORKTREE_PATH.
 
 - **edge-case-hunter** — pass the file manifest, commit log, and project context.
   For small diffs: also include the full diff inline.
