@@ -63,7 +63,9 @@ Both blocks are always shown locally. What gets posted to GitHub depends on cont
 
 | Scenario | Block A | Block B |
 |----------|---------|---------|
-| No PR exists (tool creates it) | PR description | Not posted |
+| No PR exists (default) | Not posted | Not posted |
+| No PR exists + `--create-pr` | PR description | Not posted |
+| No PR exists + `--create-pr --post-findings` | PR description | Inline GitHub review (`COMMENT` event) |
 | Existing own PR (default) | Not posted | Not posted |
 | Existing own PR + `--post-summary` | PR comment | Not posted |
 | Existing own PR + `--post-findings` | Not posted | Inline GitHub review (`COMMENT` event) |
@@ -72,7 +74,7 @@ Both blocks are always shown locally. What gets posted to GitHub depends on cont
 | `--pr <N>` + `--no-findings` | Not posted | Not posted |
 | Any + `--no-post`/`--local` | Not posted | Not posted |
 
-The key invariant: Block A is auto-posted only when *creating* a new PR. On existing PRs, both blocks require explicit opt-in flags. Block B is never hidden from the terminal.
+The key invariant: Block A is posted only when `--create-pr` is passed and no PR exists. On existing PRs, both blocks require explicit opt-in flags. Block B is never hidden from the terminal.
 
 ### Severity normalization
 

@@ -6,7 +6,7 @@ description: >
   your own branch (pre-PR) or an existing PR by number (--pr <N>).
 
   Default behavior:
-    No PR exists:      Creates PR with Block A as description; findings shown locally only.
+    No PR exists:      Everything shown locally. Use --create-pr to create a PR.
     Existing own PR:   Everything shown locally. Use --post-summary/--post-findings to post.
     --pr <N>:          Findings posted as inline review; summary local unless --post-summary.
 
@@ -39,6 +39,7 @@ Supported flags:
 - `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~75% cheaper)
 - `--security-only` — run security-reviewer only
 - `--summary-only` — run pr-summarizer only
+- `--create-pr` — create a PR using Block A as the description (without this flag, no PR is created)
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR
 - `--post-findings` — post Block B (findings) as inline GitHub review on an existing own PR
 - `--no-findings` — suppress posting findings as a review (useful for dry-run with `--pr`)
@@ -63,10 +64,15 @@ Supported flags:
    - If `--help` is present, display the help text below and **stop immediately** — do not continue.
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
-   - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--no-post`/`--local`,
-     `--post-summary`, `--post-findings`, `--no-findings`
-   - **Flag conflict check:** if both `--post-findings` and `--no-findings` are present, report
-     "Error: --post-findings and --no-findings are mutually exclusive." and stop.
+   - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--create-pr`,
+     `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`
+   - **Flag conflict checks:**
+     - If both `--post-findings` and `--no-findings` are present, report
+       "Error: --post-findings and --no-findings are mutually exclusive." and stop.
+     - If `--create-pr` and `--no-post`/`--local` are both present, report
+       "Error: --create-pr and --no-post/--local are mutually exclusive." and stop.
+     - If `--create-pr` and `--pr <N>` are both present, report
+       "Error: --create-pr and --pr are mutually exclusive." and stop.
 
 **Help text (display when `--help` is passed):**
 
@@ -86,6 +92,8 @@ Flags
   --security-only    Run security-reviewer only
   --summary-only     Run pr-summarizer only
 
+  --create-pr        Create a PR using the summary (Block A) as the description.
+                     Without this flag, no PR is created even if none exists.
   --post-summary     Post the informational summary (Block A) as a comment on an existing PR
   --post-findings    Post findings (Block B) as inline review comments on an existing own PR
   --no-findings      Suppress posting findings on external PR reviews (--pr mode)
@@ -95,7 +103,7 @@ Flags
   --help             Show this help
 
 Default behavior
-  No PR exists:      Creates PR with summary as description. Findings shown locally.
+  No PR exists:      Everything shown locally. No PR created. Use --create-pr to create one.
   Existing own PR:   Everything shown locally. Use --post-summary and/or --post-findings to post.
   --pr <N>:          Findings posted as inline review (REQUEST_CHANGES if Medium+, COMMENT if Low only).
                      Summary shown locally unless --post-summary is also passed.
@@ -113,7 +121,8 @@ Agents — --quick mode
                      comment-analyzer, type-design-analyzer, issue-linker
 
 Examples
-  /comprehensive-review                         Review current branch, create PR if needed
+  /comprehensive-review                         Review current branch, everything local
+  /comprehensive-review --create-pr             Review and create PR with summary as description
   /comprehensive-review --quick                 Fast review, skip expensive agents
   /comprehensive-review --post-findings         Review + post findings on existing own PR
   /comprehensive-review --pr 42                 Review someone else's PR #42
@@ -486,12 +495,21 @@ Else (own-branch mode):
 
   If command fails with "no pull requests found":
     PR_EXISTS = false
-    POST_SUMMARY = false  (creating the PR IS posting the summary)
-    POST_FINDINGS = false  (never post findings on new PR creation)
-    If --post-findings was passed, warn: "Note: --post-findings has no effect when no PR exists.
-    Findings will be shown locally. Create a PR first, then re-run with --post-findings."
-    If --post-summary was passed, warn: "Note: --post-summary has no effect when no PR exists.
-    The summary will be used as the new PR's description."
+
+    If --create-pr was passed:
+      CREATE_PR = true
+      POST_FINDINGS = (--post-findings was passed)
+      If --post-summary was passed, warn: "Note: --post-summary has no effect when creating a PR.
+      The summary will be used as the new PR's description."
+    Else:
+      CREATE_PR = false
+      POST_SUMMARY = false
+      POST_FINDINGS = false
+      If --post-findings was passed, warn: "Note: --post-findings has no effect when no PR exists.
+      Findings will be shown locally. Use --create-pr to create a PR, then re-run with --post-findings,
+      or combine both: --create-pr --post-findings."
+      If --post-summary was passed, warn: "Note: --post-summary has no effect when no PR exists.
+      Use --create-pr to create a PR with the summary as its description."
 
   If command fails for any other reason (auth, network, permissions):
     Report "GitHub API error: <error>. Use --no-post to skip GitHub operations." and skip Phase 4.
@@ -501,9 +519,10 @@ Else (own-branch mode):
     PR_NUMBER = <number from json output>
     POST_SUMMARY = (--post-summary was passed)
     POST_FINDINGS = (--post-findings was passed)
+    If --create-pr was passed, note: "Note: PR #<number> already exists. --create-pr ignored."
 ```
 
-**Create new PR (own-branch mode, no PR exists):**
+**Create new PR (own-branch mode, CREATE_PR is true):**
 Use a concise title from the Summary (under 70 chars). Capture the PR URL for Phase 5.
 
 ```bash
@@ -615,26 +634,28 @@ git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
 
 Display to the user in the terminal:
 
-1. If a new PR was created: "PR created: <URL>"
-2. If Block A was posted as a comment: "Summary comment posted to PR #<N>"
-3. If Phase 4b ran: "Review posted to PR #<N>: <N> inline findings, <M> in review body"
-4. Always display Block B (findings) in the terminal.
-5. Report skipped agents in two categories:
+1. If a new PR was created (via `--create-pr`): "PR created: <URL>"
+2. If no PR exists and `--create-pr` was not passed: "Tip: use --create-pr to open a PR with this summary."
+3. If Block A was posted as a comment: "Summary comment posted to PR #<N>"
+4. If Phase 4b ran: "Review posted to PR #<N>: <N> inline findings, <M> in review body"
+5. Always display Block B (findings) in the terminal.
+6. Report skipped agents in two categories:
    - "--quick mode skipped: <agent-name>, <agent-name>" (if `--quick`)
    - "Skipped (no matching patterns in diff): <agent-name>, <agent-name>"
-6. If there are Critical or High findings:
+7. If there are Critical or High findings:
    - "⚠ Address the Critical/High findings above before requesting review."
-7. If any agents failed or returned empty results (from Phase 2 checks):
+8. If any agents failed or returned empty results (from Phase 2 checks):
    - "⚠ Review incomplete — <N> agent(s) failed or returned empty results.
      Do not treat this review as comprehensive."
-8. If there are no findings AND no agent failures:
-   - "No significant issues found. This PR is ready for review."
+9. If there are no findings AND no agent failures:
+   - "No significant issues found. This branch is ready for review."
 
 ## Notes
 
 - This skill runs globally and is project-agnostic. The orchestrator reads CLAUDE.md at pre-flight and passes a condensed project context to agents — agents should not read CLAUDE.md themselves unless they need additional detail from subdirectory CLAUDE.md files.
 - The pr-review-toolkit agents (code-reviewer, silent-failure-hunter, etc.) are reused as-is.
 - GitHub write operations use `gh` CLI. GitHub read operations may use either `gh` or the GitHub MCP tools.
-- Findings are posted to GitHub only in two cases: (1) own PR with `--post-findings`, using a `COMMENT`-type review; (2) external PR via `--pr`, using `REQUEST_CHANGES` if Medium+ findings exist or `COMMENT` if only Low. When creating a new PR, findings are always local — the author should fix them before others see the PR. Use `--no-post` to suppress all GitHub operations.
+- PR creation is opt-in via `--create-pr`. Without it, no PR is created even when none exists for the current branch. This keeps the default behavior side-effect-free.
+- Findings are posted to GitHub only in two cases: (1) own PR with `--post-findings`, using a `COMMENT`-type review; (2) external PR via `--pr`, using `REQUEST_CHANGES` if Medium+ findings exist or `COMMENT` if only Low. When creating a new PR via `--create-pr`, findings are local by default — add `--post-findings` to also post them on the new PR. Use `--no-post` to suppress all GitHub operations.
 - Inline comments are capped at 25 per review (top findings by severity). Overflow goes to the review body. This prevents GitHub API throttling on large finding sets.
 - `--pr` mode creates a temporary worktree and checks out the PR branch. The worktree is removed in Phase 5. If the skill is interrupted, clean up manually with `git worktree list` and `git worktree remove`.

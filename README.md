@@ -119,6 +119,7 @@ Run from any git repository, on the branch you want to review:
 | `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. ~75% cheaper. |
 | `--security-only` | Run only the security-reviewer agent |
 | `--summary-only` | Run only the pr-summarizer agent |
+| `--create-pr` | Create a PR using Block A as the description. Without this flag, no PR is created. |
 | `--post-summary` | Post Block A (summary) as a comment on an existing PR |
 | `--post-findings` | Post Block B (findings) as inline review comments on an existing own PR |
 | `--no-findings` | Suppress posting findings as a review (useful for dry-run with `--pr`) |
@@ -129,8 +130,11 @@ Run from any git repository, on the branch you want to review:
 ### Examples
 
 ```bash
-# Full review — creates PR if none exists, findings shown locally
+# Full review — everything shown locally, no PR created
 /comprehensive-review
+
+# Review and create a PR with the summary as its description
+/comprehensive-review --create-pr
 
 # Fast review — ~75% cheaper, skips security and architecture agents
 /comprehensive-review --quick --local
@@ -161,7 +165,9 @@ Run from any git repository, on the branch you want to review:
 
 | Scenario | Block A posted? | Block B posted? | Review event |
 |----------|----------------|----------------|--------------|
-| No PR exists (tool creates it) | Yes — PR description | No | N/A |
+| No PR exists (default) | No | No | N/A |
+| No PR exists + `--create-pr` | Yes — PR description | No | N/A |
+| No PR exists + `--create-pr --post-findings` | Yes — PR description | Yes — inline review | `COMMENT` |
 | Existing own PR (default) | No | No | N/A |
 | Existing own PR + `--post-summary` | Yes — PR comment | No | N/A |
 | Existing own PR + `--post-findings` | No | Yes — inline review | `COMMENT` |
