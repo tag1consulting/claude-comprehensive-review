@@ -25,8 +25,8 @@ findings. Fabricating issues is worse than missing them.
 ## Your Task
 
 You will receive either:
-- **Small diff:** The full diff content inline — analyze it directly.
-- **Medium/large diff:** A base branch name and a plain list of changed file paths.
+- **Small diff or `--pr` mode with large diff:** The full diff content inline — analyze it directly.
+- **Medium/large diff (normal mode):** A base branch name and a plain list of changed file paths.
   For each file, read it using: `git diff <base>...HEAD -- <file>`
   Do NOT attempt to read CLAUDE.md, architecture docs, or any file not in the provided
   list. Your analysis must be based only on what the diff shows you.

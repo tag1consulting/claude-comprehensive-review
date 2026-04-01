@@ -210,7 +210,7 @@ fi
 echo ""
 echo "  Usage:"
 echo "    /comprehensive-review               # full review, creates/updates PR"
-echo "    /comprehensive-review --quick       # skip expensive agents, ~65% cheaper"
+echo "    /comprehensive-review --quick       # skip expensive agents, ~75% cheaper"
 echo "    /comprehensive-review --local       # review only, no GitHub operations"
 echo "    /comprehensive-review --help        # show all flags"
 echo ""

@@ -116,7 +116,7 @@ Run from any git repository, on the branch you want to review:
 | Flag | Effect |
 |------|--------|
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
-| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. ~65% cheaper. |
+| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. ~75% cheaper. |
 | `--security-only` | Run only the security-reviewer agent |
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--post-summary` | Post Block A (summary) as a comment on an existing PR |
@@ -132,7 +132,7 @@ Run from any git repository, on the branch you want to review:
 # Full review — creates PR if none exists, findings shown locally
 /comprehensive-review
 
-# Fast review — ~65% cheaper, skips security and architecture agents
+# Fast review — ~75% cheaper, skips security and architecture agents
 /comprehensive-review --quick --local
 
 # Review your own open PR and share findings with co-reviewers
@@ -260,7 +260,7 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **Medium/large diffs (500+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
 - **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
-- **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~65%+ vs. full run (adding blind-hunter and edge-case-hunter to the full-run baseline increases the delta further).
+- **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~75% vs. full run (measured: ~79K agent tokens for --quick vs ~317K for a full run on a documentation PR; code-heavy PRs with deeper Opus analysis yield higher savings).
 - **blind-hunter cost:** Particularly cheap — it receives only the raw diff or plain file list, with no project context passed at all.
 
 ## Acknowledgments

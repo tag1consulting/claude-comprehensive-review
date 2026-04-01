@@ -27,7 +27,7 @@ The skill coordinates two groups of agents:
    - `issue-linker` — cross-references GitHub issues and PRs
    - `security-reviewer` — OWASP-class security analysis (runs Opus)
    - `architecture-reviewer` — design pattern and coupling analysis (runs Opus)
-   - `blind-hunter` — context-free "fresh eyes" review; receives only the raw diff (small diffs) or a plain file list (large diffs) — no project context (runs Sonnet). Adapted from BMAD-METHOD.
+   - `blind-hunter` — context-free "fresh eyes" review; receives only the raw diff (small diffs), a plain file list (large diffs in normal mode), or a concatenated per-file diff assembled by the orchestrator (large diffs in `--pr` mode) — no project context in any case (runs Sonnet). Adapted from BMAD-METHOD.
    - `edge-case-hunter` — mechanical boundary-condition path tracing (runs Sonnet). Adapted from BMAD-METHOD.
 
 2. **pr-review-toolkit agents** — external dependency, installed separately via `/plugins install pr-review-toolkit@claude-plugins-official`:
@@ -86,7 +86,7 @@ Agents are divided into three tiers:
 2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker
 3. **Conditional (run in both full and `--quick` when triggered by diff content):** silent-failure-hunter (error patterns), pr-test-analyzer (test files)
 
-The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~65%+ while preserving the core code review and error/test analysis.
+The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~75% while preserving the core code review and error/test analysis.
 
 ### External PR review mode
 

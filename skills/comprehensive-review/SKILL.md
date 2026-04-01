@@ -36,7 +36,7 @@ Run a full CodeRabbit-style review of all changes on the current branch (or a sp
 
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~65%+ cheaper)
+- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~75% cheaper)
 - `--security-only` — run security-reviewer only
 - `--summary-only` — run pr-summarizer only
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR
@@ -82,7 +82,7 @@ Flags
   --base <branch>    Compare against a different base branch (default: auto-detect or main)
   --quick            Fast mode: run only pr-summarizer + code-reviewer + triggered
                      error/test agents. Skips security, architecture, blind-hunter,
-                     edge-case-hunter, comment, and type analysis. ~65%+ cheaper than full run.
+                     edge-case-hunter, comment, and type analysis. ~75% cheaper than full run.
   --security-only    Run security-reviewer only
   --summary-only     Run pr-summarizer only
 
