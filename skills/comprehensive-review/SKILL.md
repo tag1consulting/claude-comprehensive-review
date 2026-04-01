@@ -148,21 +148,37 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `--security-only` | security-reviewer only |
 | `--summary-only` | pr-summarizer only |
 
+**Model assignments** — always specify `model:` explicitly when spawning agents via the Agent tool to prevent inheritance of the orchestrator's model:
+
+| Agent | Model |
+|-------|-------|
+| pr-summarizer | sonnet |
+| code-reviewer | sonnet |
+| architecture-reviewer | opus |
+| security-reviewer | opus |
+| blind-hunter | sonnet |
+| edge-case-hunter | sonnet |
+| silent-failure-hunter | sonnet |
+| pr-test-analyzer | sonnet |
+| comment-analyzer | sonnet |
+| type-design-analyzer | sonnet |
+| issue-linker | haiku |
+
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
-- **pr-summarizer** — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **pr-summarizer** (model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Unless `--diagrams` is passed (and not `--quick`): add "Omit the Sequence Diagrams section entirely."
-- **code-reviewer** (pr-review-toolkit) — always pass the full diff.
+- **code-reviewer** (pr-review-toolkit, model: sonnet) — always pass the full diff.
 
 **Full-run-only agents** (skipped with `--quick`):
 
-- **architecture-reviewer** — pass manifest, commit log, project context. Small diffs: also full diff inline.
-- **security-reviewer** — pass manifest, commit log, detected languages, project context. Small diffs: also full diff inline.
-- **blind-hunter** — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
+- **architecture-reviewer** (model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **security-reviewer** (model: opus) — pass manifest, commit log, detected languages, project context. Small diffs: also full diff inline.
+- **blind-hunter** (model: sonnet) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `git -C "$WORKTREE_PATH" diff <base>...HEAD > /tmp/cr-diff-blind.txt`, passes inline (agent has no worktree knowledge).
-- **edge-case-hunter** — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **edge-case-hunter** (model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Has full codebase read access for surrounding context.
 
 **Conditional agents — run in both full and `--quick` when triggered:**
@@ -172,14 +188,14 @@ Detect triggers via grep on the temp diff file — do NOT read it into the conve
 grep -l 'catch\|if err\|try {\|rescue\|Result<\|unwrap\|\.error\|\.expect(\|?\|runCatching\|guard\|throws' "$DIFF_FILE"
 ```
 
-- **silent-failure-hunter** (pr-review-toolkit) — trigger: error handling patterns (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). Pass only matching files' diff.
-- **pr-test-analyzer** (pr-review-toolkit) — trigger: test files (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.ts`, `spec/`, `__tests__/`). Pass test files + source counterparts.
+- **silent-failure-hunter** (pr-review-toolkit, model: sonnet) — trigger: error handling patterns (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). Pass only matching files' diff.
+- **pr-test-analyzer** (pr-review-toolkit, model: sonnet) — trigger: test files (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.ts`, `spec/`, `__tests__/`). Pass test files + source counterparts.
 
 **Conditional agents — full-run only** (skip in `--quick` and when not triggered):
 
-- **comment-analyzer** (pr-review-toolkit) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`). Pass matching files' diff.
-- **type-design-analyzer** (pr-review-toolkit) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `). Pass matching files' diff.
-- **issue-linker** — pass commit log, branch name, manifest, repo slug. Skip in `--quick` and `--pr` modes.
+- **comment-analyzer** (pr-review-toolkit, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`). Pass matching files' diff.
+- **type-design-analyzer** (pr-review-toolkit, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `). Pass matching files' diff.
+- **issue-linker** (model: haiku) — pass commit log, branch name, manifest, repo slug. Skip in `--quick` and `--pr` modes.
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 

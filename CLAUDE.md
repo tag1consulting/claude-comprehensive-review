@@ -41,7 +41,7 @@ The orchestrator uses a tiered approach to minimize token consumption:
 - **Small diffs (under 300 lines)**: Full diff passed inline to all agents — at this size, the tool-call overhead of selective reads exceeds the token cost of including the full diff.
 - **Medium/large diffs (300+ lines)**: Custom agents receive a structured **file manifest** (file list, categories, languages, line counts) and use selective `git diff <base>...HEAD -- <file>` reads. Toolkit agents (which we cannot modify) receive only the diff slices relevant to their specialty. Lockfiles, vendor directories, and checksum files are excluded from the manifest (but remain in DIFF_FILE).
 
-The orchestrator also pre-reads CLAUDE.md and the commit log in Phase 0, passing condensed versions to agents so they don't fetch these independently.
+The orchestrator also pre-reads CLAUDE.md and the commit log in Phase 0, passing condensed versions to agents so they don't fetch these independently. The orchestrator always specifies `model:` explicitly when spawning agents via the Agent tool — subagents otherwise inherit the orchestrator's (Opus) model rather than using the model in their frontmatter.
 
 ### Agent scope boundaries
 
