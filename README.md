@@ -101,6 +101,7 @@ Copy files to your Claude config directory (default: `~/.claude`):
 # Skill
 mkdir -p ~/.claude/skills/comprehensive-review
 cp skills/comprehensive-review/SKILL.md ~/.claude/skills/comprehensive-review/
+cp skills/comprehensive-review/HELP.md ~/.claude/skills/comprehensive-review/
 
 # Agents
 mkdir -p ~/.claude/agents
@@ -210,7 +211,7 @@ Run from any git repository, on the branch you want to review:
 | **type-design-analyzer** ¹ | — | Type/struct/interface invariants | Full run only, if diff adds type definitions | Relevant file slices |
 | **blind-hunter** | Sonnet | Context-free "fresh eyes" review: catches issues familiarity blinds other agents to | Full run only | Raw diff only (no project context) |
 | **edge-case-hunter** | Sonnet | Mechanical path tracing: missing else/default, unguarded inputs, off-by-one, overflow, race conditions, resource leaks | Full run only | Manifest + selective reads ² |
-| **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Full run only | Commit log + branch + manifest |
+| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues on GitHub | Full run only | Commit log + branch + manifest |
 
 ### `--quick` mode
 
@@ -218,7 +219,7 @@ Skips: architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter,
 Still runs: pr-summarizer (no diagrams), code-reviewer, and triggered silent-failure-hunter / pr-test-analyzer.
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
-² For small diffs (under 500 lines), the full diff is passed inline instead.
+² For small diffs (under 300 lines), the full diff is passed inline instead.
 
 ## Output structure
 
@@ -269,6 +270,7 @@ implementation detail of Claude Code and may change between versions).
 
 ```
 ~/.claude/skills/comprehensive-review/SKILL.md
+~/.claude/skills/comprehensive-review/HELP.md
 ~/.claude/agents/pr-summarizer.md
 ~/.claude/agents/issue-linker.md
 ~/.claude/agents/security-reviewer.md
@@ -283,8 +285,8 @@ The `pr-review-toolkit` plugin installs its agents to `~/.claude/plugins/` autom
 
 The skill uses a tiered context-passing strategy to minimize token consumption:
 
-- **Small diffs (<500 lines):** Full diff passed inline to all agents — the overhead of selective reads exceeds the cost.
-- **Medium/large diffs (500+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
+- **Small diffs (<300 lines):** Full diff passed inline to all agents — the overhead of selective reads exceeds the cost.
+- **Medium/large diffs (300+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
 - **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
 - **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~75% vs. full run (measured: ~79K agent tokens for --quick vs ~317K for a full run on a documentation PR; code-heavy PRs with deeper Opus analysis yield higher savings).

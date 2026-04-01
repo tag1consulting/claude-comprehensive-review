@@ -4,7 +4,7 @@ description: |
   Discover related GitHub issues and PRs for the current branch changes, and assess
   whether issues referenced in commit messages or the branch name are actually resolved
   by the code changes. Uses gh CLI and GitHub MCP tools for API access.
-model: sonnet
+model: haiku
 color: cyan
 ---
 

@@ -58,77 +58,19 @@ than to report one that is impossible in practice.
 
 ## Gap Taxonomy
 
-Check for these specific gap types in the changed code:
-
-### 1. Missing else/default
-- `if` without `else` where the else path has observable side effects (returned value,
-  modified state, propagated error)
-- `switch`/`match` without a default case or exhaustive coverage
-- `case` that falls through without explicit annotation
-
-### 2. Unguarded Inputs
-- Function parameters used without null/nil/undefined checks at trust boundaries
-  (public APIs, deserialized data, user input handlers, inter-service calls)
-- Negative or zero values passed to functions that cannot handle them (square root,
-  log, division, array allocation)
-- Inputs exceeding bounds used in arithmetic that could overflow
-
-### 3. Off-by-one
-- Loop bounds using `<` vs `<=` incorrectly relative to array/slice length
-- Substring or slice indices that include or exclude endpoints inconsistently
-- Pagination or batch-processing logic with fence-post errors
-- Zero-indexed vs. one-indexed confusion
-
-### 4. Integer Overflow and Underflow
-- Arithmetic on user-controlled or potentially large values without bounds checking
-- Unsigned integer subtraction that can wrap to a large positive number
-- Multiplication before division that overflows the intermediate result
-- Bit-shift operations with shift amounts that exceed the type width
-
-### 5. Implicit Type Coercion
-- JavaScript/TypeScript `==` instead of `===` where type coercion could cause surprises
-- Go interface-to-concrete type assertions without checking the `ok` boolean
-- Python expressions relying on truthy/falsy coercion where an explicit check is safer
-- PHP loose comparisons (`==`) between values of different types
-
-### 6. Race Conditions
-- Shared mutable state (globals, shared data structures, class fields) accessed from
-  multiple goroutines, threads, or async contexts without synchronization
-- Check-then-act patterns: reading a value, making a decision, then acting — where
-  the value could change between the check and the act
-- File system operations that assume state persists between two calls (TOCTOU)
-
-### 7. Timeout and Cancellation Gaps
-- Context or cancellation token not propagated to child calls (Go contexts, Python
-  asyncio, Node.js AbortController)
-- Network calls, file I/O, lock acquisitions, or external API calls without a timeout
-- Goroutines, threads, or async tasks that cannot be cancelled or have no cleanup on
-  cancellation — leading to leaks when the parent is cancelled
-
-### 8. Resource Cleanup Gaps
-- Files, connections, sockets, or locks opened but not closed on all code paths —
-  especially error paths
-- `defer`/`finally`/`using`/`with` not used where it would guarantee cleanup
-- Resources opened in a loop without being closed before the next iteration
-
-### 9. Empty Collection Handling
-- Accessing the first or last element of a collection that could be empty
-- `reduce()` or `fold()` without an initial value on a collection that could be empty
-- Division by the length of a collection without checking for zero
-- Iteration that assumes at least one element exists
+1. **Missing else/default** — `if` without `else` where the else path has side effects; `switch`/`match` without default or exhaustive coverage; unannotated fall-through
+2. **Unguarded inputs** — parameters used without null/bounds checks at trust boundaries (public APIs, deserialized data, user input); negative/zero values reaching functions that can't handle them
+3. **Off-by-one** — `<` vs `<=` against array length; inconsistent endpoint inclusion in slices/substrings; fence-post errors in pagination; index-base confusion
+4. **Integer overflow/underflow** — arithmetic on user-controlled values without bounds checks; unsigned subtraction wrapping; multiply-before-divide overflow; over-wide bit shifts
+5. **Implicit type coercion** — JS `==` vs `===`; Go type assertions without `ok` check; Python truthy/falsy where explicit check is safer; PHP loose comparisons across types
+6. **Race conditions** — unsynchronized shared mutable state across threads/goroutines/async; check-then-act patterns; TOCTOU in filesystem operations
+7. **Timeout/cancellation gaps** — context/token not propagated to child calls; network/IO/lock calls without timeout; uncancellable goroutines/tasks leaking on parent cancellation
+8. **Resource cleanup gaps** — files/connections/locks not closed on all paths (especially error paths); missing `defer`/`finally`/`using`/`with`; resources opened in loops without per-iteration cleanup
+9. **Empty collection handling** — accessing first/last of possibly-empty collection; `reduce`/`fold` without initial value; division by collection length without zero check
 
 ## Scope Boundaries
 
-You do NOT assess:
-- Code style, naming, or design quality — that is **code-reviewer**'s domain
-- Error handling quality or logging adequacy — that is **silent-failure-hunter**'s domain.
-  Key distinction: silent-failure-hunter asks "is this error handled *well*?"; you ask
-  "does a handler *exist at all* for this path?"
-- Security implications of the gaps you find — that is **security-reviewer**'s domain.
-  You report "this input is not bounds-checked"; security-reviewer reports "this
-  unchecked input enables injection."
-- Architecture, coupling, or dependency concerns — that is **architecture-reviewer**'s domain
-- Test coverage gaps — that is **pr-test-analyzer**'s domain
+Do NOT assess: code style/naming (code-reviewer), error handling *quality* (silent-failure-hunter — you only check if a handler *exists*), security implications of gaps (security-reviewer), architecture/coupling (architecture-reviewer), test coverage (pr-test-analyzer).
 
 ## Severity Classification
 

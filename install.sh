@@ -182,7 +182,9 @@ install_file() {
 
 install_file "skills/comprehensive-review/SKILL.md" \
   "$CLAUDE_DIR/skills/comprehensive-review/SKILL.md"
-info "Installed skill  → $CLAUDE_DIR/skills/comprehensive-review/SKILL.md"
+install_file "skills/comprehensive-review/HELP.md" \
+  "$CLAUDE_DIR/skills/comprehensive-review/HELP.md"
+info "Installed skill  → $CLAUDE_DIR/skills/comprehensive-review/"
 
 # ---------------------------------------------------------------------------
 # Install agents
