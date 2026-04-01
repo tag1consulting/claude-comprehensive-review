@@ -101,15 +101,16 @@ Default behavior
                      Summary shown locally unless --post-summary is also passed.
 
 Agents — full run
-  Always:            pr-summarizer, code-reviewer, architecture-reviewer, security-reviewer
+  Always:            pr-summarizer, code-reviewer
+  Full-run-only:     architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter
   Conditional:       silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer
   Optional:          issue-linker
 
 Agents — --quick mode
   Always:            pr-summarizer (no diagrams), code-reviewer
   Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
-  Skipped:           architecture-reviewer, security-reviewer, comment-analyzer,
-                     type-design-analyzer, issue-linker
+  Skipped:           architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter,
+                     comment-analyzer, type-design-analyzer, issue-linker
 
 Examples
   /comprehensive-review                         Review current branch, create PR if needed
@@ -218,9 +219,13 @@ receives:
 - The **condensed project context** (from Phase 0 step 6)
 - The **commit log** (from Phase 0 step 7) — only for agents that need it
 
-Custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer) will
-use selective `git diff <base>...HEAD -- <specific-file>` reads to examine only the files
-relevant to their analysis.
+Custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer,
+edge-case-hunter) will use selective `git diff <base>...HEAD -- <specific-file>` reads to
+examine only the files relevant to their analysis.
+
+**Exception: blind-hunter receives only the raw diff or a plain file list — not the
+structured manifest or project context.** See the blind-hunter entry in the full-run-only
+agents section below.
 
 For pr-review-toolkit agents that we cannot modify (code-reviewer, silent-failure-hunter,
 pr-test-analyzer, comment-analyzer, type-design-analyzer), pass **relevant file slices** of
@@ -271,6 +276,22 @@ the corresponding agent. If the slice is empty, skip that agent.
   For small diffs: also include the full diff inline.
   For medium/large diffs: the agent will read files selectively, prioritizing auth, crypto,
   input handling, and dependency files.
+
+- **blind-hunter** — **CRITICAL CONSTRAINT: pass ONLY the diff. Do NOT include the file
+  manifest, project context, commit log, or any other context material.** The agent's
+  value depends entirely on receiving zero project context — it catches issues that
+  familiarity blinds the other agents to.
+  For small diffs: pass only the full diff content inline.
+  For medium/large diffs: pass only the base branch name and a plain file list
+  (from `git diff --name-only <base>...HEAD`, NOT the categorized manifest with
+  languages/categories/line counts). The agent uses `git diff <base>...HEAD -- <file>`
+  to read files selectively.
+
+- **edge-case-hunter** — pass the file manifest, commit log, and project context.
+  For small diffs: also include the full diff inline.
+  For medium/large diffs: the agent will read files selectively using the manifest.
+  This agent has full codebase read access and may use the Read tool to examine
+  surrounding code context beyond the diff.
 
 **Conditional agents — triggered by diff content, run in both full and `--quick` modes:**
 
@@ -345,8 +366,11 @@ Wait for all agents to complete. **Check each agent's output before proceeding:*
 | type-design-analyzer | rating [6, 10] | Low |
 | architecture-reviewer | Critical/High/Medium | pass through directly |
 | security-reviewer | Critical/High/Medium | pass through directly |
+| blind-hunter | Critical/High/Medium/Low | pass through directly |
+| edge-case-hunter | Critical/High/Medium/Low | pass through directly |
 
 Note: Custom agents (security-reviewer, architecture-reviewer) report Medium+ only.
+blind-hunter and edge-case-hunter report all four severity levels.
 Toolkit agents (pr-test-analyzer, type-design-analyzer) may still produce Low-severity findings.
 
 **Deduplicate:** if two agents flag the same `file:line`, keep the highest severity entry

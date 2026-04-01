@@ -177,7 +177,7 @@ info "Installed skill  → $CLAUDE_DIR/skills/comprehensive-review/SKILL.md"
 # Install agents
 # ---------------------------------------------------------------------------
 
-for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer; do
+for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer blind-hunter edge-case-hunter; do
   dest="$CLAUDE_DIR/agents/${agent}.md"
   if [[ -f "$dest" ]]; then
     warn "Agent already exists, overwriting: $dest"

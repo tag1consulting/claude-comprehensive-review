@@ -26,6 +26,8 @@ The `pr-review-toolkit` plugin provides excellent code-level agents (bug detecti
 | Type design analysis | Yes (type-design-analyzer) | Yes (reused) |
 | **OWASP-class security analysis** | No | Yes (security-reviewer, Opus) |
 | **Architecture and coupling analysis** | No | Yes (architecture-reviewer, Opus) |
+| **Context-free "fresh eyes" review** | No | Yes (blind-hunter, Sonnet) |
+| **Mechanical boundary-condition tracing** | No | Yes (edge-case-hunter, Sonnet) |
 | **PR summary + walkthrough table** | No | Yes (pr-summarizer) |
 | **Mermaid sequence diagrams** | No | Yes (pr-summarizer) |
 | **Related issue/PR discovery** | No | Yes (issue-linker) |
@@ -91,6 +93,8 @@ cp agents/pr-summarizer.md ~/.claude/agents/
 cp agents/issue-linker.md ~/.claude/agents/
 cp agents/security-reviewer.md ~/.claude/agents/
 cp agents/architecture-reviewer.md ~/.claude/agents/
+cp agents/blind-hunter.md ~/.claude/agents/
+cp agents/edge-case-hunter.md ~/.claude/agents/
 ```
 
 Then install the plugin inside Claude Code:
@@ -183,11 +187,13 @@ Run from any git repository, on the branch you want to review:
 | **pr-test-analyzer** ¹ | — | Test coverage gaps | If test files appear in the diff | Relevant file slices |
 | **comment-analyzer** ¹ | — | Comment accuracy and rot | Full run + if diff adds/modifies comments | Relevant file slices |
 | **type-design-analyzer** ¹ | — | Type/struct/interface invariants | Full run + if diff adds type definitions | Relevant file slices |
+| **blind-hunter** | Sonnet | Context-free "fresh eyes" review: catches issues familiarity blinds other agents to | Full run only | Raw diff only (no project context) |
+| **edge-case-hunter** | Sonnet | Mechanical path tracing: missing else/default, unguarded inputs, off-by-one, overflow, race conditions, resource leaks | Full run only | Manifest + selective reads ² |
 | **issue-linker** | Sonnet | Finds referenced issues and related PRs/issues on GitHub | Full run only | Commit log + branch + manifest |
 
 ### `--quick` mode
 
-Skips: architecture-reviewer, security-reviewer, comment-analyzer, type-design-analyzer, issue-linker.
+Skips: architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker.
 Still runs: pr-summarizer (no diagrams), code-reviewer, and triggered silent-failure-hunter / pr-test-analyzer.
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
@@ -240,6 +246,8 @@ Uses REQUEST_CHANGES (Medium+ findings) or COMMENT (Low only).
 ~/.claude/agents/issue-linker.md
 ~/.claude/agents/security-reviewer.md
 ~/.claude/agents/architecture-reviewer.md
+~/.claude/agents/blind-hunter.md
+~/.claude/agents/edge-case-hunter.md
 ```
 
 The `pr-review-toolkit` plugin installs its agents to `~/.claude/plugins/` automatically.
@@ -252,7 +260,19 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **Medium/large diffs (500+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
 - **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
-- **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer) and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~65% vs. full run.
+- **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~65% vs. full run.
+- **blind-hunter cost:** Particularly cheap — it receives only the raw diff or plain file list, with no project context passed at all.
+
+## Acknowledgments
+
+The `blind-hunter` and `edge-case-hunter` agents are adapted from concepts in the
+[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) project by Brian "BMad" Madison
+(BMad Code LLC), released under the [MIT License](https://github.com/bmad-code-org/BMAD-METHOD/blob/main/LICENSE).
+
+BMAD's code review workflow uses parallel adversarial review layers — a context-free "Blind Hunter"
+and a path-tracing "Edge Case Hunter" — which we adapted into our agent architecture. Our
+implementations differ from BMAD's originals: we use structured severity output, omit the
+minimum-findings mandate, and integrate tightly with our manifest and context-passing strategy.
 
 ## Updating
 
@@ -266,4 +286,6 @@ rm ~/.claude/agents/pr-summarizer.md
 rm ~/.claude/agents/issue-linker.md
 rm ~/.claude/agents/security-reviewer.md
 rm ~/.claude/agents/architecture-reviewer.md
+rm ~/.claude/agents/blind-hunter.md
+rm ~/.claude/agents/edge-case-hunter.md
 ```
