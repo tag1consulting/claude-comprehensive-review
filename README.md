@@ -254,18 +254,9 @@ Uses REQUEST_CHANGES (Medium+ findings) or COMMENT (Low only).
 
 ## Files installed
 
-**Plugin install** (Option 1) — files live in the plugin cache:
-
-```
-~/.claude/plugins/cache/tag1consulting/comprehensive-review/<version>/
-  skills/comprehensive-review/SKILL.md   ← the /comprehensive-review command
-  agents/pr-summarizer.md
-  agents/issue-linker.md
-  agents/security-reviewer.md
-  agents/architecture-reviewer.md
-  agents/blind-hunter.md
-  agents/edge-case-hunter.md
-```
+**Plugin install** (Option 1) — files are managed by Claude Code's plugin system.
+The skill and agents are auto-discovered from the plugin cache (exact path is an
+implementation detail of Claude Code and may change between versions).
 
 **Legacy install** (Option 2/3) — files copied directly:
 

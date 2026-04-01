@@ -1,7 +1,7 @@
 {
   "name": "comprehensive-review",
   "version": "1.0.0",
-  "description": "CodeRabbit-style PR review using parallel specialized agents. Requires pr-review-toolkit@claude-plugins-official.",
+  "description": "CodeRabbit-style PR review using parallel specialized agents. Produces structured PR summaries and severity-ranked findings from 10+ agents.",
   "author": {
     "name": "Tag1 Consulting",
     "email": "greg@tag1consulting.com"

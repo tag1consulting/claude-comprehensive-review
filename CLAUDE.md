@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents. There is no build system, test suite, or compiled output — the deliverables are markdown files copied into a user's `~/.claude/` directory.
+This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents as a Claude Code plugin. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace or copied into `~/.claude/` by a legacy install script.
 
 ## Installation (for testing changes locally)
 
@@ -12,7 +12,7 @@ This repo distributes a Claude Code skill (`/comprehensive-review`) and six cust
 ./install.sh --local
 ```
 
-This copies files from the local working tree into `~/.claude/` without fetching from GitHub. Changes take effect immediately in the next Claude Code session. Omitting `--local` will fetch the latest release from GitHub instead.
+This copies files from the local working tree into `~/.claude/` without fetching from GitHub. Changes take effect immediately in the next Claude Code session. This is the recommended method for contributors testing local changes. For end-user installation, use `/plugins install comprehensive-review@tag1consulting` inside Claude Code.
 
 ## Architecture
 
