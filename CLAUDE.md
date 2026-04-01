@@ -27,7 +27,7 @@ The skill coordinates two groups of agents:
    - `issue-linker` — cross-references GitHub issues and PRs
    - `security-reviewer` — OWASP-class security analysis (runs Opus)
    - `architecture-reviewer` — design pattern and coupling analysis (runs Opus)
-   - `blind-hunter` — context-free "fresh eyes" review; receives only the diff (runs Sonnet). Adapted from BMAD-METHOD.
+   - `blind-hunter` — context-free "fresh eyes" review; receives only the raw diff (small diffs) or a plain file list (large diffs) — no project context (runs Sonnet). Adapted from BMAD-METHOD.
    - `edge-case-hunter` — mechanical boundary-condition path tracing (runs Sonnet). Adapted from BMAD-METHOD.
 
 2. **pr-review-toolkit agents** — external dependency, installed separately via `/plugins install pr-review-toolkit@claude-plugins-official`:

@@ -81,8 +81,8 @@ Usage
 Flags
   --base <branch>    Compare against a different base branch (default: auto-detect or main)
   --quick            Fast mode: run only pr-summarizer + code-reviewer + triggered
-                     error/test agents. Skips security, architecture, comment, and type
-                     analysis. ~65% cheaper than full run.
+                     error/test agents. Skips security, architecture, blind-hunter,
+                     edge-case-hunter, comment, and type analysis. ~65% cheaper than full run.
   --security-only    Run security-reviewer only
   --summary-only     Run pr-summarizer only
 
