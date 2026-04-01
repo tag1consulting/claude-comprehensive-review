@@ -99,9 +99,23 @@ When `--pr <N>` is passed, the skill:
 
 This allows reviewing any accessible PR without being on that branch locally.
 
+## Distribution
+
+This project is distributed as a Claude Code plugin via the `tag1consulting` marketplace (hosted at `tag1consulting/claude-plugins` on GitHub). The `install.sh` script is maintained as a legacy fallback.
+
+### Version management
+
+When releasing a new version:
+1. Update `version` in `.claude-plugin/plugin.json`
+2. Update the plugin entry's `version` in the `tag1consulting/claude-plugins` marketplace repo
+3. Tag this repo with `v<version>` (e.g., `v1.0.0`)
+
+Plugin versions use semver without the `v` prefix (e.g., `1.0.0`). Git tags use the `v` prefix (e.g., `v1.0.0`).
+
 ## File layout
 
 ```
+.claude-plugin/plugin.json             ← plugin manifest (name, version, author, keywords)
 skills/comprehensive-review/SKILL.md   ← orchestrator: phases 0–5, all workflow logic
 agents/pr-summarizer.md                ← Block A generation
 agents/issue-linker.md                 ← GitHub issue cross-referencing
@@ -109,7 +123,7 @@ agents/security-reviewer.md            ← security analysis
 agents/architecture-reviewer.md        ← architectural analysis
 agents/blind-hunter.md                 ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
 agents/edge-case-hunter.md             ← boundary-condition path tracing (adapted from BMAD-METHOD)
-install.sh                             ← copies files into ~/.claude/
+install.sh                             ← legacy file-copy installer (recommends plugin install)
 ```
 
 ## Editing guidelines

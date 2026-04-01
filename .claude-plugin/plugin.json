@@ -1,0 +1,12 @@
+{
+  "name": "comprehensive-review",
+  "version": "1.0.0",
+  "description": "CodeRabbit-style PR review using parallel specialized agents. Requires pr-review-toolkit@claude-plugins-official.",
+  "author": {
+    "name": "Tag1 Consulting",
+    "email": "greg@tag1consulting.com"
+  },
+  "repository": "https://github.com/tag1consulting/claude-comprehensive-review",
+  "license": "MIT",
+  "keywords": ["code-review", "pr-review", "security", "architecture", "agents"]
+}
