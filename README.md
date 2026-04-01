@@ -116,7 +116,7 @@ Run from any git repository, on the branch you want to review:
 | Flag | Effect |
 |------|--------|
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
-| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, comment, and type analysis. ~65% cheaper. |
+| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. ~65% cheaper. |
 | `--security-only` | Run only the security-reviewer agent |
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--post-summary` | Post Block A (summary) as a comment on an existing PR |

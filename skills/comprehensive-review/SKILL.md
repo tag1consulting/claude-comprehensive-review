@@ -36,7 +36,7 @@ Run a full CodeRabbit-style review of all changes on the current branch (or a sp
 
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, comment, and type analysis (~65% cheaper)
+- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~65% cheaper)
 - `--security-only` — run security-reviewer only
 - `--summary-only` — run pr-summarizer only
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR
@@ -369,9 +369,9 @@ Wait for all agents to complete. **Check each agent's output before proceeding:*
 | blind-hunter | Critical/High/Medium/Low | pass through directly |
 | edge-case-hunter | Critical/High/Medium/Low | pass through directly |
 
-Note: Custom agents (security-reviewer, architecture-reviewer) report Medium+ only.
-blind-hunter and edge-case-hunter report all four severity levels.
-Toolkit agents (pr-test-analyzer, type-design-analyzer) may still produce Low-severity findings.
+Note: security-reviewer and architecture-reviewer report Medium+ only (Low findings omitted by design).
+blind-hunter and edge-case-hunter report all four severity levels (Critical/High/Medium/Low).
+Toolkit agents (pr-test-analyzer, type-design-analyzer) may also produce Low-severity findings.
 
 **Deduplicate:** if two agents flag the same `file:line`, keep the highest severity entry
 and add a note "(also flagged by [agent2])". For findings that reference a file without
