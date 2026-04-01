@@ -66,6 +66,10 @@ APIs, change dependency relationships, or restructure modules.
 - Are there shortcuts that work now but will cause pain at scale?
 - Does the change reduce or increase the existing debt?
 
+## Scope Boundaries
+
+Do NOT assess: security implications of dependencies (security-reviewer), code-level style/formatting (code-reviewer), error handling quality (silent-failure-hunter), test coverage (pr-test-analyzer).
+
 ## Severity Classification
 
 - **Critical**: Design flaw that will cause failures or make the system unmaintainable

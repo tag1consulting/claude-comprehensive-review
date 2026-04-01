@@ -74,19 +74,21 @@ Supported flags:
      - If `--create-pr` and `--pr <N>` are both present, report
        "Error: --create-pr and --pr are mutually exclusive." and stop.
 
-**Help text:** Read and display `skills/comprehensive-review/HELP.md`, then stop.
+**Help text:** Read and display `skills/comprehensive-review/HELP.md`, then stop. If the file is not found, display: "Help file not found. Run `/plugins install comprehensive-review@tag1consulting` to reinstall."
 
 2. **If `--pr <N>` was passed** (external review mode):
    a. Fetch PR metadata: `gh pr view <N> --json number,title,baseRefName,headRefName,state`
    b. If state is `CLOSED`/`MERGED`, report error and stop.
    c. Set BASE to `baseRefName`.
    d. Create a temporary worktree: `WORKTREE_PATH=$(mktemp -d /tmp/cr-pr-XXXXXXXX)`, then
-      `rmdir "$WORKTREE_PATH" && git worktree add "$WORKTREE_PATH" --detach` and
-      `cd "$WORKTREE_PATH" && gh pr checkout <N>`. On failure, clean up worktree and stop.
+      `rmdir "$WORKTREE_PATH" && git worktree add "$WORKTREE_PATH" --detach` (rmdir is required
+      because mktemp creates the directory, but worktree add needs it absent) and
+      `cd "$WORKTREE_PATH" && gh pr checkout <N>`. On checkout failure:
+      run `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null`, report error, and stop.
       Track WORKTREE_PATH for Phase 5 cleanup.
    e. All subsequent git commands must use `git -C "$WORKTREE_PATH"` in `--pr` mode.
 
-3. Run `git diff --name-only <base>...HEAD` to confirm changed files. If none, report and stop.
+3. Run `git diff --name-only <base>...HEAD` to confirm changed files (in `--pr` mode: `git -C "$WORKTREE_PATH" diff --name-only <base>...HEAD`). If none, report and stop.
 
 4. **Build the file manifest** from `git diff --stat <base>...HEAD`:
    - Detect languages from extensions; categorize files as **Source**, **Tests**, **Config**, **Docs**, or **Dependency**
@@ -285,10 +287,11 @@ Assemble the pr-summarizer and issue-linker outputs into this format.
 Determine PR state:
 - `--pr` mode: PR_NUMBER from arg. POST_SUMMARY = `--post-summary`. POST_FINDINGS = NOT `--no-findings`.
 - Own-branch: run `gh pr view --json number,title,body`.
-  - No PR found + `--create-pr`: create PR. POST_FINDINGS = `--post-findings` was passed.
-  - No PR found + no `--create-pr`: all posting flags are no-ops (warn user if they were passed).
-  - PR exists: PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR already exists.
-  - API error: report and skip Phase 4.
+  - Fails with "no pull requests found": no PR exists.
+    + `--create-pr`: create PR. POST_FINDINGS = `--post-findings` was passed.
+    + No `--create-pr`: posting flags are no-ops (warn user if passed).
+  - Fails for other reasons (auth, network): report "GitHub API error: <error>. Use --no-post to skip GitHub operations." and skip Phase 4.
+  - Succeeds: PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR already exists.
 
 **Create PR** (own-branch, `--create-pr`): `gh pr create --title "<title>" --base "<base>" --body "<Block A>"`. Title under 70 chars.
 
@@ -326,7 +329,7 @@ Determine PR state:
 
 ### Phase 5: Final Output
 
-**Cleanup:** `rm -f` all temp diff/slice files. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force`.
+**Cleanup:** `rm -f` all temp diff/slice files. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`.
 
 **Display in terminal:**
 1. PR created → "PR created: <URL>". No PR + no `--create-pr` → "Tip: use --create-pr."
@@ -343,4 +346,6 @@ Determine PR state:
 - Project-agnostic. Orchestrator reads CLAUDE.md at pre-flight and passes condensed context; agents should not read CLAUDE.md independently.
 - pr-review-toolkit agents are reused as-is. GitHub writes use `gh` CLI; reads may use `gh` or MCP tools.
 - `--create-pr` is opt-in. Default is side-effect-free (no PR created, no GitHub posts).
+- Findings posted to GitHub only via `--post-findings` (own PR, `COMMENT` event) or `--pr` mode (`REQUEST_CHANGES` if Medium+, `COMMENT` if Low only). `--create-pr` findings are local unless `--post-findings` also passed.
+- Inline comments capped at 25 per review (top findings by severity); overflow goes to review body.
 - If `--pr` mode is interrupted, clean up with `git worktree list` and `git worktree remove`.
