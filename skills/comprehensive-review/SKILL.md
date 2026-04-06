@@ -1,9 +1,10 @@
 ---
 name: comprehensive-review
 description: >
-  Run a comprehensive CodeRabbit-style PR review using specialized agents.
-  Produces a structured PR summary and a findings report. Supports reviewing
-  your own branch (pre-PR) or an existing PR by number (--pr <N>).
+  Run a comprehensive CodeRabbit-style PR/MR review using specialized agents.
+  Supports GitHub (including Enterprise), GitLab, and Bitbucket repositories.
+  Produces a structured PR/MR summary and a findings report. Supports reviewing
+  your own branch (pre-PR/MR) or an existing PR/MR by number (--pr <N>).
 
   Default behavior:
     No PR exists:      Everything shown locally. Use --create-pr to create a PR.
@@ -30,7 +31,7 @@ allowed-tools:
 
 # Comprehensive PR Review
 
-Run a full CodeRabbit-style review of all changes on the current branch (or a specified PR).
+Run a full CodeRabbit-style review of all changes on the current branch (or a specified PR/MR).
 
 **Arguments:** `$ARGUMENTS`
 
@@ -42,10 +43,11 @@ Supported flags:
 - `--summary-only` — run pr-summarizer only
 - `--create-pr` — create a PR using Block A as the description (without this flag, no PR is created)
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR
-- `--post-findings` — post Block B (findings) as inline GitHub review on an existing own PR
+- `--post-findings` — post Block B (findings) as inline review on an existing own PR/MR
 - `--no-findings` — suppress posting findings as a review (useful for dry-run with `--pr`)
-- `--no-post` / `--local` — display everything locally, skip all GitHub operations
-- `--pr <number>` — review an existing PR by number (external review mode)
+- `--no-post` / `--local` — display everything locally, skip all remote operations
+- `--pr <number>` — review an existing PR/MR by number (external review mode)
+- `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
 - `--help` — show this usage
 
 ## Pre-flight Context

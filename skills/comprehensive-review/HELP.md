@@ -1,6 +1,7 @@
-/comprehensive-review — Comprehensive PR Review
+/comprehensive-review — Comprehensive PR/MR Review
 
 Run a full CodeRabbit-style review using specialized agents.
+Supports GitHub (including Enterprise), GitLab, and Bitbucket.
 
 Usage
   /comprehensive-review [flags]
@@ -19,8 +20,9 @@ Flags
   --post-summary     Post summary (Block A) as a comment on an existing PR
   --post-findings    Post findings (Block B) as inline review on an existing own PR
   --no-findings      Suppress posting findings (useful for dry-run with --pr)
-  --no-post / --local  Skip all GitHub operations, display everything locally
-  --pr <number>      Review an existing PR by number (external review mode)
+  --no-post / --local  Skip all remote operations, display everything locally
+  --pr <number>      Review an existing PR/MR by number (external review mode)
+  --provider <name>  Override git provider detection (github, gitlab, bitbucket)
 
   --help             Show this help
 
@@ -33,7 +35,7 @@ Agents — full run
   Always:            pr-summarizer, code-reviewer
   Full-run-only:     architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter
   Conditional:       silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer
-  Optional:          issue-linker
+  Full-run-only:     issue-linker (GitHub only)
 
 Agents — --quick mode
   Always:            pr-summarizer (no diagrams), code-reviewer
@@ -47,4 +49,12 @@ Examples
   /comprehensive-review --post-findings         Post findings on existing own PR
   /comprehensive-review --pr 42                 Review someone else's PR #42
   /comprehensive-review --pr 42 --no-findings   Review PR #42 locally only
-  /comprehensive-review --no-post               Skip all GitHub operations
+  /comprehensive-review --no-post               Skip all remote operations
+
+Provider support
+  Detected automatically from git remote URL. Override with --provider.
+  GitHub / GitHub Enterprise:  Full support (gh CLI required)
+  GitLab:                      Full support (glab CLI required)
+  Bitbucket:                   PR creation, summary, comment posting.
+                               Inline review comments not supported.
+                               Requires BITBUCKET_TOKEN env var.
