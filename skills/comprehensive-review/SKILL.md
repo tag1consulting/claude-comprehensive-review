@@ -266,7 +266,7 @@ grep -l 'catch\|if err\|try {\|rescue\|Result<\|unwrap\|\.error\|\.expect(\|?\|r
 
 - **comment-analyzer** (pr-review-toolkit, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`). Pass matching files' diff.
 - **type-design-analyzer** (pr-review-toolkit, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `). Pass matching files' diff.
-- **issue-linker** (model: haiku) — pass commit log, branch name, manifest, repo slug. Skip in `--quick` and `--pr` modes.
+- **issue-linker** (model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick`, `--pr`, and `--no-post`/`--local` modes. Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 

@@ -13,8 +13,12 @@ pull request history to surface relevant context for reviewers.
 
 ## Your Task
 
-You will receive the commit log, branch name, file manifest, and repository slug.
+You will receive the commit log, branch name, file manifest, repository slug, and the detected PROVIDER value.
 Produce a `## Related Issues & PRs` section for the PR description.
+
+## Provider Check
+
+If the provider indicated in your task description is NOT `github`, output EXACTLY the word `NONE` and nothing else. Issue cross-referencing is currently only supported for GitHub repositories.
 
 ## Step 1: Parse Explicit Issue References
 
