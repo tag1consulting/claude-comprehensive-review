@@ -142,6 +142,7 @@ Run from any git repository, on the branch you want to review:
 | `--no-findings` | Suppress posting findings as a review (useful for dry-run with `--pr`) |
 | `--no-post` / `--local` | Display everything locally, skip all GitHub operations |
 | `--pr <number>` | Review an existing PR by number (external review mode) |
+| `--no-mem` | Disable claude-mem integration (auto-detected when available) |
 | `--help` | Show usage |
 
 ### Examples
@@ -292,6 +293,28 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
 - **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~75% vs. full run (measured: ~79K agent tokens for --quick vs ~317K for a full run on a documentation PR; code-heavy PRs with deeper Opus analysis yield higher savings).
 - **blind-hunter cost:** Particularly cheap — it receives only the raw diff or plain file list, with no project context passed at all.
+
+## claude-mem integration (optional)
+
+If [claude-mem](https://github.com/thedotmack/claude-mem) is installed, the skill automatically integrates with it:
+
+- **Detects** the worker daemon via health check in Phase 0
+- **Retrieves** up to 5 prior review summaries for the same project and passes them to architecture-reviewer and security-reviewer as pattern context (~500 tokens)
+- **Stores** a compact review summary after each run (project slug, branch, findings counts, top 3 findings, agents run)
+
+No configuration needed. Use `--no-mem` to opt out.
+
+### Token economics
+
+| Operation | Token cost |
+|-----------|-----------|
+| Detection (health check) | ~0 (Bash, no LLM tokens) |
+| MCP search index (5 results) | ~250–500 tokens |
+| PRIOR_REVIEW_CONTEXT passed to 2 agents | ~500 tokens max |
+| Summary storage (curl POST) | ~0 (Bash, no LLM tokens) |
+| **Total overhead per run** | **~750–1,000 tokens** |
+
+Break-even: if the prior-review context helps architecture-reviewer or security-reviewer skip ~1,000 tokens of re-analysis on a recurring pattern, the integration pays for itself. On a typical full run (50K–200K tokens), this is a rounding error. The value is qualitative: recurring issues are more likely to be flagged and labeled as patterns rather than isolated findings.
 
 ## Acknowledgments
 
