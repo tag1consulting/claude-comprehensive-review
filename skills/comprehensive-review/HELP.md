@@ -19,7 +19,7 @@ Flags
   --post-summary     Post summary (Block A) as a comment on an existing PR
   --post-findings    Post findings (Block B) as inline review on an existing own PR
   --no-findings      Suppress posting findings (useful for dry-run with --pr)
-  --no-post / --local  Skip all GitHub operations, display everything locally
+  --no-post / --local  Skip all GitHub operations and issue-linker, display everything locally
   --pr <number>      Review an existing PR by number (external review mode)
 
   --help             Show this help
@@ -33,7 +33,7 @@ Agents — full run
   Always:            pr-summarizer, code-reviewer
   Full-run-only:     architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter
   Conditional:       silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer
-  Optional:          issue-linker
+  Optional:          issue-linker (skipped in --local and non-GitHub repos)
 
 Agents — --quick mode
   Always:            pr-summarizer (no diagrams), code-reviewer
