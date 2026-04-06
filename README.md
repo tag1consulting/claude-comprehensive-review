@@ -304,6 +304,8 @@ If [claude-mem](https://github.com/thedotmack/claude-mem) is installed, the skil
 
 No configuration needed. Use `--no-mem` to opt out.
 
+> **Note:** Review summaries including finding descriptions are stored in claude-mem's local database, accessible to any process on localhost. Avoid using this integration in shared or multi-tenant environments.
+
 ### Token economics
 
 | Operation | Token cost |
