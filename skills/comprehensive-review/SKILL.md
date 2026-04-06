@@ -42,7 +42,7 @@ Supported flags:
 - `--security-only` — run security-reviewer only
 - `--summary-only` — run pr-summarizer only
 - `--create-pr` — create a PR using Block A as the description (without this flag, no PR is created)
-- `--post-summary` — post Block A (informational summary) as a comment on an existing PR
+- `--post-summary` — post Block A (informational summary) as a comment on an existing PR/MR
 - `--post-findings` — post Block B (findings) as inline review on an existing own PR/MR
 - `--no-findings` — suppress posting findings as a review (useful for dry-run with `--pr`)
 - `--no-post` / `--local` — display everything locally, skip all remote operations
@@ -63,14 +63,14 @@ Supported flags:
 Detect the git hosting provider from the remote URL. This determines which CLI tool and API to use for all PR/MR operations.
 
 1. Extract the remote URL: `git remote get-url origin 2>/dev/null`
-2. If `--provider <name>` was passed, use that (valid values: `github`, `gitlab`, `bitbucket`). Skip auto-detection.
+2. If `--provider <name>` was passed: if the value is not one of `github`, `gitlab`, `bitbucket`, report "Error: Unknown provider '<name>'. Valid values: github, gitlab, bitbucket." and stop. Otherwise, use that value and skip auto-detection.
 3. Otherwise, auto-detect:
    a. URL contains `github.com` → PROVIDER=github
    b. URL contains `gitlab.com` → PROVIDER=gitlab
    c. URL contains `bitbucket.org` → PROVIDER=bitbucket
-   d. None of the above (possible self-hosted instance):
-      - Run `gh auth status 2>&1`. If it succeeds OR mentions the remote's hostname → PROVIDER=github (GitHub Enterprise)
-      - Otherwise, run `glab auth status 2>&1`. If it succeeds OR mentions the remote's hostname → PROVIDER=gitlab (self-hosted GitLab)
+   d. None of the above (possible self-hosted instance). Extract the hostname from the remote URL.
+      - Run `gh auth status 2>&1` and check if the output mentions the remote's hostname specifically (not just any authenticated host). If the remote hostname appears → PROVIDER=github (GitHub Enterprise).
+      - Otherwise, run `glab auth status 2>&1` and check if the output mentions the remote's hostname specifically. If it appears → PROVIDER=gitlab (self-hosted GitLab).
       - Otherwise: report "Could not detect git provider from remote URL '<url>'. Use --provider github|gitlab|bitbucket to specify." and stop.
 
 4. Set provider-derived variables:
@@ -78,11 +78,13 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
    - PR_TERM: "PR" (github, bitbucket) or "MR" (gitlab)
    - PR_TERM_LONG: "pull request" (github, bitbucket) or "merge request" (gitlab)
    - CLI_TOOL: "gh" (github) or "glab" (gitlab) or "curl" (bitbucket)
+   - REPO_SLUG: extract from remote URL via `git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`. Validate it matches `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`; if not, report "Error: Could not extract valid repository slug from remote URL." and stop. Used by Bitbucket API URLs.
+   - PROJECT_ID (gitlab only): fetch via `glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" --jq .id`. If this fails, report "Error: Could not resolve GitLab project ID for '${REPO_SLUG}'." and stop. Used by GitLab inline comment API.
 
-5. Validate CLI tool availability:
+5. Validate CLI tool availability (always runs, regardless of whether provider was auto-detected or manually specified via `--provider`):
    - GitHub: `gh --version` must succeed. If not: "Error: gh CLI is required for GitHub repositories. Install: https://cli.github.com/"
    - GitLab: `glab --version` must succeed. If not: "Error: glab CLI is required for GitLab repositories. Install: https://gitlab.com/gitlab-org/cli"
-   - Bitbucket: `curl --version` must succeed (should always be available). Also verify BITBUCKET_TOKEN or BITBUCKET_APP_PASSWORD env var is set: "Error: BITBUCKET_TOKEN or BITBUCKET_APP_PASSWORD environment variable is required for Bitbucket repositories."
+   - Bitbucket: `curl --version` must succeed (should always be available). Also verify BITBUCKET_TOKEN env var is set. If BITBUCKET_APP_PASSWORD is set but BITBUCKET_TOKEN is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If neither is set: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your access token or app password."
 
 Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only used when PROVIDER=github. For other providers, all operations use CLI tools (glab, curl) via Bash.
 
@@ -93,8 +95,8 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 #### OP: Fetch PR/MR metadata (returns JSON with number, title, base branch, head branch, state)
 
 - **github:** `gh pr view <N> --json number,title,baseRefName,headRefName,state`
-- **gitlab:** `glab mr view <N> --output json` (fields: iid, title, source_branch, target_branch, state). Map: iid→number, target_branch→baseRefName, source_branch→headRefName. State values: "opened"→OPEN, "closed"→CLOSED, "merged"→MERGED.
-- **bitbucket:** `curl -s -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>"`. Map: id→number, destination.branch.name→baseRefName, source.branch.name→headRefName. State values: "OPEN", "DECLINED"→CLOSED, "MERGED".
+- **gitlab:** `glab mr view <N> --output json` (fields: iid, title, source_branch, target_branch, state). Map: iid→number, target_branch→baseRefName, source_branch→headRefName. State values: "opened"→OPEN, "closed"→CLOSED, "merged"→MERGED. If state is unrecognized, warn "Unrecognized MR state '<value>' — proceeding as OPEN." and treat as OPEN.
+- **bitbucket:** `curl -sf -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>"`. Map: id→number, destination.branch.name→baseRefName, source.branch.name→headRefName. State values: "OPEN", "DECLINED"→CLOSED, "MERGED".
 
 #### OP: Checkout PR/MR branch into current worktree
 
@@ -106,25 +108,25 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 
 - **github:** `gh pr view --json number,title,body`
 - **gitlab:** `glab mr view --output json` (uses current branch)
-- **bitbucket:** `curl -s -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests?q=source.branch.name=\"$(git branch --show-current)\"&state=OPEN"`. Check `.size > 0`; if so, first result is the PR.
+- **bitbucket:** `curl -sf -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests?q=source.branch.name=\"$(git branch --show-current)\"&state=OPEN"`. If `curl` exits non-zero or the response contains `"type":"error"`, treat as API failure (not "no PR found"). Otherwise check `.size > 0`; if so, first result is the PR.
 
 #### OP: Create PR/MR
 
 - **github:** `gh pr create --title "<title>" --base "<base>" --body "<body>"`
 - **gitlab:** `glab mr create --title "<title>" --target-branch "<base>" --description "<body>" --no-editor`
-- **bitbucket:** `curl -s -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests" -d '{"title":"<title>","source":{"branch":{"name":"<head>"}},"destination":{"branch":{"name":"<base>"}},"description":"<body>"}'`
+- **bitbucket:** `curl -sf -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests" -d '{"title":"<title>","source":{"branch":{"name":"<head>"}},"destination":{"branch":{"name":"<base>"}},"description":"<body>"}'`
 
 #### OP: Post comment on PR/MR
 
 - **github:** `gh pr comment <N> --body "<body>"`
 - **gitlab:** `glab mr comment <N> --message "<body>"`
-- **bitbucket:** `curl -s -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>/comments" -d '{"content":{"raw":"<body>"}}'`
+- **bitbucket:** `curl -sf -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>/comments" -d '{"content":{"raw":"<body>"}}'`
 
 #### OP: Post inline review (Phase 4b only)
 
 - **github:** `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). Fallback: `gh api`. Supports REQUEST_CHANGES and COMMENT events.
 - **gitlab:** Create a review via Draft Notes API or post individual discussion threads:
-  For each inline comment: `glab api -X POST "projects/${PROJECT_ID}/merge_requests/<N>/discussions" -f "body=<body>" -f "position[base_sha]=<base_sha>" -f "position[head_sha]=<head_sha>" -f "position[start_sha]=<start_sha>" -f "position[position_type]=text" -f "position[new_path]=<file>" -f "position[new_line]=<line>"`.
+  For each inline comment (shell-escape all interpolated values — body, file path, line — to prevent injection via crafted filenames or review content): `glab api -X POST "projects/${PROJECT_ID}/merge_requests/<N>/discussions" -f "body=<body>" -f "position[base_sha]=<base_sha>" -f "position[head_sha]=<head_sha>" -f "position[start_sha]=<start_sha>" -f "position[position_type]=text" -f "position[new_path]=<file>" -f "position[new_line]=<line>"`.
   For the review body: `glab mr comment <N> --message "<review body>"`.
   GitLab does not have a single-call "submit review with inline comments" API like GitHub. Inline comments are posted as discussion threads. There is no REQUEST_CHANGES event — use an "unapprove" or simply post as comments.
 - **bitbucket:** NOT SUPPORTED for inline diff comments. Post Block B as a single PR comment instead (using OP: Post comment). Note in terminal output: "Note: Inline review comments are not supported on Bitbucket. Findings posted as a PR comment."
@@ -150,6 +152,8 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 
 2. **If `--pr <N>` was passed** (external review mode):
    a. Fetch PR/MR metadata using **OP: Fetch PR/MR metadata**. Map provider-specific fields to canonical names (number, title, baseRefName, headRefName, state).
+      For Bitbucket: if the response JSON contains `"type":"error"`, report "Error: Bitbucket API error: <.error.message>." and stop before field mapping.
+      For all providers: if the command fails (non-zero exit, missing expected fields), report "Error: Failed to fetch ${PR_TERM} #<N> metadata from ${PROVIDER}." and stop.
    b. If state is CLOSED or MERGED (after provider-specific mapping), report "Error: ${PR_TERM} #<N> is <state>." and stop.
    c. Set BASE to baseRefName (mapped).
    d. Create a temporary worktree: `WORKTREE_PATH=$(mktemp -d /tmp/cr-pr-XXXXXXXX)`, then
@@ -256,12 +260,12 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 **Conditional agents — run in both full and `--quick` when triggered:**
 
-Detect triggers via grep on the temp diff file — do NOT read it into the conversation:
+Detect triggers via grep on the temp diff file — do NOT read it into the conversation. Use `grep -qE` with a pattern file or a combined regex. **Important:** when the diff includes SKILL.md itself, exclude SKILL.md from the trigger check to avoid false positives (this grep command string contains the patterns it searches for):
 ```bash
-grep -l 'catch\|if err\|try {\|rescue\|Result<\|unwrap\|\.error\|\.expect(\|?\|runCatching\|guard\|throws' "$DIFF_FILE"
+grep -l -E 'catch\b|if err|try \{|rescue\b|Result<|unwrap|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE"
 ```
 
-- **silent-failure-hunter** (pr-review-toolkit, model: sonnet) — trigger: error handling patterns (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). Pass only matching files' diff.
+- **silent-failure-hunter** (pr-review-toolkit, model: sonnet) — trigger: error handling patterns in **non-SKILL.md files** (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). When SKILL.md is the only file in the diff matching these patterns, do NOT trigger — the match is a false positive from the grep command definition above. Pass only matching files' diff.
 - **pr-test-analyzer** (pr-review-toolkit, model: sonnet) — trigger: test files (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.ts`, `spec/`, `__tests__/`). Pass test files + source counterparts.
 
 **Conditional agents — full-run only** (skip in `--quick` and when not triggered):
@@ -377,11 +381,15 @@ If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs`
 Determine PR/MR state:
 - `--pr` mode: PR_NUMBER from arg. POST_SUMMARY = `--post-summary`. POST_FINDINGS = NOT `--no-findings`.
 - Own-branch: use **OP: Detect existing PR/MR on current branch**.
-  - Fails with "no ${PR_TERM_LONG}s found": no PR/MR exists.
+  - **No PR/MR exists** — detect via provider-specific signals:
+    - GitHub: output contains "no pull requests found"
+    - GitLab: `glab` exits non-zero with output containing "no open merge request" (case-insensitive)
+    - Bitbucket: response JSON has `.size == 0` or `.values` is empty
     + `--create-pr`: create PR/MR. POST_FINDINGS = `--post-findings` was passed.
     + No `--create-pr`: posting flags are no-ops (warn user if passed).
-  - Fails for other reasons (auth, network): report "${PROVIDER} API error: <error>. Use --no-post to skip remote operations." and skip Phase 4.
-  - Succeeds: PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR/MR already exists.
+  - **Bitbucket API failure** — if `curl` exits non-zero or the response contains `"type":"error"`, treat as API failure (not "no PR found").
+  - **Other failures** (auth, network): report "${PROVIDER} API error: <error>. Use --no-post to skip remote operations." and skip Phase 4.
+  - **Succeeds:** PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR/MR already exists.
 
 **Create PR/MR** (own-branch, `--create-pr`): Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
 
@@ -417,11 +425,12 @@ Determine PR/MR state:
 6. **Comments array:** each entry `{ "path", "line", "body": "**[Severity]** **[agent]** description.\n\n**Remediation:** ..." }`
 
 7. **Submit** using **OP: Post inline review**:
-   - GitHub: via `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). Fall back to `gh api` if MCP fails.
-   - GitLab: post review body as MR comment, then post each inline comment as a discussion thread via `glab api`.
-   - Bitbucket: post entire Block B as a single PR comment (inline not supported).
+   - GitHub: via `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). If MCP fails, fall back to `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file>`. If both fail, report the error and skip inline posting.
+   - GitLab: post review body as MR comment, then post each inline comment as a discussion thread via `glab api`. For each discussion thread, if `glab api` returns a non-zero exit code, log "Warning: Failed to post inline comment for <file>:<line> — <error>." Tally failed posts for Phase 5 reporting.
+   - Bitbucket: N/A (handled in step 4).
 
 8. Report for Phase 5: "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
+   GitLab partial failure: "Warning: <M> of <N> inline comments failed to post on GitLab ${PR_TERM} #<N>."
    Bitbucket variant: "Findings posted as comment on ${PR_TERM} #<N> (inline reviews not supported on Bitbucket)"
 
 ### Phase 5: Final Output

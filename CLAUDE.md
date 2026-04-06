@@ -65,16 +65,18 @@ Both blocks are always shown locally. What gets posted to the hosting provider d
 |----------|---------|---------|
 | No PR/MR exists (default) | Not posted | Not posted |
 | No PR/MR exists + `--create-pr` | PR/MR description | Not posted |
-| No PR/MR exists + `--create-pr --post-findings` | PR/MR description | Inline review (`COMMENT` event) |
+| No PR/MR exists + `--create-pr --post-findings` | PR/MR description | Inline review ¹ |
 | Existing own PR/MR (default) | Not posted | Not posted |
 | Existing own PR/MR + `--post-summary` | PR/MR comment | Not posted |
-| Existing own PR/MR + `--post-findings` | Not posted | Inline review (`COMMENT` event) |
-| `--pr <N>` mode (default) | Not posted | Inline review (`REQUEST_CHANGES` if Medium+, `COMMENT` if Low) |
-| `--pr <N>` + `--post-summary` | PR/MR comment | Inline review |
+| Existing own PR/MR + `--post-findings` | Not posted | Inline review ¹ |
+| `--pr <N>` mode (default) | Not posted | Inline review ¹ |
+| `--pr <N>` + `--post-summary` | PR/MR comment | Inline review ¹ |
 | `--pr <N>` + `--no-findings` | Not posted | Not posted |
 | Any + `--no-post`/`--local` | Not posted | Not posted |
 
-The key invariant: Block A is posted only when `--create-pr` is passed and no PR/MR exists. On existing PRs/MRs, both blocks require explicit opt-in flags. Block B is never hidden from the terminal. On Bitbucket, inline review comments are not supported — Block B is posted as a single PR comment instead.
+¹ Inline review behavior varies by provider: GitHub uses `COMMENT` or `REQUEST_CHANGES` events; GitLab posts individual discussion threads (no review event model); Bitbucket does not support inline diff comments — Block B is posted as a single PR comment instead.
+
+The key invariant: Block A is posted only when `--create-pr` is passed and no PR/MR exists. On existing PRs/MRs, both blocks require explicit opt-in flags. Block B is never hidden from the terminal.
 
 ### Severity normalization
 
@@ -150,5 +152,5 @@ install.sh                             ← legacy file-copy installer (recommend
 - The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
 - When modifying `--quick` or `--diagrams` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and `HELP.md`.
 - **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
-- When modifying provider-specific behavior, update the Provider Operations Reference block, ALL three provider paths in Phases 0/4/4b, and the provider support matrix in README.md.
+- When modifying provider-specific behavior, update the Provider Operations Reference block, all three provider branches (github/gitlab/bitbucket) within Phases 0, 4, and 4b, and the provider support matrix in README.md.
 - **BMAD attribution**: `blind-hunter` and `edge-case-hunter` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in both agent files and in README.md. Do not remove attribution when editing these agents.

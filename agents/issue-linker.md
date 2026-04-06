@@ -1,9 +1,10 @@
 ---
 name: issue-linker
 description: |
-  Discover related GitHub issues and PRs for the current branch changes, and assess
+  Discover related issues and PRs/MRs for the current branch changes, and assess
   whether issues referenced in commit messages or the branch name are actually resolved
-  by the code changes. Uses gh CLI and GitHub MCP tools for API access.
+  by the code changes. Currently GitHub-only; returns NONE for other providers.
+  Uses gh CLI and GitHub MCP tools for API access when on GitHub.
 model: haiku
 color: cyan
 ---
@@ -18,7 +19,7 @@ Produce a `## Related Issues & PRs` section for the PR description.
 
 ## Provider Check
 
-If the provider indicated in your task description is NOT `github`, output EXACTLY the word `NONE` and nothing else. Issue cross-referencing is currently only supported for GitHub repositories.
+If the provider indicated in your task description is NOT `github`, or if no PROVIDER value is present in the task description, output EXACTLY the word `NONE` and nothing else. Issue cross-referencing is currently only supported for GitHub repositories.
 
 ## Step 1: Parse Explicit Issue References
 

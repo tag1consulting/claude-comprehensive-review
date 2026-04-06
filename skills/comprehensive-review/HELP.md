@@ -17,11 +17,12 @@ Flags
   --summary-only     Run pr-summarizer only
 
   --create-pr        Create a PR using the summary (Block A) as the description
-  --post-summary     Post summary (Block A) as a comment on an existing PR
-  --post-findings    Post findings (Block B) as inline review on an existing own PR
+  --post-summary     Post summary (Block A) as a comment on an existing PR/MR
+  --post-findings    Post findings (Block B) as inline review on an existing own PR/MR
   --no-findings      Suppress posting findings (useful for dry-run with --pr)
   --no-post / --local  Skip all remote operations, display everything locally
-  --pr <number>      Review an existing PR/MR by number (external review mode)
+  --pr <number>      Review an existing PR/MR by number (external review mode;
+                     use --pr for all providers, including GitLab MRs)
   --provider <name>  Override git provider detection (github, gitlab, bitbucket)
 
   --help             Show this help
@@ -33,9 +34,9 @@ Default behavior
 
 Agents — full run
   Always:            pr-summarizer, code-reviewer
-  Full-run-only:     architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter
+  Full-run-only:     architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter,
+                     issue-linker (GitHub only)
   Conditional:       silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer
-  Full-run-only:     issue-linker (GitHub only)
 
 Agents — --quick mode
   Always:            pr-summarizer (no diagrams), code-reviewer
@@ -57,4 +58,5 @@ Provider support
   GitLab:                      Full support (glab CLI required)
   Bitbucket:                   PR creation, summary, comment posting.
                                Inline review comments not supported.
-                               Requires BITBUCKET_TOKEN env var.
+                               Requires BITBUCKET_TOKEN env var (or
+                               BITBUCKET_APP_PASSWORD, auto-mapped).

@@ -47,7 +47,7 @@ In short: pr-review-toolkit agents handle tactical code review. This skill orche
 | `git` | Required for diff analysis |
 | [gh CLI](https://cli.github.com/) | Required for GitHub / GitHub Enterprise |
 | [glab CLI](https://gitlab.com/gitlab-org/cli) | Required for GitLab |
-| `BITBUCKET_TOKEN` or `BITBUCKET_APP_PASSWORD` env var | Required for Bitbucket |
+| `BITBUCKET_TOKEN` env var | Required for Bitbucket (`BITBUCKET_APP_PASSWORD` is auto-mapped if set) |
 | `pr-review-toolkit@claude-plugins-official` | Required plugin — provides code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer |
 
 ## Provider support
@@ -154,7 +154,7 @@ Run from any git repository, on the branch you want to review:
 | `--security-only` | Run only the security-reviewer agent |
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--create-pr` | Create a PR using Block A as the description. Without this flag, no PR is created. |
-| `--post-summary` | Post Block A (summary) as a comment on an existing PR |
+| `--post-summary` | Post Block A (summary) as a comment on an existing PR/MR |
 | `--post-findings` | Post Block B (findings) as inline review on an existing own PR/MR |
 | `--no-findings` | Suppress posting findings as a review (useful for dry-run with `--pr`) |
 | `--no-post` / `--local` | Display everything locally, skip all remote operations |
