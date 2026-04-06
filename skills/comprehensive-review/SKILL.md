@@ -82,12 +82,12 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
    - PR_TERM_LONG: "pull request" (github, bitbucket) or "merge request" (gitlab)
    - CLI_TOOL: "gh" (github) or "glab" (gitlab) or "curl" (bitbucket)
    - REPO_SLUG: extract from remote URL via `git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`. Validate it matches `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`; if not, report "Error: Could not extract valid repository slug from remote URL." and stop. Used by Bitbucket API URLs.
-   - PROJECT_ID (gitlab only): fetch via `glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" --jq .id`. If this fails, report "Error: Could not resolve GitLab project ID for '${REPO_SLUG}'." and stop. Used by GitLab inline comment API.
+   - PROJECT_ID (gitlab only, **deferred**): not resolved here. Resolved in Phase 4b when inline comments are actually needed. Skip if `--no-post`/`--local` is set or PROVIDER is not gitlab.
 
 5. Validate CLI tool availability (always runs, regardless of whether provider was auto-detected or manually specified via `--provider`):
    - GitHub: `gh --version` must succeed. If not: "Error: gh CLI is required for GitHub repositories. Install: https://cli.github.com/"
    - GitLab: `glab --version` must succeed. If not: "Error: glab CLI is required for GitLab repositories. Install: https://gitlab.com/gitlab-org/cli"
-   - Bitbucket: `curl --version` must succeed (should always be available). Also verify BITBUCKET_TOKEN env var is set. If BITBUCKET_APP_PASSWORD is set but BITBUCKET_TOKEN is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If neither is set: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your access token or app password."
+   - Bitbucket: `curl --version` must succeed (should always be available). Also verify BITBUCKET_TOKEN env var is set **unless `--no-post`/`--local` was passed** (no API calls needed in local mode). If BITBUCKET_APP_PASSWORD is set but BITBUCKET_TOKEN is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If neither is set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your access token or app password."
 
 Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only used when PROVIDER=github. For other providers, all operations use CLI tools (glab, curl) via Bash.
 
@@ -429,6 +429,8 @@ Determine PR/MR state:
 ### Phase 4b: Post Findings as Inline Review
 
 **Skip if POST_FINDINGS is false or `--no-post`/`--local` was passed.**
+
+0. **Resolve PROJECT_ID** (GitLab only): `glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" | jq -r '.id'`. If this fails, report "Error: Could not resolve GitLab project ID for '${REPO_SLUG}'. Inline comments will not be posted." and skip Phase 4b (Block B is still displayed in terminal).
 
 1. **Parse valid comment targets** from DIFF_FILE. For each hunk `@@ -a,b +c,d @@`, lines `c` through `c+d-1` are valid. Build lookup: `{file → set of valid lines}`.
 
