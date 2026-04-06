@@ -300,7 +300,7 @@ Wait for all agents. Check each output:
 
 Build two separate output blocks:
 
-#### Block A — Informational (conditionally posted to GitHub)
+#### Block A — Informational (conditionally posted to hosting provider)
 
 Assemble the pr-summarizer and issue-linker outputs into this format.
 **Omit the `## Sequence Diagrams` section unless `--diagrams` was passed** (pr-summarizer was told not to generate it).
@@ -329,7 +329,7 @@ If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs`
 <from issue-linker, or omit if issue-linker was skipped>
 ```
 
-#### Block B — Findings (always displayed in terminal; optionally posted to GitHub as a review)
+#### Block B — Findings (always displayed in terminal; optionally posted as a review)
 
 ```markdown
 ---

@@ -37,7 +37,7 @@ The `pr-review-toolkit` plugin provides excellent code-level agents (bug detecti
 | **PR description auto-creation** | No | Yes (creates PR from Block A) |
 | **Token-efficient context passing** | Per-agent | Coordinated (manifest, shared context, sliced diffs) |
 
-In short: pr-review-toolkit agents handle tactical code review. This skill orchestrates them alongside higher-level analysis agents, produces a cohesive report, and handles all GitHub operations — including posting findings as inline reviews on any PR.
+In short: pr-review-toolkit agents handle tactical code review. This skill orchestrates them alongside higher-level analysis agents, produces a cohesive report, and handles all remote operations — including posting findings as inline reviews on any PR/MR.
 
 ## Requirements
 
