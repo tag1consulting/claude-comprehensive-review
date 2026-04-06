@@ -1,6 +1,6 @@
 # comprehensive-review
 
-A Claude Code skill that runs a full CodeRabbit-style PR review using a parallel fleet of specialized agents. Produces a structured PR summary and a findings report. Supports reviewing your own branch before opening a PR, or reviewing an existing PR by number.
+A Claude Code skill that runs a full CodeRabbit-style PR/MR review using a parallel fleet of specialized agents. Supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. Produces a structured PR/MR summary and a findings report. Supports reviewing your own branch before opening a PR/MR, or reviewing an existing PR/MR by number.
 
 ## What it does
 
@@ -11,7 +11,7 @@ When you run `/comprehensive-review` on a branch, it:
 3. Assembles two output blocks:
    - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams (opt-in via `--diagrams`), effort estimate, related issues/PRs
    - **Block B (findings)** — Critical/High/Medium/Low findings, architectural insights, security analysis, recommended actions
-4. Posts Block A and/or Block B to GitHub based on the flags and scenario (see [Posting behavior](#posting-behavior))
+4. Posts Block A and/or Block B to the hosting provider based on the flags and scenario (see [Posting behavior](#posting-behavior))
 
 ## Why this vs. pr-review-toolkit alone?
 
@@ -32,8 +32,8 @@ The `pr-review-toolkit` plugin provides excellent code-level agents (bug detecti
 | **Mermaid sequence diagrams** | No | Yes (pr-summarizer, opt-in via `--diagrams`) |
 | **Related issue/PR discovery** | No | Yes (issue-linker) |
 | **Unified severity ranking** | Per-agent only | Normalized across all agents, deduplicated |
-| **Inline GitHub PR review posting** | No | Yes (`--post-findings`, `--pr`) |
-| **External PR review (others' PRs)** | No | Yes (`--pr <N>`) |
+| **Inline PR/MR review posting** | No | Yes (`--post-findings`, `--pr`) |
+| **External PR/MR review (others' PRs/MRs)** | No | Yes (`--pr <N>`) |
 | **PR description auto-creation** | No | Yes (creates PR from Block A) |
 | **Token-efficient context passing** | Per-agent | Coordinated (manifest, shared context, sliced diffs) |
 
@@ -44,9 +44,26 @@ In short: pr-review-toolkit agents handle tactical code review. This skill orche
 | Requirement | Notes |
 |-------------|-------|
 | [Claude Code](https://claude.ai/code) | CLI or desktop app |
-| [gh CLI](https://cli.github.com/) | Required for PR creation and GitHub reads |
 | `git` | Required for diff analysis |
+| [gh CLI](https://cli.github.com/) | Required for GitHub / GitHub Enterprise |
+| [glab CLI](https://gitlab.com/gitlab-org/cli) | Required for GitLab |
+| `BITBUCKET_TOKEN` or `BITBUCKET_APP_PASSWORD` env var | Required for Bitbucket |
 | `pr-review-toolkit@claude-plugins-official` | Required plugin — provides code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer |
+
+## Provider support
+
+| Feature | GitHub / GHE | GitLab | Bitbucket |
+|---------|:---:|:---:|:---:|
+| Auto-detection | Yes | Yes | Yes |
+| PR/MR creation (`--create-pr`) | Yes | Yes | Yes |
+| Summary posting (`--post-summary`) | Yes | Yes | Yes |
+| Inline review posting (`--post-findings`) | Yes | Yes | No ¹ |
+| External review (`--pr <N>`) | Yes | Yes | Yes |
+| Inline review on external PR | Yes | Yes | No ¹ |
+| Issue cross-referencing (issue-linker) | Yes | No ² | No ² |
+
+¹ Bitbucket does not support inline diff comments via API. Findings are posted as a single PR comment.
+² Issue cross-referencing is currently GitHub-only. The issue-linker agent is gracefully skipped for other providers.
 
 ## Installation
 
@@ -138,10 +155,11 @@ Run from any git repository, on the branch you want to review:
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--create-pr` | Create a PR using Block A as the description. Without this flag, no PR is created. |
 | `--post-summary` | Post Block A (summary) as a comment on an existing PR |
-| `--post-findings` | Post Block B (findings) as inline review comments on an existing own PR |
+| `--post-findings` | Post Block B (findings) as inline review on an existing own PR/MR |
 | `--no-findings` | Suppress posting findings as a review (useful for dry-run with `--pr`) |
-| `--no-post` / `--local` | Display everything locally, skip all GitHub operations |
-| `--pr <number>` | Review an existing PR by number (external review mode) |
+| `--no-post` / `--local` | Display everything locally, skip all remote operations |
+| `--pr <number>` | Review an existing PR/MR by number (external review mode) |
+| `--provider <name>` | Override auto-detected git provider (`github`, `gitlab`, `bitbucket`) |
 | `--help` | Show usage |
 
 ### Examples
@@ -212,7 +230,7 @@ Run from any git repository, on the branch you want to review:
 | **type-design-analyzer** ¹ | — | Type/struct/interface invariants | Full run only, if diff adds type definitions | Relevant file slices |
 | **blind-hunter** | Sonnet | Context-free "fresh eyes" review: catches issues familiarity blinds other agents to | Full run only | Raw diff only (no project context) |
 | **edge-case-hunter** | Sonnet | Mechanical path tracing: missing else/default, unguarded inputs, off-by-one, overflow, race conditions, resource leaks | Full run only | Manifest + selective reads ² |
-| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues on GitHub | Full run only | Commit log + branch + manifest |
+| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues (GitHub only) | Full run only | Commit log + branch + manifest |
 
 ### `--quick` mode
 
@@ -247,7 +265,7 @@ Terminal output:
   Recommended Actions
 ```
 
-GitHub PR description (Block A only — no findings):
+PR/MR description (Block A only — no findings):
 ```
 ## Summary
 ## Walkthrough
@@ -255,7 +273,7 @@ GitHub PR description (Block A only — no findings):
 ## Related Issues & PRs
 ```
 
-GitHub inline review (Block B — when `--post-findings` or `--pr` mode):
+Inline review (Block B — when `--post-findings` or `--pr` mode):
 ```
 Inline comments on specific diff lines, plus a review body summary.
 Uses REQUEST_CHANGES (Medium+ findings) or COMMENT (Low only).
