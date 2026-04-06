@@ -24,6 +24,7 @@ Flags
   --pr <number>      Review an existing PR/MR by number (external review mode;
                      use --pr for all providers, including GitLab MRs)
   --provider <name>  Override git provider detection (github, gitlab, bitbucket)
+  --no-mem           Disable claude-mem integration (auto-detected when available)
 
   --help             Show this help
 
@@ -42,6 +43,12 @@ Agents — --quick mode
   Always:            pr-summarizer (no diagrams), code-reviewer
   Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
   Skipped:           all full-run-only + comment-analyzer, type-design-analyzer, issue-linker
+
+claude-mem Integration (optional)
+  When claude-mem is detected, the skill automatically stores a structured review
+  summary to persistent memory and passes up to 5 prior review summaries as context
+  to the architecture-reviewer and security-reviewer agents. Use --no-mem to opt out.
+  No effect when claude-mem is not installed.
 
 Examples
   /comprehensive-review                         Review current branch, everything local

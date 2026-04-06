@@ -92,6 +92,24 @@ Agents are divided into three tiers:
 
 The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~75% while preserving the core code review and error/test analysis.
 
+### claude-mem integration (optional)
+
+When [claude-mem](https://github.com/thedotmack/claude-mem) is installed and its worker daemon is running, the orchestrator:
+
+1. Detects availability via `GET http://127.0.0.1:<MEM_PORT>/api/health` in Phase 0 (step 1b)
+2. Searches for up to 5 prior review summaries for the same project using `mcp__plugin_claude-mem_mcp-search__search` (with `curl` fallback)
+3. Passes a condensed PRIOR_REVIEW_CONTEXT block (~500 tokens) to **architecture-reviewer** and **security-reviewer** so they can recognize recurring patterns across reviews
+4. Stores a compact structured review summary via `POST /api/memory/save` during Phase 5, after temp-file cleanup and before final terminal output
+
+Integration is **automatic with opt-out** (`--no-mem`). It degrades gracefully: if claude-mem is not running, detection fails silently and the feature is disabled for that run.
+
+**Key constraints:**
+- The MCP tools exposed by claude-mem (`mcp__plugin_claude-mem_mcp-search__*`) are read-only; writing uses the worker HTTP API on `localhost:37777` (default) because no write MCP tool is available. If claude-mem exposes a write MCP tool in the future, prefer it over the HTTP API.
+- Only architecture-reviewer and security-reviewer receive prior review context; blind-hunter's zero-context constraint is preserved
+- Subagents cannot access MCP tools — all claude-mem interaction happens in the orchestrator
+- The `/api/memory/save` endpoint is an internal claude-mem API. Breakage across claude-mem versions causes graceful degradation (no-op). All claude-mem interactions (health check, search, save) fail silently.
+- Review summaries including finding descriptions are stored locally in claude-mem's SQLite database, accessible to any process on localhost without authentication. Avoid using claude-mem integration in shared or multi-tenant environments.
+
 ### External PR/MR review mode
 
 When `--pr <N>` is passed, the skill:
