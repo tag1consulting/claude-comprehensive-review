@@ -33,7 +33,7 @@ Agents — full run
   Always:            pr-summarizer, code-reviewer
   Full-run-only:     architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter
   Conditional:       silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer
-  Optional:          issue-linker (skipped in --local and non-GitHub repos)
+  Full-run-only:     issue-linker (skipped in --local/--pr and non-GitHub repos)
 
 Agents — --quick mode
   Always:            pr-summarizer (no diagrams), code-reviewer

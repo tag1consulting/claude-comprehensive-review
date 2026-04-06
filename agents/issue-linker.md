@@ -18,6 +18,9 @@ Produce a `## Related Issues & PRs` section for the PR description.
 
 ## Step 0: Pre-flight Check
 
+Note: The orchestrator skips this agent for `--quick`, `--pr`, and `--no-post`/`--local` modes.
+This step guards only against runtime GitHub access failures (non-GitHub remote, unauthenticated `gh`).
+
 Before doing any work, verify GitHub access:
 1. Run `git remote get-url origin 2>/dev/null` — if the URL does not contain `github.com`, output exactly `NONE` and stop.
 2. Run `gh auth status 2>/dev/null` — if not authenticated (exit code non-zero), output exactly `NONE` and stop.

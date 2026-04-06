@@ -212,7 +212,7 @@ Run from any git repository, on the branch you want to review:
 | **type-design-analyzer** ¹ | — | Type/struct/interface invariants | Full run only, if diff adds type definitions | Relevant file slices |
 | **blind-hunter** | Sonnet | Context-free "fresh eyes" review: catches issues familiarity blinds other agents to | Full run only | Raw diff only (no project context) |
 | **edge-case-hunter** | Sonnet | Mechanical path tracing: missing else/default, unguarded inputs, off-by-one, overflow, race conditions, resource leaks | Full run only | Manifest + selective reads ² |
-| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues on GitHub | Full run only; skipped in `--local`/`--no-post` and non-GitHub repos | Commit log + branch + manifest |
+| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues on GitHub | Full run only; skipped in `--pr`, `--local`/`--no-post`, and non-GitHub repos | Commit log + branch + manifest |
 
 ### `--quick` mode
 
