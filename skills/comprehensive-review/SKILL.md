@@ -251,6 +251,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 |------|-----------------|
 | (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) |
 | `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer |
+| `--no-post` / `--local` | Same as default but skips issue-linker; all Phase 4 GitHub operations suppressed |
 | `--security-only` | security-reviewer only |
 | `--summary-only` | pr-summarizer only |
 

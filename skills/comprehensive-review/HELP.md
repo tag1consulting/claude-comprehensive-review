@@ -20,7 +20,7 @@ Flags
   --post-summary     Post summary (Block A) as a comment on an existing PR/MR
   --post-findings    Post findings (Block B) as inline review on an existing own PR/MR
   --no-findings      Suppress posting findings (useful for dry-run with --pr)
-  --no-post / --local  Skip all remote operations, display everything locally
+  --no-post / --local  Skip all remote operations and issue-linker, display everything locally
   --pr <number>      Review an existing PR/MR by number (external review mode;
                      use --pr for all providers, including GitLab MRs)
   --provider <name>  Override git provider detection (github, gitlab, bitbucket)

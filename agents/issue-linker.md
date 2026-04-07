@@ -17,9 +17,14 @@ pull request history to surface relevant context for reviewers.
 You will receive the commit log, branch name, file manifest, repository slug, and the detected PROVIDER value.
 Produce a `## Related Issues & PRs` section for the PR description.
 
-## Provider Check
+## Step 0: Pre-flight Check
 
-If the provider indicated in your task description is NOT `github`, or if no PROVIDER value is present in the task description, output EXACTLY the word `NONE` and nothing else. Issue cross-referencing is currently only supported for GitHub repositories.
+Note: The orchestrator skips this agent for `--quick`, `--pr`, and `--no-post`/`--local` modes.
+This step guards against non-GitHub providers and runtime GitHub access failures.
+
+Before doing any work:
+1. If the PROVIDER value in your task description is NOT `github`, or if no PROVIDER value is present, output exactly `NONE` and stop. Issue cross-referencing is only supported for GitHub repositories.
+2. Run `gh auth status 2>/dev/null` — if not authenticated (exit code non-zero), output exactly `NONE` and stop.
 
 ## Step 1: Parse Explicit Issue References
 
