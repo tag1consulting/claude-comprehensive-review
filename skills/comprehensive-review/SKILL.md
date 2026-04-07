@@ -19,14 +19,6 @@ allowed-tools:
   - Grep
   - Glob
   - Agent
-  - mcp__github-pat__get_issue
-  - mcp__github-pat__list_issues
-  - mcp__github-pat__list_pull_requests
-  - mcp__github-pat__get_pull_request
-  - mcp__github-pat__search_issues
-  - mcp__github-pat__search_code
-  - mcp__github-pat__create_pull_request_review
-  - mcp__github-pat__get_pull_request_files
   - mcp__plugin_claude-mem_mcp-search__search
   - mcp__plugin_claude-mem_mcp-search__get_observations
 ---
@@ -423,9 +415,9 @@ Determine PR/MR state:
   - **Other failures** (auth, network): report "${PROVIDER} API error: <error>. Use --no-post to skip remote operations." and skip Phase 4.
   - **Succeeds:** PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR/MR already exists.
 
-**Create PR/MR** (own-branch, `--create-pr`): Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
+**Create PR/MR** (own-branch, `--create-pr`): Before running the create operation, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
 
-**Post summary comment** (POST_SUMMARY): Use **OP: Post comment on PR/MR** with Block A as body. Use `## ${PR_TERM} Review Summary (Updated)` heading if summary already exists.
+**Post summary comment** (POST_SUMMARY): Before posting, display the full comment body to the user and ask: "Post this comment to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Post comment on PR/MR** with Block A as body. Use `## ${PR_TERM} Review Summary (Updated)` heading if summary already exists.
 
 ### Phase 4b: Post Findings as Inline Review
 
@@ -458,12 +450,14 @@ Determine PR/MR state:
 
 6. **Comments array:** each entry `{ "path", "line", "body": "**[Severity]** **[agent]** description.\n\n**Remediation:** ..." }`
 
-7. **Submit** using **OP: Post inline review**:
-   - GitHub: via `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). If MCP fails, fall back to `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file>`. If both fail, report the error and skip inline posting.
+7. **Confirm with user before submitting:** Display the review event type (`COMMENT` or `REQUEST_CHANGES`), the full review body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Post this review to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again.
+
+8. Once confirmed: **Submit** using **OP: Post inline review**:
+   - GitHub: via `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file>`. If this fails, report the error and skip inline posting.
    - GitLab: post review body as MR comment, then post each inline comment as a discussion thread via `glab api`. For each discussion thread, if `glab api` returns a non-zero exit code, log "Warning: Failed to post inline comment for <file>:<line> — <error>." Tally failed posts for Phase 5 reporting.
    - Bitbucket: N/A (handled in step 4).
 
-8. Report for Phase 5: "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
+9. Report for Phase 5: "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
    GitLab partial failure: "Warning: <M> of <N> inline comments failed to post on GitLab ${PR_TERM} #<N>."
    Bitbucket variant: "Findings posted as comment on ${PR_TERM} #<N> (inline reviews not supported on Bitbucket)"
 
