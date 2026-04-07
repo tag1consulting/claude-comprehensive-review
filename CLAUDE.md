@@ -85,7 +85,7 @@ Each agent uses its own severity scale. The skill's `SKILL.md` defines a normali
 Agents are divided into three tiers:
 
 1. **Always-run:** pr-summarizer, code-reviewer — run in every mode including `--quick`
-2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker
+2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker (also skipped with `--pr`, `--no-post`/`--local`, and on non-GitHub repos)
 3. **Conditional (run in both full and `--quick` when triggered by diff content):** silent-failure-hunter (error patterns), pr-test-analyzer (test files)
 
 The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~75% while preserving the core code review and error/test analysis.

@@ -174,6 +174,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 |------|-----------------|
 | (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) |
 | `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer |
+| `--no-post` / `--local` | Same as default but skips issue-linker; all Phase 4 GitHub operations suppressed |
 | `--security-only` | security-reviewer only |
 | `--summary-only` | pr-summarizer only |
 
@@ -226,7 +227,7 @@ grep -l 'catch\|if err\|try {\|rescue\|Result<\|unwrap\|\.error\|\.expect(\|?\|r
 
 - **comment-analyzer** (pr-review-toolkit, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`). Pass matching files' diff.
 - **type-design-analyzer** (pr-review-toolkit, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `). Pass matching files' diff.
-- **issue-linker** (model: haiku) — pass commit log, branch name, manifest, repo slug. Skip in `--quick` and `--pr` modes.
+- **issue-linker** (model: haiku) — pass commit log, branch name, manifest, repo slug. Skip in `--quick`, `--pr`, and `--no-post`/`--local` modes.
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 
