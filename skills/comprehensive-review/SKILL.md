@@ -365,7 +365,7 @@ Determine PR state:
 
 7. **Confirm with user before submitting:** Display the review event type (`COMMENT` or `REQUEST_CHANGES`), the full review body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Post this review to PR #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again.
 
-8. Once confirmed: **Submit** via `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). Fall back to `gh api` if MCP fails.
+8. Once confirmed: **Submit** via `gh api repos/<owner>/<repo>/pulls/<pull_number>/reviews` with the event, body, and comments payload.
 
 9. Report for Phase 5: "Review posted to PR #<N>: <N> inline, <M> in body"
 
