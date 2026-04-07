@@ -18,14 +18,6 @@ allowed-tools:
   - Grep
   - Glob
   - Agent
-  - mcp__github-pat__get_issue
-  - mcp__github-pat__list_issues
-  - mcp__github-pat__list_pull_requests
-  - mcp__github-pat__get_pull_request
-  - mcp__github-pat__search_issues
-  - mcp__github-pat__search_code
-  - mcp__github-pat__create_pull_request_review
-  - mcp__github-pat__get_pull_request_files
   - mcp__plugin_claude-mem_mcp-search__search
   - mcp__plugin_claude-mem_mcp-search__get_observations
 ---
@@ -341,9 +333,9 @@ Determine PR state:
   - Fails for other reasons (auth, network): report "GitHub API error: <error>. Use --no-post to skip GitHub operations." and skip Phase 4.
   - Succeeds: PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR already exists.
 
-**Create PR** (own-branch, `--create-pr`): `gh pr create --title "<title>" --base "<base>" --body "<Block A>"`. Title under 70 chars.
+**Create PR** (own-branch, `--create-pr`): Before running `gh pr create`, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: `gh pr create --title "<title>" --base "<base>" --body "<Block A>"`. Title under 70 chars.
 
-**Post summary comment** (POST_SUMMARY): `gh pr comment <PR_NUMBER> --body "<Block A>"`. Use `## PR Review Summary (Updated)` heading if summary already exists in PR body.
+**Post summary comment** (POST_SUMMARY): Before running `gh pr comment`, display the full comment body to the user and ask: "Post this comment to PR #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: `gh pr comment <PR_NUMBER> --body "<Block A>"`. Use `## PR Review Summary (Updated)` heading if summary already exists in PR body.
 
 ### Phase 4b: Post Findings as Inline Review
 
@@ -371,9 +363,11 @@ Determine PR state:
 
 6. **Comments array:** each entry `{ "path", "line", "body": "**[Severity]** **[agent]** description.\n\n**Remediation:** ..." }`
 
-7. **Submit** via `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). Fall back to `gh api` if MCP fails.
+7. **Confirm with user before submitting:** Display the review event type (`COMMENT` or `REQUEST_CHANGES`), the full review body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Post this review to PR #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again.
 
-8. Report for Phase 5: "Review posted to PR #<N>: <N> inline, <M> in body"
+8. Once confirmed: **Submit** via `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). Fall back to `gh api` if MCP fails.
+
+9. Report for Phase 5: "Review posted to PR #<N>: <N> inline, <M> in body"
 
 ### Phase 5: Final Output
 
