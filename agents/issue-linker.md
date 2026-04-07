@@ -1,9 +1,10 @@
 ---
 name: issue-linker
 description: |
-  Discover related GitHub issues and PRs for the current branch changes, and assess
+  Discover related issues and PRs/MRs for the current branch changes, and assess
   whether issues referenced in commit messages or the branch name are actually resolved
-  by the code changes. Uses gh CLI and GitHub MCP tools for API access.
+  by the code changes. Currently GitHub-only; returns NONE for other providers.
+  Uses gh CLI and GitHub MCP tools for API access when on GitHub.
 model: haiku
 color: cyan
 ---
@@ -13,16 +14,16 @@ pull request history to surface relevant context for reviewers.
 
 ## Your Task
 
-You will receive the commit log, branch name, file manifest, and repository slug.
+You will receive the commit log, branch name, file manifest, repository slug, and the detected PROVIDER value.
 Produce a `## Related Issues & PRs` section for the PR description.
 
 ## Step 0: Pre-flight Check
 
 Note: The orchestrator skips this agent for `--quick`, `--pr`, and `--no-post`/`--local` modes.
-This step guards only against runtime GitHub access failures (non-GitHub remote, unauthenticated `gh`).
+This step guards against non-GitHub providers and runtime GitHub access failures.
 
-Before doing any work, verify GitHub access:
-1. Run `git remote get-url origin 2>/dev/null` — if the URL does not contain `github.com`, output exactly `NONE` and stop.
+Before doing any work:
+1. If the PROVIDER value in your task description is NOT `github`, or if no PROVIDER value is present, output exactly `NONE` and stop. Issue cross-referencing is only supported for GitHub repositories.
 2. Run `gh auth status 2>/dev/null` — if not authenticated (exit code non-zero), output exactly `NONE` and stop.
 
 ## Step 1: Parse Explicit Issue References
