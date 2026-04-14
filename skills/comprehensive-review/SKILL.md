@@ -247,39 +247,39 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `--security-only` | security-reviewer only |
 | `--summary-only` | pr-summarizer only |
 
-**Model assignments** — always specify `model:` explicitly when spawning agents via the Agent tool to prevent inheritance of the orchestrator's model:
+**Model assignments** — always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool to prevent inheritance of the orchestrator's model and to avoid incorrect plugin-namespace inference:
 
-| Agent | Model |
-|-------|-------|
-| pr-summarizer | sonnet |
-| code-reviewer | sonnet |
-| architecture-reviewer | opus |
-| security-reviewer | opus |
-| blind-hunter | sonnet |
-| edge-case-hunter | sonnet |
-| silent-failure-hunter | sonnet |
-| pr-test-analyzer | sonnet |
-| comment-analyzer | sonnet |
-| type-design-analyzer | sonnet |
-| issue-linker | haiku |
+| Agent | subagent_type | Model |
+|-------|--------------|-------|
+| pr-summarizer | `pr-summarizer` | sonnet |
+| code-reviewer | `pr-review-toolkit:code-reviewer` | sonnet |
+| architecture-reviewer | `architecture-reviewer` | opus |
+| security-reviewer | `security-reviewer` | opus |
+| blind-hunter | `blind-hunter` | sonnet |
+| edge-case-hunter | `edge-case-hunter` | sonnet |
+| silent-failure-hunter | `pr-review-toolkit:silent-failure-hunter` | sonnet |
+| pr-test-analyzer | `pr-review-toolkit:pr-test-analyzer` | sonnet |
+| comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet |
+| type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet |
+| issue-linker | `issue-linker` | haiku |
 
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
-- **pr-summarizer** (model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **pr-summarizer** (subagent_type: `pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Unless `--diagrams` is passed (and not `--quick`): add "Omit the Sequence Diagrams section entirely."
-- **code-reviewer** (pr-review-toolkit, model: sonnet) — always pass the full diff.
+- **code-reviewer** (subagent_type: `pr-review-toolkit:code-reviewer`, model: sonnet) — always pass the full diff.
 
 **Full-run-only agents** (skipped with `--quick`):
 
-- **architecture-reviewer** (model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
-- **security-reviewer** (model: opus) — pass manifest, commit log, detected languages, project context. Small diffs: also full diff inline.
+- **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, commit log, detected languages, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
-- **blind-hunter** (model: sonnet) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
+- **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `git -C "$WORKTREE_PATH" diff <base>...HEAD > /tmp/cr-diff-blind.txt`, passes inline (agent has no worktree knowledge).
-- **edge-case-hunter** (model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Has full codebase read access for surrounding context.
 
 **Conditional agents — run in both full and `--quick` when triggered:**
@@ -289,14 +289,14 @@ Detect triggers via grep on the temp diff file — do NOT read it into the conve
 grep -l -E 'catch\b|if err|try \{|rescue\b|Result<|unwrap|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE"
 ```
 
-- **silent-failure-hunter** (pr-review-toolkit, model: sonnet) — trigger: error handling patterns in **non-SKILL.md files** (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). When SKILL.md is the only file in the diff matching these patterns, do NOT trigger — the match is a false positive from the grep command definition above. Pass only matching files' diff.
-- **pr-test-analyzer** (pr-review-toolkit, model: sonnet) — trigger: test files (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.ts`, `spec/`, `__tests__/`). Pass test files + source counterparts.
+- **silent-failure-hunter** (subagent_type: `pr-review-toolkit:silent-failure-hunter`, model: sonnet) — trigger: error handling patterns in **non-SKILL.md files** (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). When SKILL.md is the only file in the diff matching these patterns, do NOT trigger — the match is a false positive from the grep command definition above. Pass only matching files' diff.
+- **pr-test-analyzer** (subagent_type: `pr-review-toolkit:pr-test-analyzer`, model: sonnet) — trigger: test files (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.ts`, `spec/`, `__tests__/`). Pass test files + source counterparts.
 
 **Conditional agents — full-run only** (skip in `--quick` and when not triggered):
 
-- **comment-analyzer** (pr-review-toolkit, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`). Pass matching files' diff.
-- **type-design-analyzer** (pr-review-toolkit, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `). Pass matching files' diff.
-- **issue-linker** (model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick`, `--pr`, and `--no-post`/`--local` modes. Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
+- **comment-analyzer** (subagent_type: `pr-review-toolkit:comment-analyzer`, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`). Pass matching files' diff.
+- **type-design-analyzer** (subagent_type: `pr-review-toolkit:type-design-analyzer`, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `). Pass matching files' diff.
+- **issue-linker** (subagent_type: `issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick`, `--pr`, and `--no-post`/`--local` modes. Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 
