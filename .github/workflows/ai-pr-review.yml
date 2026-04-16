@@ -21,8 +21,8 @@ jobs:
         uses: ./.github/actions/ai-pr-review
         with:
           api-key: ${{ secrets.AI_REVIEW_API_KEY }}
-          provider: ${{ secrets.AI_REVIEW_PROVIDER }}
-          base-url: ${{ secrets.AI_REVIEW_BASE_URL }}
+          provider: ${{ vars.AI_REVIEW_PROVIDER }}
+          base-url: ${{ vars.AI_REVIEW_BASE_URL }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           base-ref: ${{ github.base_ref }}
           head-sha: ${{ github.event.pull_request.head.sha }}
