@@ -1,0 +1,3 @@
+[submodule ".github/actions/ai-pr-review"]
+	path = .github/actions/ai-pr-review
+	url = git@github.com:tag1consulting/ai-pr-review.git
