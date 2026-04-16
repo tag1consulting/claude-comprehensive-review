@@ -27,6 +27,7 @@ The skill coordinates two groups of agents:
    - `issue-linker` — cross-references GitHub issues and PRs; returns NONE for non-GitHub providers (runs Haiku)
    - `security-reviewer` — OWASP-class security analysis (runs Opus)
    - `architecture-reviewer` — design pattern and coupling analysis (runs Opus)
+   - Both run on the `opus` alias, which the harness currently resolves to Opus 4.7 (`claude-opus-4-7`).
    - `blind-hunter` — context-free "fresh eyes" review; receives only the raw diff (small diffs), a plain file list (large diffs in normal mode), or the full diff from the worktree (large diffs in `--pr` mode) — no project context in any case (runs Sonnet). Adapted from BMAD-METHOD.
    - `edge-case-hunter` — mechanical boundary-condition path tracing (runs Sonnet). Adapted from BMAD-METHOD.
 

@@ -217,12 +217,14 @@ Run from any git repository, on the branch you want to review:
 
 ## Agent roster
 
+Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model — currently Opus 4.7 (`claude-opus-4-7`).
+
 ### Full run
 
 | Agent | Model | Purpose | When it runs | Context |
 |-------|-------|---------|--------------|---------|
 | **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams (opt-in), effort score | Always | Manifest + selective reads ² |
-| **code-reviewer** ¹ | Opus | Tactical bugs, style violations, project conventions | Always | Full diff |
+| **code-reviewer** ¹ | Sonnet | Tactical bugs, style violations, project conventions | Always | Full diff |
 | **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Full run only | Manifest + selective reads ² |
 | **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Full run only | Manifest + selective reads ² |
 | **silent-failure-hunter** ¹ | — | Silent failures, inadequate error handling | If diff has error-handling patterns | Relevant file slices |
