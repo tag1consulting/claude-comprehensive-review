@@ -217,7 +217,7 @@ Run from any git repository, on the branch you want to review:
 
 ## Agent roster
 
-Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model — currently Opus 4.7 (`claude-opus-4-7`).
+Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model.
 
 ### Full run
 
