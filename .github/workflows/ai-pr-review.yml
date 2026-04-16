@@ -16,6 +16,7 @@ jobs:
         with:
           submodules: true
           token: ${{ secrets.AI_PR_REVIEW_TOKEN }}
+          fetch-depth: 0
 
       - name: Run AI PR Review
         uses: ./.github/actions/ai-pr-review
