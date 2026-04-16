@@ -28,5 +28,7 @@ jobs:
           base-ref: ${{ github.base_ref }}
           head-sha: ${{ github.event.pull_request.head.sha }}
           pr-number: ${{ github.event.pull_request.number }}
+          model-standard: ${{ vars.AI_REVIEW_MODEL_STANDARD }}
+          model-premium: ${{ vars.AI_REVIEW_MODEL_PREMIUM }}
           review-mode: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full' || 'quick' }}
           force-full-diff: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') && 'true' || 'false' }}
