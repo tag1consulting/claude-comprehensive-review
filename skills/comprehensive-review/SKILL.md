@@ -146,7 +146,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 1b. **Detect claude-mem availability** (skip if `--no-mem` was passed):
    - Read the worker port: `MEM_PORT=$(jq -r '.CLAUDE_MEM_WORKER_PORT // "37777"' ~/.claude-mem/settings.json 2>/dev/null || echo "37777")`
    - Validate port: `[[ "$MEM_PORT" =~ ^[0-9]+$ ]] && (( MEM_PORT >= 1 && MEM_PORT <= 65535 )) || MEM_PORT=37777`
-   - Health check: `curl -sf "http://127.0.0.1:${MEM_PORT}/api/health" >/dev/null 2>&1`
+   - Health check: `curl -sf --max-time 2 "http://127.0.0.1:${MEM_PORT}/api/health" >/dev/null 2>&1`
    - If the curl succeeds: set MEM_AVAILABLE=true. If it fails or `--no-mem` was passed: set MEM_AVAILABLE=false. No error message either way.
 
 **Help text:** Read and display `skills/comprehensive-review/HELP.md`, then stop. If the file is not found, display: "Help file not found. Run `/plugins install comprehensive-review@tag1consulting` to reinstall."
@@ -166,7 +166,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 
 3. Run `git diff --name-only <base>...HEAD` to confirm changed files (in `--pr` mode: `git -C "$WORKTREE_PATH" diff --name-only <base>...HEAD`). If none, report and stop.
 
-4. **Build the file manifest** from `git diff --stat <base>...HEAD -- ':!*lock.json' ':!*lock.yaml' ':!vendor/*' ':!*.sum' ':!node_modules/*'`:
+4. **Build the file manifest** from `git diff --stat <base>...HEAD -- ':!*lock.json' ':!*lock.yaml' ':!*.lock' ':!*.sum' ':!vendor/*' ':!node_modules/*'`:
    Lockfiles, vendor directories, and checksum files are excluded — the full DIFF_FILE still includes them.
    - Detect languages from extensions; categorize files as **Source**, **Tests**, **Config**, **Docs**, or **Dependency**
    - Format:
@@ -278,7 +278,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 - **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
-  Medium/large (`--pr` mode): `git -C "$WORKTREE_PATH" diff <base>...HEAD > /tmp/cr-diff-blind.txt`, passes inline (agent has no worktree knowledge).
+  Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
 - **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Has full codebase read access for surrounding context.
 
