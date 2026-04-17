@@ -79,8 +79,10 @@ jobs:
           name: workspace
           path: .
 
-      - name: Restore git executable bits
-        run: chmod +x .git/hooks/* 2>/dev/null || true
+      - name: Restore executable bits
+        run: |
+          chmod +x .git/hooks/* 2>/dev/null || true
+          find .github/actions/ai-pr-review -name "*.sh" -exec chmod +x {} +
 
       - name: Run AI PR Review
         uses: ./.github/actions/ai-pr-review
