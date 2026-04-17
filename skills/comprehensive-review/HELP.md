@@ -44,6 +44,11 @@ Agents — --quick mode
   Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
   Skipped:           all full-run-only + comment-analyzer, type-design-analyzer, issue-linker
 
+Deterministic checks (both full and --quick)
+  dependency-check:  Queries OSV.dev for CVEs in changed dependency manifests.
+                     Triggers on: go.mod, package.json, requirements.txt, composer.json.
+                     No API key required. Network failures are non-blocking.
+
 claude-mem Integration (optional)
   When claude-mem is detected, the skill automatically stores a structured review
   summary to persistent memory and passes up to 5 prior review summaries as context

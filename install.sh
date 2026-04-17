@@ -200,6 +200,21 @@ for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer 
 done
 
 # ---------------------------------------------------------------------------
+# Install scripts
+# ---------------------------------------------------------------------------
+
+mkdir -p "$CLAUDE_DIR/scripts"
+for script in run-cve-check.sh; do
+  dest="$CLAUDE_DIR/scripts/${script}"
+  if [[ -f "$dest" ]]; then
+    warn "Script already exists, overwriting: $dest"
+  fi
+  install_file "scripts/${script}" "$dest"
+  chmod +x "$dest"
+  info "Installed script → $dest"
+done
+
+# ---------------------------------------------------------------------------
 # Install pr-review-toolkit plugin
 # ---------------------------------------------------------------------------
 

@@ -68,7 +68,7 @@ on unchanged lines.
 - New dependencies: check if from trusted sources
 - Unpinned dependency versions that could pull malicious updates
 - Use of `latest` image tags in container definitions
-- New transitive dependencies with known CVEs (flag for manual `govulncheck`/`npm audit`)
+- Known CVEs in direct dependencies are detected deterministically by the `dependency-check` step (Phase 1b); do not re-flag those. Report dependency-related security concerns beyond CVE matches: maintainer changes, typosquat suspicion, overly broad permissions, or new license concerns.
 
 ## Language-Specific Checks
 

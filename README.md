@@ -129,6 +129,11 @@ cp agents/security-reviewer.md ~/.claude/agents/
 cp agents/architecture-reviewer.md ~/.claude/agents/
 cp agents/blind-hunter.md ~/.claude/agents/
 cp agents/edge-case-hunter.md ~/.claude/agents/
+
+# Scripts
+mkdir -p ~/.claude/scripts
+cp scripts/run-cve-check.sh ~/.claude/scripts/
+chmod +x ~/.claude/scripts/run-cve-check.sh
 ```
 
 Then install the dependency plugin inside Claude Code:
@@ -236,10 +241,20 @@ Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias,
 | **edge-case-hunter** | Sonnet | Mechanical path tracing: missing else/default, unguarded inputs, off-by-one, overflow, race conditions, resource leaks | Full run only | Manifest + selective reads ² |
 | **issue-linker** | Haiku | Finds referenced issues and related PRs/issues (GitHub only) | Full run only; skipped in `--pr`, `--local`/`--no-post`, and non-GitHub repos | Commit log + branch + manifest |
 
+### Deterministic checks
+
+In addition to LLM agents, the skill runs a deterministic CVE check when dependency manifests are in the diff:
+
+| Check | Trigger | Runs in `--quick`? |
+|-------|---------|-------------------|
+| **dependency-check** — queries [OSV.dev](https://osv.dev/) for known vulnerabilities in declared dependency versions | `go.mod`, `package.json`, `requirements.txt`, or `composer.json` changed | Yes |
+
+No API key required. Network failures are non-blocking (returns empty, warns to stderr). Findings appear in Block B as `[dependency-check]` entries.
+
 ### `--quick` mode
 
 Skips: architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker.
-Still runs: pr-summarizer (no diagrams), code-reviewer, and triggered silent-failure-hunter / pr-test-analyzer.
+Still runs: pr-summarizer (no diagrams), code-reviewer, triggered silent-failure-hunter / pr-test-analyzer, and the CVE check if manifest files changed.
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
 ² For small diffs (under 300 lines), the full diff is passed inline instead.
@@ -380,4 +395,5 @@ rm ~/.claude/agents/security-reviewer.md
 rm ~/.claude/agents/architecture-reviewer.md
 rm ~/.claude/agents/blind-hunter.md
 rm ~/.claude/agents/edge-case-hunter.md
+rm -rf ~/.claude/scripts/run-cve-check.sh
 ```
