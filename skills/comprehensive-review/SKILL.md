@@ -79,6 +79,7 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
 5. Validate CLI tool availability (always runs, regardless of whether provider was auto-detected or manually specified via `--provider`):
    - GitHub: `gh --version` must succeed. If not: "Error: gh CLI is required for GitHub repositories. Install: https://cli.github.com/"
    - GitLab: `glab --version` must succeed. If not: "Error: glab CLI is required for GitLab repositories. Install: https://gitlab.com/gitlab-org/cli"
+   - GitLab/Bitbucket: `jq --version` must succeed **unless `--no-post`/`--local` was passed** (no JSON parsing needed in local mode). If not: "Error: jq is required for GitLab/Bitbucket repositories. Install: https://jqlang.org/"
    - Bitbucket: `curl --version` must succeed (should always be available). Also verify BITBUCKET_TOKEN env var is set **unless `--no-post`/`--local` was passed** (no API calls needed in local mode). If BITBUCKET_APP_PASSWORD is set but BITBUCKET_TOKEN is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If neither is set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your access token or app password."
 
 Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only used when PROVIDER=github. For other providers, all operations use CLI tools (glab, curl) via Bash.
@@ -102,7 +103,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 #### OP: Detect existing PR/MR on current branch (returns metadata or fails)
 
 - **github:** `gh pr view --json number,title,body`
-- **gitlab:** `glab mr view --output json` (uses current branch)
+- **gitlab:** `glab mr list --source-branch "$(git branch --show-current)" --output json` (returns `[]` when no MR exists)
 - **bitbucket:** `curl -sf -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests?q=source.branch.name=\"$(git branch --show-current)\"&state=OPEN"`. If `curl` exits non-zero or the response contains `"type":"error"`, treat as API failure (not "no PR found"). Otherwise check `.size > 0`; if so, first result is the PR.
 
 #### OP: Create PR/MR
@@ -407,7 +408,7 @@ Determine PR/MR state:
 - Own-branch: use **OP: Detect existing PR/MR on current branch**.
   - **No PR/MR exists** — detect via provider-specific signals:
     - GitHub: output contains "no pull requests found"
-    - GitLab: `glab` exits non-zero with output containing "no open merge request" (case-insensitive)
+    - GitLab: `glab mr list --source-branch "$(git branch --show-current)" --output json` returns empty array (`[]`)
     - Bitbucket: response JSON has `.size == 0` or `.values` is empty
     + `--create-pr`: create PR/MR. POST_FINDINGS = `--post-findings` was passed.
     + No `--create-pr`: posting flags are no-ops (warn user if passed).
@@ -424,6 +425,15 @@ Determine PR/MR state:
 **Skip if POST_FINDINGS is false or `--no-post`/`--local` was passed.**
 
 0. **Resolve PROJECT_ID** (GitLab only): `glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" | jq -r '.id'`. If this fails, report "Error: Could not resolve GitLab project ID for '${REPO_SLUG}'. Inline comments will not be posted." and skip Phase 4b (Block B is still displayed in terminal).
+
+0b. **Fetch GitLab MR diff SHAs** (GitLab only): Retrieve the latest MR diff version to get the commit SHAs required for inline discussion threads:
+    ```bash
+    MR_VERSION=$(glab api "projects/${PROJECT_ID}/merge_requests/<N>/versions" | jq -r '.[0]')
+    base_sha=$(echo "$MR_VERSION" | jq -r '.base_commit_sha')
+    head_sha=$(echo "$MR_VERSION" | jq -r '.head_commit_sha')
+    start_sha=$(echo "$MR_VERSION" | jq -r '.start_commit_sha')
+    ```
+    If this call fails or any SHA is empty: report "Error: Could not fetch GitLab MR diff versions — inline comments cannot be posted." and fall back to posting Block B as a plain MR comment via `glab mr comment <N> --message "<Block B>"`. Skip steps 1–8.
 
 1. **Parse valid comment targets** from DIFF_FILE. For each hunk `@@ -a,b +c,d @@`, lines `c` through `c+d-1` are valid. Build lookup: `{file → set of valid lines}`.
 
