@@ -106,15 +106,15 @@ jobs:
           review-mode: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full' || 'quick' }}
           force-full-diff: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') && 'true' || 'false' }}
 
-  # Job 3: remove the ai-review-rescan label after the review completes.
+  # Job 3: always attempt to remove the ai-review-rescan label.
+  # Running unconditionally (on non-fork PRs) avoids the "Skipped" indicator
+  # in the PR checks panel on normal pushes. The gh api call returns 404 when
+  # the label is absent; || true swallows it so the step always succeeds.
   # needs: [prepare, review] with if: always() ensures this runs even when the
   # review job is cancelled (e.g. by the concurrency rule on a new push).
-  # The fork guard is required because if: always() bypasses needs-skipping
-  # and this job would otherwise run for fork PRs that have the label.
-  # The gh api call ignores 404 in case the label was manually removed first.
   cleanup-rescan-label:
     needs: [prepare, review]
-    if: always() && github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'ai-review-rescan')
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       issues: write
