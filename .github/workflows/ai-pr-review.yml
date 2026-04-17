@@ -1,0 +1,129 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+# Only run on PRs from this repo — forks cannot access secrets anyway, and this
+# prevents untrusted fork branches from triggering jobs with write permissions.
+# See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk-of-script-injections
+permissions:
+  pull-requests: write
+  contents: read
+  # issues: write is declared only on the cleanup-rescan-label job (least-privilege)
+
+concurrency:
+  group: ai-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: validate config and check out the repo (including the private submodule)
+  # using the PAT. Credentials are scrubbed before uploading the workspace artifact
+  # so the PAT does not travel to the review job via the artifact's .git/config.
+  prepare:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      # AI_REVIEW_API_KEY: required — the composite action has no sensible default.
+      # AI_PR_REVIEW_TOKEN: required — needed to clone the private submodule.
+      # AI_REVIEW_PROVIDER: validated defensively so the provider is explicit
+      #   rather than implicitly falling back to the action's 'anthropic' default.
+      # Other variables (AI_REVIEW_BASE_URL, AI_REVIEW_MODEL_STANDARD,
+      # AI_REVIEW_MODEL_PREMIUM) are intentionally optional — the composite action
+      # uses provider-appropriate defaults when they are empty.
+      - name: Validate required configuration
+        env:
+          AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          AI_PR_REVIEW_TOKEN: ${{ secrets.AI_PR_REVIEW_TOKEN }}
+          AI_REVIEW_PROVIDER: ${{ vars.AI_REVIEW_PROVIDER }}
+        run: |
+          missing=()
+          [ -z "$AI_REVIEW_API_KEY" ] && missing+=("secret AI_REVIEW_API_KEY")
+          [ -z "$AI_PR_REVIEW_TOKEN" ] && missing+=("secret AI_PR_REVIEW_TOKEN")
+          [ -z "$AI_REVIEW_PROVIDER" ] && missing+=("variable AI_REVIEW_PROVIDER")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ERROR: Missing required configuration: ${missing[*]}"
+            echo "See the README for setup instructions."
+            exit 1
+          fi
+
+      # AI_PR_REVIEW_TOKEN requires: repo scope (to clone the private submodule).
+      # If the submodule becomes public, GITHUB_TOKEN is sufficient instead.
+      # This token is scoped to this job only; credentials are scrubbed before
+      # the workspace is uploaded so the PAT does not reach the review job.
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          token: ${{ secrets.AI_PR_REVIEW_TOKEN }}
+          fetch-depth: 0
+
+      - name: Scrub git credentials before artifact upload
+        run: git config --unset-all http.https://github.com/.extraheader || true
+
+      - name: Upload workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace
+          path: .
+          include-hidden-files: true
+          retention-days: 1
+
+  # Job 2: run the composite action against the checked-out workspace.
+  # The workspace artifact has credentials scrubbed; this job does not run
+  # actions/checkout with the PAT so the repo-scoped PAT is never in this
+  # job's git config or accessible to the composite action.
+  review:
+    needs: prepare
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Download workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: workspace
+          path: .
+
+      # actions/upload-artifact strips file permissions. Restore execute bits
+      # on the composite action's shell scripts. Git hooks are NOT made
+      # executable — they are not needed for the review and enabling them
+      # would allow arbitrary code execution via a malicious hook in the PR.
+      - name: Restore executable bits
+        run: find .github/actions/ai-pr-review -name "*.sh" -exec chmod +x {} +
+
+      - name: Run AI PR Review
+        uses: ./.github/actions/ai-pr-review
+        with:
+          api-key: ${{ secrets.AI_REVIEW_API_KEY }}
+          provider: ${{ vars.AI_REVIEW_PROVIDER }}
+          base-url: ${{ vars.AI_REVIEW_BASE_URL }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          base-ref: ${{ github.base_ref }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+          pr-number: ${{ github.event.pull_request.number }}
+          model-standard: ${{ vars.AI_REVIEW_MODEL_STANDARD }}
+          model-premium: ${{ vars.AI_REVIEW_MODEL_PREMIUM }}
+          review-mode: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full' || 'quick' }}
+          force-full-diff: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') && 'true' || 'false' }}
+
+  # Job 3: always attempt to remove the ai-review-rescan label.
+  # Running unconditionally (on non-fork PRs) avoids the "Skipped" indicator
+  # in the PR checks panel on normal pushes. The gh api call returns 404 when
+  # the label is absent; || true swallows it so the step always succeeds.
+  # needs: [prepare, review] with if: always() ensures this runs even when the
+  # review job is cancelled (e.g. by the concurrency rule on a new push).
+  cleanup-rescan-label:
+    needs: [prepare, review]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Remove ai-review-rescan label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method DELETE \
+            repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/ai-review-rescan \
+            || true
