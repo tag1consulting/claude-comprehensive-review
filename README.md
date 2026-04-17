@@ -48,6 +48,7 @@ In short: pr-review-toolkit agents handle tactical code review. This skill orche
 | [gh CLI](https://cli.github.com/) | Required for GitHub / GitHub Enterprise |
 | [glab CLI](https://gitlab.com/gitlab-org/cli) | Required for GitLab |
 | `BITBUCKET_TOKEN` env var | Required for Bitbucket (`BITBUCKET_APP_PASSWORD` is auto-mapped if set) |
+| `jq` | Required for GitLab and Bitbucket (JSON parsing) |
 | `pr-review-toolkit@claude-plugins-official` | Required plugin — provides code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer |
 
 ## Provider support
@@ -222,7 +223,7 @@ Run from any git repository, on the branch you want to review:
 | Agent | Model | Purpose | When it runs | Context |
 |-------|-------|---------|--------------|---------|
 | **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams (opt-in), effort score | Always | Manifest + selective reads ² |
-| **code-reviewer** ¹ | Opus | Tactical bugs, style violations, project conventions | Always | Full diff |
+| **code-reviewer** ¹ | Sonnet | Tactical bugs, style violations, project conventions | Always | Full diff |
 | **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Full run only | Manifest + selective reads ² |
 | **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Full run only | Manifest + selective reads ² |
 | **silent-failure-hunter** ¹ | — | Silent failures, inadequate error handling | If diff has error-handling patterns | Relevant file slices |
