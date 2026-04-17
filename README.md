@@ -395,5 +395,5 @@ rm ~/.claude/agents/security-reviewer.md
 rm ~/.claude/agents/architecture-reviewer.md
 rm ~/.claude/agents/blind-hunter.md
 rm ~/.claude/agents/edge-case-hunter.md
-rm -rf ~/.claude/scripts/run-cve-check.sh
+rm -f ~/.claude/scripts/run-cve-check.sh
 ```
