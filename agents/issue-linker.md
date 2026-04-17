@@ -23,7 +23,9 @@ Note: The orchestrator skips this agent for `--quick`, `--pr`, and `--no-post`/`
 This step guards against non-GitHub providers and runtime GitHub access failures.
 
 Before doing any work:
-1. If the PROVIDER value in your task description is NOT `github`, or if no PROVIDER value is present, output exactly `NONE` and stop. Issue cross-referencing is only supported for GitHub repositories.
+1. If the PROVIDER value in your task description is explicitly set to a non-`github` value, output exactly `NONE` and stop.
+   If PROVIDER is absent or empty, fall back: run `git remote get-url origin 2>/dev/null` — if the URL does not contain `github.com`, output exactly `NONE` and stop.
+   Issue cross-referencing is only supported for GitHub repositories.
 2. Run `gh auth status 2>/dev/null` — if not authenticated (exit code non-zero), output exactly `NONE` and stop.
 
 ## Step 1: Parse Explicit Issue References
