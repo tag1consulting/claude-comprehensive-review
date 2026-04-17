@@ -186,12 +186,12 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
    project-context block (~500 tokens max). Also check subdirectories of changed files.
    If none exists: "No project-specific context available."
 
-5b. **Retrieve prior review history** (skip if MEM_AVAILABLE is false or `--quick` mode is active):
+5b. **Retrieve prior review history** (skip if MEM_AVAILABLE is false, or `--quick`, `--summary-only`, or `--security-only` mode is active):
    - Search for prior reviews of this project using the MCP tool:
      `mcp__plugin_claude-mem_mcp-search__search` with `query: "Review: <REPO_SLUG>"` and `limit: 5`.
      (REPO_SLUG is the `owner/repo` value from the pre-flight context.)
    - If the MCP tool fails: set PRIOR_REVIEW_CONTEXT to empty string and continue silently (no curl fallback).
-   - If results are returned, fetch full details via `mcp__plugin_claude-mem_mcp-search__get_observations`.
+   - If results are returned, fetch full details via `mcp__plugin_claude-mem_mcp-search__get_observations`, passing the `ids` field from each search result entry.
      If `get_observations` fails: use the title and timestamp fields from the search index entries directly.
    - Condense results into a PRIOR_REVIEW_CONTEXT block (~500 tokens max). When inferring recurring
      patterns, discount entries where `Mode: summary-only` or `Mode: security-only` — those may show
@@ -475,7 +475,7 @@ Determine PR/MR state:
 
 **Cleanup:** `rm -f` all temp diff/slice files. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`.
 
-**Store review summary to claude-mem** (skip if MEM_AVAILABLE is false):
+**Store review summary to claude-mem** (skip if MEM_AVAILABLE is false, or mode is `--summary-only` or `--security-only`):
 
 Compose a compact summary and POST it to the worker API. The summary text should be:
 ```
@@ -503,7 +503,7 @@ If the POST fails: silently continue. If it succeeds: note "Review summary store
 6. Critical/High findings → "⚠ Address Critical/High findings before requesting review."
 7. Agent failures → "⚠ Review incomplete — <N> agent(s) failed."
 8. No findings + no failures → "No significant issues found. Ready for review."
-9. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false or POST failed)
+9. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
 
 ## Notes
 
