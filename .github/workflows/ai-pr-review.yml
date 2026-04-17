@@ -4,13 +4,39 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
 
+# Only run on PRs from this repo — forks cannot access secrets anyway, and this
+# prevents untrusted fork branches from triggering jobs with write permissions.
+# See: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk-of-script-injections
 permissions:
   pull-requests: write
+  contents: read
+  issues: write  # required for label removal in post-review step
+
+concurrency:
+  group: ai-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   review:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      - name: Validate required configuration
+        env:
+          AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          AI_REVIEW_PROVIDER: ${{ vars.AI_REVIEW_PROVIDER }}
+        run: |
+          missing=()
+          [ -z "$AI_REVIEW_API_KEY" ] && missing+=("secret AI_REVIEW_API_KEY")
+          [ -z "$AI_REVIEW_PROVIDER" ] && missing+=("variable AI_REVIEW_PROVIDER")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ERROR: Missing required configuration: ${missing[*]}"
+            echo "See the README for setup instructions."
+            exit 1
+          fi
+
+      # AI_PR_REVIEW_TOKEN requires: repo (to clone the private submodule)
+      # If the submodule becomes public, GITHUB_TOKEN is sufficient instead.
       - name: Checkout with submodules
         uses: actions/checkout@v4
         with:
@@ -32,3 +58,12 @@ jobs:
           model-premium: ${{ vars.AI_REVIEW_MODEL_PREMIUM }}
           review-mode: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full' || 'quick' }}
           force-full-diff: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') && 'true' || 'false' }}
+
+      - name: Remove ai-review-rescan label
+        if: contains(github.event.pull_request.labels.*.name, 'ai-review-rescan')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method DELETE \
+            repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/ai-review-rescan
