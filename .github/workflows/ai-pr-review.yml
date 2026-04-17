@@ -10,17 +10,27 @@ on:
 permissions:
   pull-requests: write
   contents: read
-  issues: write  # required for label removal in post-review step
+  issues: write
 
 concurrency:
   group: ai-pr-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  review:
+  # Job 1: validate config and check out the repo (including the private submodule)
+  # using the PAT. The PAT is only ever present in this job's git config; subsequent
+  # jobs receive the workspace via artifact and do not inherit git credentials.
+  prepare:
     runs-on: ubuntu-latest
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      # Only AI_REVIEW_API_KEY and AI_REVIEW_PROVIDER are validated here.
+      # AI_REVIEW_API_KEY: required — the composite action has no sensible default.
+      # AI_REVIEW_PROVIDER: validated defensively so the provider is explicit
+      #   rather than implicitly falling back to the action's 'anthropic' default.
+      # Other variables (AI_REVIEW_BASE_URL, AI_REVIEW_MODEL_STANDARD,
+      # AI_REVIEW_MODEL_PREMIUM) are intentionally optional — the composite action
+      # uses provider-appropriate defaults when they are empty.
       - name: Validate required configuration
         env:
           AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
@@ -35,14 +45,42 @@ jobs:
             exit 1
           fi
 
-      # AI_PR_REVIEW_TOKEN requires: repo (to clone the private submodule)
+      # AI_PR_REVIEW_TOKEN requires: repo scope (to clone the private submodule).
       # If the submodule becomes public, GITHUB_TOKEN is sufficient instead.
+      # This token is scoped to this job only; the review job below does not
+      # use it and therefore does not have it in its git credential store.
       - name: Checkout with submodules
         uses: actions/checkout@v4
         with:
           submodules: true
           token: ${{ secrets.AI_PR_REVIEW_TOKEN }}
           fetch-depth: 0
+
+      - name: Upload workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace
+          path: .
+          include-hidden-files: true
+          retention-days: 1
+
+  # Job 2: run the composite action against the checked-out workspace.
+  # This job re-downloads the workspace from the artifact — it does NOT run
+  # actions/checkout with the PAT, so the repo-scoped PAT is not present in
+  # this job's git config and is not accessible to the composite action or
+  # any subprocesses it spawns.
+  review:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download workspace
+        uses: actions/download-artifact@v4
+        with:
+          name: workspace
+          path: .
+
+      - name: Restore git executable bits
+        run: chmod +x .git/hooks/* 2>/dev/null || true
 
       - name: Run AI PR Review
         uses: ./.github/actions/ai-pr-review
@@ -59,8 +97,18 @@ jobs:
           review-mode: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full' || 'quick' }}
           force-full-diff: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') && 'true' || 'false' }}
 
+  # Job 3: remove the ai-review-rescan label after the review completes.
+  # Uses if: always() so this runs even when the review job is cancelled
+  # (e.g. by a concurrent synchronize event triggering the concurrency rule),
+  # preventing force-full-diff from persisting to subsequent pushes.
+  cleanup-rescan-label:
+    needs: review
+    if: always() && contains(github.event.pull_request.labels.*.name, 'ai-review-rescan')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
       - name: Remove ai-review-rescan label
-        if: contains(github.event.pull_request.labels.*.name, 'ai-review-rescan')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
