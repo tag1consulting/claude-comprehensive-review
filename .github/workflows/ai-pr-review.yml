@@ -52,7 +52,7 @@ jobs:
       # This token is scoped to this job only; credentials are scrubbed before
       # the workspace is uploaded so the PAT does not reach the review job.
       - name: Checkout with submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: true
           token: ${{ secrets.AI_PR_REVIEW_TOKEN }}
