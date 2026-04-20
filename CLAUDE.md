@@ -18,7 +18,7 @@ This copies files from the local working tree into `~/.claude/` without fetching
 
 The skill and agents are entirely Claude Code markdown files. Understanding how they fit together:
 
-### Two-tier agent model
+### Analysis components
 
 The skill coordinates two groups of agents:
 
@@ -37,7 +37,7 @@ The skill coordinates two groups of agents:
    - These are not in this repo and must not be duplicated here
 
 3. **Deterministic checks** (non-agent, in `scripts/`):
-   - `run-cve-check.sh` — queries OSV.dev for known CVEs in changed dependency manifests (`go.mod`, `package.json`, `requirements.txt`, `composer.json`). Runs in Phase 1b (after agents are launched, before Phase 2 normalization). Emits `{ severity, agent, file, line, finding, remediation }` tuples (same shape as agent findings) with `agent: "dependency-check"`. Runs in both full and `--quick` mode when manifest files are present.
+   - `run-cve-check.sh` — queries OSV.dev for known vulnerabilities in changed dependency manifests (`go.mod`, `package.json`, `requirements.txt`, `composer.json`). Runs in Phase 1b (after agents are launched, before Phase 2 normalization). Emits `{ severity, agent, file, line, finding, remediation }` tuples (same shape as agent findings) with `agent: "dependency-check"`. Runs in both full and `--quick` mode when manifest files are present.
 
 ### Token-efficient context passing
 
@@ -89,7 +89,7 @@ Each agent uses its own severity scale. The skill's `SKILL.md` defines a normali
 
 ### Agent tiers
 
-Agents are divided into three tiers:
+Agents are divided into four tiers:
 
 1. **Always-run:** pr-summarizer, code-reviewer — run in every mode including `--quick`
 2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker (also skipped with `--pr`, `--no-post`/`--local`, and on non-GitHub repos)

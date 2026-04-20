@@ -204,6 +204,7 @@ done
 # ---------------------------------------------------------------------------
 
 mkdir -p "$CLAUDE_DIR/scripts"
+# shellcheck disable=SC2043  # single item now; loop for future scripts
 for script in run-cve-check.sh; do
   dest="$CLAUDE_DIR/scripts/${script}"
   if [[ -f "$dest" ]]; then
