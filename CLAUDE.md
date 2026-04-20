@@ -18,7 +18,7 @@ This copies files from the local working tree into `~/.claude/` without fetching
 
 The skill and agents are entirely Claude Code markdown files. Understanding how they fit together:
 
-### Two-tier agent model
+### Analysis components
 
 The skill coordinates two groups of agents:
 
@@ -35,6 +35,9 @@ The skill coordinates two groups of agents:
 2. **pr-review-toolkit agents** — external dependency, installed separately via `/plugins install pr-review-toolkit@claude-plugins-official`:
    - `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer`
    - These are not in this repo and must not be duplicated here
+
+3. **Deterministic checks** (non-agent, in `scripts/`):
+   - `run-cve-check.sh` — queries OSV.dev for known vulnerabilities in changed dependency manifests (`go.mod`, `package.json`, `requirements.txt`, `composer.json`). Runs in Phase 1b (after agents are launched, before Phase 2 normalization). Emits `{ severity, agent, file, line, finding, remediation }` tuples (same shape as agent findings) with `agent: "dependency-check"`. Runs in both full and `--quick` mode when manifest files are present.
 
 ### Token-efficient context passing
 
@@ -86,11 +89,12 @@ Each agent uses its own severity scale. The skill's `SKILL.md` defines a normali
 
 ### Agent tiers
 
-Agents are divided into three tiers:
+Agents are divided into four tiers:
 
 1. **Always-run:** pr-summarizer, code-reviewer — run in every mode including `--quick`
 2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker (also skipped with `--pr`, `--no-post`/`--local`, and on non-GitHub repos)
 3. **Conditional (run in both full and `--quick` when triggered by diff content):** silent-failure-hunter (error patterns), pr-test-analyzer (test files)
+4. **Deterministic (non-agent, conditional on manifest files):** `dependency-check` via `scripts/run-cve-check.sh` — runs in both full and `--quick` when `go.mod`, `package.json`, `requirements.txt`, or `composer.json` appear in the diff
 
 The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~75% while preserving the core code review and error/test analysis.
 
@@ -160,6 +164,7 @@ agents/security-reviewer.md            ← security analysis
 agents/architecture-reviewer.md        ← architectural analysis
 agents/blind-hunter.md                 ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
 agents/edge-case-hunter.md             ← boundary-condition path tracing (adapted from BMAD-METHOD)
+scripts/run-cve-check.sh               ← deterministic CVE check via OSV.dev (Phase 1b)
 install.sh                             ← legacy file-copy installer (recommends plugin install)
 ```
 
@@ -174,3 +179,4 @@ install.sh                             ← legacy file-copy installer (recommend
 - **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
 - When modifying provider-specific behavior, update the Provider Operations Reference block, all three provider branches (github/gitlab/bitbucket) within Phases 0, 4, and 4b, and the provider support matrix in README.md.
 - **BMAD attribution**: `blind-hunter` and `edge-case-hunter` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in both agent files and in README.md. Do not remove attribution when editing these agents.
+- **`scripts/run-cve-check.sh`** implements the CVE check invoked in Phase 1b. CVSS parsing, OSV schema handling, and severity mapping all live in this script. If the OSV API response shape or CVSS vector format changes, update this file. The `OSV_MOCK_FILE` env var is for offline testing only; never set it in production.

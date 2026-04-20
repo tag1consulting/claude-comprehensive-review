@@ -170,6 +170,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 4. **Build the file manifest** from `git diff --stat <base>...HEAD -- ':!*lock.json' ':!*lock.yaml' ':!*.lock' ':!*.sum' ':!vendor/*' ':!node_modules/*'`:
    Lockfiles, vendor directories, and checksum files are excluded — the full DIFF_FILE still includes them.
    - Detect languages from extensions; categorize files as **Source**, **Tests**, **Config**, **Docs**, or **Dependency**
+   - Also collect `MANIFEST_FILES` — the subset of changed files named `go.mod`, `package.json`, `requirements.txt`, or `composer.json`. Use `git diff --name-only <base>...HEAD` (no exclusions) and filter by basename. Store as a newline-separated list for Phase 1b.
    - Format:
      ```
      BASE: <base>  |  LANGUAGES: Go, TypeScript  |  FILES: <N>  |  LINES: +<added>/-<removed>
@@ -242,8 +243,8 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 | Flag | Agents that run |
 |------|-----------------|
-| (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) |
-| `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer |
+| (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) + CVE check if manifest files changed |
+| `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer + CVE check if manifest files changed |
 | `--no-post` / `--local` | Same as default but skips issue-linker; all Phase 4 GitHub operations suppressed |
 | `--security-only` | security-reviewer only |
 | `--summary-only` | pr-summarizer only |
@@ -263,6 +264,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet |
 | type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet |
 | issue-linker | `issue-linker` | haiku |
+| dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a |
 
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
@@ -301,6 +303,33 @@ grep -l -E 'catch\b|if err|try \{|rescue\b|Result<|unwrap|\.error\(|\.expect\(|r
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 
+### Phase 1b: Deterministic Checks
+
+Run after all Phase 1 agents are launched (they run in parallel; this runs in the foreground while awaiting agent results).
+
+**CVE / dependency vulnerability check** — run when `MANIFEST_FILES` is non-empty (skip if `--summary-only` or `--security-only` mode; run in all other modes including `--quick`):
+
+```bash
+CVE_SCRIPT="${CLAUDE_DIR:-$HOME/.claude}/scripts/run-cve-check.sh"
+CVE_JSON="[]"
+if [[ -x "$CVE_SCRIPT" ]]; then
+  CVE_JSON=$(bash "$CVE_SCRIPT" <<<"$MANIFEST_FILES") || {
+    echo "WARNING: run-cve-check.sh failed; CVE findings will be skipped." >&2
+    CVE_JSON="[]"
+  }
+else
+  echo "WARNING: scripts/run-cve-check.sh not found; CVE check skipped. Re-run install to add it." >&2
+fi
+```
+
+`CLAUDE_DIR` defaults to `$HOME/.claude` (the standard Claude Code config directory). The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency, and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`.
+
+- Capture `CVE_JSON` from stdout; on any non-zero exit, set to `[]` and emit a warning to stderr.
+- Network failures are non-blocking: the script returns `[]` and logs to stderr.
+- `--no-post`/`--local` does **not** skip the CVE check; it only gates posting.
+
+After all Phase 1 agents complete and Phase 1b finishes, proceed to Phase 2.
+
 ### Phase 2: Collect and Normalize Results
 
 Wait for all agents. Check each output:
@@ -320,8 +349,11 @@ Wait for all agents. Check each output:
 | type-design-analyzer | rating [1,2] / [3,5] / [6,10] | High / Medium / Low |
 | architecture-reviewer, security-reviewer | Critical/High/Medium | pass through (Medium+ only) |
 | blind-hunter, edge-case-hunter | Critical/High/Medium/Low | pass through |
+| dependency-check | Critical/High/Medium/Low | pass through (identity mapping) |
 
-**Deduplicate:** same `file:line` from two agents → keep highest severity, note "(also flagged by [agent2])". Same file without line → deduplicate by file + category.
+Also merge CVE findings from Phase 1b: if `CVE_JSON` is non-empty, add its entries to the normalized findings list before deduplication.
+
+**Deduplicate:** same `file:line` from two agents → keep highest severity, note "(also flagged by [agent2])". When a `dependency-check` finding and an LLM agent finding share the same `file:line`, prefer the `dependency-check` entry (it carries the authoritative CVE/GHSA ID) and append "(also flagged by [agent])". Same file without line → deduplicate by file + category.
 
 **Collect as structured data:** `{ severity, agent, file, line, finding, remediation }` per finding. Used for Block B rendering and Phase 4b inline comments.
 
