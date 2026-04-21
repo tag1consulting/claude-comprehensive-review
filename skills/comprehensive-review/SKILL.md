@@ -42,7 +42,7 @@ Supported flags:
 - `--no-post` / `--local` — display everything locally, skip all remote operations
 - `--pr <number>` — review an existing PR/MR by number (external review mode)
 - `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
-- `--depth <normal|deep>` — agent-depth promotion: `deep` runs blind-hunter and edge-case-hunter on Opus 4.7 (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
+- `--depth <normal|deep>` — agent-depth promotion: `deep` promotes blind-hunter and edge-case-hunter to the `opus` alias (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
 - `--no-mem` — disable claude-mem integration even if claude-mem is detected
 - `--help` — show this usage
 

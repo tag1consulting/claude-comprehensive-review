@@ -28,7 +28,7 @@ The skill coordinates two groups of agents:
    - `security-reviewer` — OWASP-class security analysis (runs Opus)
    - `architecture-reviewer` — design pattern and coupling analysis (runs Opus)
 
-   Both Opus agents use the `opus` alias; the harness resolves this to the current Opus model (Opus 4.7 as of this writing).
+   Both Opus agents use the `opus` alias; the harness resolves this to the current Opus model at spawn time. The spawn indicator shown by Claude Code when each subagent launches displays the resolved version.
    - `blind-hunter` — context-free "fresh eyes" review; receives only the raw diff (small diffs), a plain file list (large diffs in normal mode), or the full diff from the worktree (large diffs in `--pr` mode) — no project context in any case (runs Sonnet). Adapted from BMAD-METHOD.
    - `edge-case-hunter` — mechanical boundary-condition path tracing (runs Sonnet). Adapted from BMAD-METHOD.
 
@@ -98,7 +98,7 @@ Agents are divided into four tiers:
 
 The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by roughly 60–80% while preserving the core code review and error/test analysis.
 
-The `--depth deep` flag promotes blind-hunter and edge-case-hunter to Opus 4.7, enables extended step-by-step reasoning for architecture-reviewer and security-reviewer, and adds a Phase 1c CVE reachability triage pass that annotates each CVE finding with `reachability: reachable|dev-only|transitive-only|unknown`. Defaults are unchanged when `--depth` is omitted.
+The `--depth deep` flag promotes blind-hunter and edge-case-hunter to the `opus` alias (same as security-reviewer and architecture-reviewer), enables extended step-by-step reasoning for architecture-reviewer and security-reviewer, and adds a Phase 1c CVE reachability triage pass that annotates each CVE finding with `reachability: reachable|dev-only|transitive-only|unknown`. Defaults are unchanged when `--depth` is omitted.
 
 ### claude-mem integration (optional)
 

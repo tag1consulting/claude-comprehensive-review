@@ -158,7 +158,7 @@ Run from any git repository, on the branch you want to review:
 | `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. Roughly 60–80% cheaper depending on diff composition. |
 | `--diagrams` | Include Mermaid sequence diagrams in Block A. Default is omitted (saves hundreds of output tokens). Always omitted in `--quick`. |
 | `--security-only` | Run security-reviewer + CVE check on changed dependency manifests only |
-| `--depth <tier>` | Agent depth: `normal` (default) or `deep`. In `deep` mode, blind-hunter and edge-case-hunter run on Opus 4.7, Opus agents use extended step-by-step reasoning, and a CVE reachability triage pass annotates which vulnerabilities are reachable in the diff. |
+| `--depth <tier>` | Agent depth: `normal` (default) or `deep`. In `deep` mode, blind-hunter and edge-case-hunter run on the `opus` alias, Opus agents use extended step-by-step reasoning, and a CVE reachability triage pass annotates which vulnerabilities are reachable in the diff. |
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--create-pr` | Create a PR using Block A as the description. Without this flag, no PR is created. |
 | `--post-summary` | Post Block A (summary) as a comment on an existing PR/MR |
@@ -203,7 +203,7 @@ Run from any git repository, on the branch you want to review:
 # Security scan only (includes CVE check on changed dependency manifests)
 /comprehensive-review --security-only --local
 
-# Deep review — Opus 4.7 for all agents + extended reasoning + CVE reachability triage
+# Deep review — Opus for all agents + extended reasoning + CVE reachability triage
 /comprehensive-review --depth deep
 ```
 
@@ -227,7 +227,7 @@ Run from any git repository, on the branch you want to review:
 
 ## Agent roster
 
-Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model (Opus 4.7 as of this release). In `--depth deep` mode, `blind-hunter` and `edge-case-hunter` also run on Opus 4.7.
+Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model at spawn time. In `--depth deep` mode, `blind-hunter` and `edge-case-hunter` also resolve to the `opus` alias. The spawn indicator shown by Claude Code displays the resolved version for each subagent.
 
 ### Full run
 

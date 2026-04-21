@@ -24,7 +24,7 @@ Flags
   --pr <number>      Review an existing PR/MR by number (external review mode;
                      use --pr for all providers, including GitLab MRs)
   --depth <tier>     Agent depth: normal (default) or deep.
-                     deep: blind-hunter and edge-case-hunter run on Opus 4.7,
+                     deep: blind-hunter and edge-case-hunter run on Opus,
                      Opus agents use extended step-by-step reasoning, and a
                      CVE reachability triage pass annotates which vulns are
                      actually reachable in the diff.
