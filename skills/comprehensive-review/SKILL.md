@@ -31,9 +31,9 @@ Run a full CodeRabbit-style review of all changes on the current branch (or a sp
 
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~75% cheaper)
+- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (roughly 60–80% cheaper depending on diff composition)
 - `--diagrams` — include Mermaid sequence diagrams in Block A (default: omitted; always omitted in `--quick`)
-- `--security-only` — run security-reviewer only
+- `--security-only` — run security-reviewer + CVE check (on changed dependency manifests) only
 - `--summary-only` — run pr-summarizer only
 - `--create-pr` — create a PR using Block A as the description (without this flag, no PR is created)
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR/MR
@@ -42,6 +42,7 @@ Supported flags:
 - `--no-post` / `--local` — display everything locally, skip all remote operations
 - `--pr <number>` — review an existing PR/MR by number (external review mode)
 - `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
+- `--depth <normal|deep>` — agent-depth promotion: `deep` runs blind-hunter and edge-case-hunter on Opus 4.7 (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
 - `--no-mem` — disable claude-mem integration even if claude-mem is detected
 - `--help` — show this usage
 
@@ -85,6 +86,8 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
 Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only used when PROVIDER=github. For other providers, all operations use CLI tools (glab, curl) via Bash.
 
 ### Provider Operations Reference
+
+> **Skip this entire section** if `--no-post` or `--local` was passed — no provider operations will fire in that mode.
 
 The following operations are referenced by name throughout Phases 0, 4, and 4b. Use the command corresponding to the detected PROVIDER.
 
@@ -136,6 +139,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
    - Note mode flags: `--quick`, `--diagrams`, `--security-only`, `--summary-only`, `--create-pr`,
      `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--no-mem`
+   - Extract `--depth <normal|deep>` if present; default DEPTH=`normal`. If value is not one of `{normal, deep}`, report "Error: Invalid --depth value '<value>'. Valid values are: normal, deep." and stop.
    - **Flag conflict checks:**
      - If both `--post-findings` and `--no-findings` are present, report
        "Error: --post-findings and --no-findings are mutually exclusive." and stop.
@@ -170,7 +174,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 4. **Build the file manifest** from `git diff --stat <base>...HEAD -- ':!*lock.json' ':!*lock.yaml' ':!*.lock' ':!*.sum' ':!vendor/*' ':!node_modules/*'`:
    Lockfiles, vendor directories, and checksum files are excluded — the full DIFF_FILE still includes them.
    - Detect languages from extensions; categorize files as **Source**, **Tests**, **Config**, **Docs**, or **Dependency**
-   - Also collect `MANIFEST_FILES` — the subset of changed files named `go.mod`, `package.json`, `requirements.txt`, or `composer.json`. Use `git diff --name-only <base>...HEAD` (no exclusions) and filter by basename. Store as a newline-separated list for Phase 1b.
+   - Also collect `MANIFEST_FILES` — the subset of changed files named `go.mod`, `package.json`, `requirements*.txt` (any requirements file), or `composer.json`. Use `git diff --name-only <base>...HEAD` (no exclusions) and filter by basename. Store as a newline-separated list for Phase 1b.
    - Format:
      ```
      BASE: <base>  |  LANGUAGES: Go, TypeScript  |  FILES: <N>  |  LINES: +<added>/-<removed>
@@ -183,9 +187,12 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
      ```
      Omit empty categories. Binary/generated files go under **Other**.
 
-5. **Read project context** — if CLAUDE.md exists in the repo root, extract a condensed
-   project-context block (~500 tokens max). Also check subdirectories of changed files.
-   If none exists: "No project-specific context available."
+5. **Read project context and prior review history concurrently** — run steps 5a and 5b in parallel (single tool-call batch):
+
+5a. **Read project context** — if CLAUDE.md exists in the repo root, extract a condensed
+   project-context block (~500 tokens max). Also check up to 5 distinct ancestor directories
+   of changed files for a CLAUDE.md (stop at repo root); concatenate matches up to the
+   ~500-token cap. If none exists: "No project-specific context available."
 
 5b. **Retrieve prior review history** (skip if MEM_AVAILABLE is false, or `--quick`, `--summary-only`, or `--security-only` mode is active):
    - Search for prior reviews of this project using the MCP tool:
@@ -246,59 +253,72 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) + CVE check if manifest files changed |
 | `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer + CVE check if manifest files changed |
 | `--no-post` / `--local` | Same as default but skips issue-linker; all Phase 4 GitHub operations suppressed |
-| `--security-only` | security-reviewer only |
+| `--security-only` | security-reviewer + CVE check (if manifest files changed) |
 | `--summary-only` | pr-summarizer only |
 
-**Model assignments** — always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool to prevent inheritance of the orchestrator's model and to avoid incorrect plugin-namespace inference:
+**Model assignments** — the table below is the source of truth. Always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool. If this table disagrees with an agent's frontmatter `model:` field, this table wins — the frontmatter is a standalone default for agents running outside this skill.
 
-| Agent | subagent_type | Model |
-|-------|--------------|-------|
-| pr-summarizer | `pr-summarizer` | sonnet |
-| code-reviewer | `pr-review-toolkit:code-reviewer` | sonnet |
-| architecture-reviewer | `architecture-reviewer` | opus |
-| security-reviewer | `security-reviewer` | opus |
-| blind-hunter | `blind-hunter` | sonnet |
-| edge-case-hunter | `edge-case-hunter` | sonnet |
-| silent-failure-hunter | `pr-review-toolkit:silent-failure-hunter` | sonnet |
-| pr-test-analyzer | `pr-review-toolkit:pr-test-analyzer` | sonnet |
-| comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet |
-| type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet |
-| issue-linker | `issue-linker` | haiku |
-| dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a |
+| Agent | subagent_type | Model (depth=normal) | Model (depth=deep) |
+|-------|--------------|----------------------|---------------------|
+| pr-summarizer | `pr-summarizer` | sonnet | sonnet |
+| code-reviewer | `pr-review-toolkit:code-reviewer` | sonnet | sonnet |
+| architecture-reviewer | `architecture-reviewer` | opus | opus |
+| security-reviewer | `security-reviewer` | opus | opus |
+| blind-hunter | `blind-hunter` | sonnet | **opus** |
+| edge-case-hunter | `edge-case-hunter` | sonnet | **opus** |
+| silent-failure-hunter | `pr-review-toolkit:silent-failure-hunter` | sonnet | sonnet |
+| pr-test-analyzer | `pr-review-toolkit:pr-test-analyzer` | sonnet | sonnet |
+| comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet | sonnet |
+| type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet | sonnet |
+| issue-linker | `issue-linker` | haiku | haiku |
+| dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
+
+**Agent task-description directive protocol** — Agents key off `KEY=value` strings embedded in their task description to enable optional behaviors. This is the authoritative registry:
+
+| Directive | Value | Consumed by | Default when absent |
+|-----------|-------|-------------|---------------------|
+| `DIAGRAMS` | `true` / `false` | pr-summarizer | `false` (omit diagrams) |
+| `EXTENDED_THINKING` | `true` | architecture-reviewer, security-reviewer | not set (standard reasoning) |
+
+Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
 
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
 - **pr-summarizer** (subagent_type: `pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
-  Unless `--diagrams` is passed (and not `--quick`): add "Omit the Sequence Diagrams section entirely."
+  If `--diagrams` was passed (and not `--quick`): include `DIAGRAMS=true` in the task description. Otherwise: include `DIAGRAMS=false`.
 - **code-reviewer** (subagent_type: `pr-review-toolkit:code-reviewer`, model: sonnet) — always pass the full diff.
 
 **Full-run-only agents** (skipped with `--quick`):
 
 - **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
+  If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
 - **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, commit log, detected languages, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
-- **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
+  If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
+- **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
-- **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Has full codebase read access for surrounding context.
 
 **Conditional agents — run in both full and `--quick` when triggered:**
 
-Detect triggers via grep on the temp diff file — do NOT read it into the conversation. Use `grep -qE` with a pattern file or a combined regex. **Important:** when the diff includes SKILL.md itself, exclude SKILL.md from the trigger check to avoid false positives (this grep command string contains the patterns it searches for):
+Detect triggers via boolean grep on the aggregate diff file — do NOT read it into the conversation. Use `grep -qE` as a boolean gate. **Important:** when the diff includes SKILL.md itself, exclude SKILL.md from the trigger check to avoid false positives (this grep command string contains the patterns it searches for):
 ```bash
-grep -l -E 'catch\b|if err|try \{|rescue\b|Result<|unwrap|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE"
+grep -qE 'catch\b|if err|try \{|rescue\b|Result<|unwrap|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE"
 ```
 
-- **silent-failure-hunter** (subagent_type: `pr-review-toolkit:silent-failure-hunter`, model: sonnet) — trigger: error handling patterns in **non-SKILL.md files** (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). When SKILL.md is the only file in the diff matching these patterns, do NOT trigger — the match is a false positive from the grep command definition above. Pass only matching files' diff.
-- **pr-test-analyzer** (subagent_type: `pr-review-toolkit:pr-test-analyzer`, model: sonnet) — trigger: test files (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.ts`, `spec/`, `__tests__/`). Pass test files + source counterparts.
+The grep checks the aggregate diff as a boolean — if it matches anywhere, the agent is triggered and receives the **full diff** (not just matching files, because the diff is one concatenated file and per-file filtering would require more expensive hunk parsing). When SKILL.md is the only file in the diff matching these patterns, do NOT trigger — the match is a false positive from the grep command definition above.
+
+- **silent-failure-hunter** (subagent_type: `pr-review-toolkit:silent-failure-hunter`, model: sonnet) — trigger: error handling patterns in the diff (`catch`, `if err`, `try {`, `rescue`, `Result<`, `unwrap`, etc.). Pass the full diff when triggered.
+- **pr-test-analyzer** (subagent_type: `pr-review-toolkit:pr-test-analyzer`, model: sonnet) — trigger: test files in the diff (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.ts`, `spec/`, `__tests__/`). Pass the full diff when triggered.
 
 **Conditional agents — full-run only** (skip in `--quick` and when not triggered):
 
-- **comment-analyzer** (subagent_type: `pr-review-toolkit:comment-analyzer`, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`). Pass matching files' diff.
-- **type-design-analyzer** (subagent_type: `pr-review-toolkit:type-design-analyzer`, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `). Pass matching files' diff.
+- **comment-analyzer** (subagent_type: `pr-review-toolkit:comment-analyzer`, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`) present in the diff. Pass the full diff when triggered.
+- **type-design-analyzer** (subagent_type: `pr-review-toolkit:type-design-analyzer`, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `) in the diff. Pass the full diff when triggered.
 - **issue-linker** (subagent_type: `issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick`, `--pr`, and `--no-post`/`--local` modes. Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
@@ -307,7 +327,7 @@ Track skipped agents and reasons for Phase 5. Launch all applicable agents simul
 
 Run after all Phase 1 agents are launched (they run in parallel; this runs in the foreground while awaiting agent results).
 
-**CVE / dependency vulnerability check** — run when `MANIFEST_FILES` is non-empty (skip if `--summary-only` or `--security-only` mode; run in all other modes including `--quick`):
+**CVE / dependency vulnerability check** — run when `MANIFEST_FILES` is non-empty (skip only if `--summary-only` mode; run in all other modes including `--quick` and `--security-only`):
 
 ```bash
 CVE_SCRIPT="${CLAUDE_DIR:-$HOME/.claude}/scripts/run-cve-check.sh"
@@ -322,13 +342,27 @@ else
 fi
 ```
 
-`CLAUDE_DIR` defaults to `$HOME/.claude` (the standard Claude Code config directory). The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency, and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`.
+`CLAUDE_DIR` defaults to `$HOME/.claude` (the standard Claude Code config directory). The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency via a single `/v1/querybatch` POST (not one call per package), and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`. Each finding text includes the CVSS score (e.g., `[CVSS 9.8]`) or version prefix (e.g., `[CVSS:4.0]`) when the score cannot be computed. CVSS v4.0 and v2 vectors map to High conservatively rather than silently defaulting to Medium.
 
 - Capture `CVE_JSON` from stdout; on any non-zero exit, set to `[]` and emit a warning to stderr.
 - Network failures are non-blocking: the script returns `[]` and logs to stderr.
 - `--no-post`/`--local` does **not** skip the CVE check; it only gates posting.
 
-After all Phase 1 agents complete and Phase 1b finishes, proceed to Phase 2.
+After all Phase 1 agents complete and Phase 1b finishes, run Phase 1c if applicable.
+
+### Phase 1c: CVE Reachability Triage (depth=deep only)
+
+**Skip Phase 1c** unless ALL of:
+- `--depth deep` was passed
+- `CVE_JSON` is non-empty (Phase 1b found vulnerabilities)
+
+When running: launch a single Opus agent (subagent_type: `security-reviewer`, model: `opus`) to annotate each CVE finding with a `reachability` tag without dropping or modifying any findings. Pass `CVE_JSON` and the diff of the changed manifest files. Task description:
+
+> "You are a dependency security analyst. For each CVE finding in the JSON array below, determine whether the vulnerable package is actually reachable in this diff — i.e., is it used directly in changed code, or is it only a dev dependency, or is it a transitive dependency with no import visible in the diff? Return the same JSON array with one additional field per entry: `reachability` (string, one of: `reachable` | `dev-only` | `transitive-only` | `unknown`). Never drop findings. Never change any existing field. Only add the `reachability` field."
+
+**Output validation:** After the agent returns, verify: (a) the output is a valid JSON array, (b) its length equals the input `CVE_JSON` length, (c) no existing field (`severity`, `agent`, `file`, `line`, `finding`, `remediation`) was modified. Use `jq` to diff the fields. If any check fails, discard the annotated output and use the original `CVE_JSON` unchanged — log "WARNING: Phase 1c output failed validation; using unannotated CVE_JSON." On Opus agent failure, also fall back to original `CVE_JSON`.
+
+Annotate findings in Phase 3 Block B: prefix `reachable` findings with `[REACHABLE]` (the most actionable signal); suffix `dev-only` with `(dev dependency)` and `transitive-only` with `(transitive)`. Leave `unknown` unannotated. This ensures the most important signal — confirmed reachability — is the most visible.
 
 ### Phase 2: Collect and Normalize Results
 
@@ -342,18 +376,19 @@ Wait for all agents. Check each output:
 
 | Agent | Their Scale | Maps To |
 |-------|-------------|---------|
-| code-reviewer | confidence [91,100] / [80,90] / [0,79] | Critical / High / Medium |
+| code-reviewer | confidence [91,100] / [80,90] / [60,79] / [0,59] | Critical / High / Medium / Low |
 | silent-failure-hunter | CRITICAL/HIGH/MEDIUM | pass through |
 | comment-analyzer | Critical/High/Medium/Low | pass through |
 | pr-test-analyzer | gap [8,10] / [5,7] / [3,4] / [1,2] | Critical / High / Medium / Low |
 | type-design-analyzer | rating [1,2] / [3,5] / [6,10] | High / Medium / Low |
 | architecture-reviewer, security-reviewer | Critical/High/Medium | pass through (Medium+ only) |
 | blind-hunter, edge-case-hunter | Critical/High/Medium/Low | pass through |
-| dependency-check | Critical/High/Medium/Low | pass through (identity mapping) |
+| dependency-check (parsed CVSS) | Critical/High/Medium/Low | pass through (identity mapping) |
+| dependency-check (CVSS unparsed / v4 / v2) | High | maps to High (conservative) |
 
 Also merge CVE findings from Phase 1b: if `CVE_JSON` is non-empty, add its entries to the normalized findings list before deduplication.
 
-**Deduplicate:** same `file:line` from two agents → keep highest severity, note "(also flagged by [agent2])". When a `dependency-check` finding and an LLM agent finding share the same `file:line`, prefer the `dependency-check` entry (it carries the authoritative CVE/GHSA ID) and append "(also flagged by [agent])". Same file without line → deduplicate by file + category.
+**Deduplicate:** same `file:line` from two agents → keep highest severity, note "(also flagged by [agent2])". When a `dependency-check` finding and an LLM agent finding share the same `file:line`, prefer the `dependency-check` entry (it carries the authoritative CVE/GHSA ID) and append "(also flagged by [agent])". Same file without line → deduplicate by file + category (category = the bracketed label at the start of each finding, e.g. `[secrets]`, `[injection]`, `[empty-collection]`, or `dependency-check` for CVE findings; normalize to a lowercased token before comparing).
 
 **Collect as structured data:** `{ severity, agent, file, line, finding, remediation }` per finding. Used for Block B rendering and Phase 4b inline comments.
 

@@ -155,9 +155,10 @@ Run from any git repository, on the branch you want to review:
 | Flag | Effect |
 |------|--------|
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
-| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. ~75% cheaper. |
+| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. Roughly 60–80% cheaper depending on diff composition. |
 | `--diagrams` | Include Mermaid sequence diagrams in Block A. Default is omitted (saves hundreds of output tokens). Always omitted in `--quick`. |
-| `--security-only` | Run only the security-reviewer agent |
+| `--security-only` | Run security-reviewer + CVE check on changed dependency manifests only |
+| `--depth <tier>` | Agent depth: `normal` (default) or `deep`. In `deep` mode, blind-hunter and edge-case-hunter run on Opus 4.7, Opus agents use extended step-by-step reasoning, and a CVE reachability triage pass annotates which vulnerabilities are reachable in the diff. |
 | `--summary-only` | Run only the pr-summarizer agent |
 | `--create-pr` | Create a PR using Block A as the description. Without this flag, no PR is created. |
 | `--post-summary` | Post Block A (summary) as a comment on an existing PR/MR |
@@ -178,7 +179,7 @@ Run from any git repository, on the branch you want to review:
 # Review and create a PR with the summary as its description
 /comprehensive-review --create-pr
 
-# Fast review — ~75% cheaper, skips security and architecture agents
+# Fast review — roughly 60–80% cheaper, skips security and architecture agents
 /comprehensive-review --quick --local
 
 # Review your own open PR and share findings with co-reviewers
@@ -199,8 +200,11 @@ Run from any git repository, on the branch you want to review:
 # Review against a non-default base
 /comprehensive-review --base develop
 
-# Security scan only
+# Security scan only (includes CVE check on changed dependency manifests)
 /comprehensive-review --security-only --local
+
+# Deep review — Opus 4.7 for all agents + extended reasoning + CVE reachability triage
+/comprehensive-review --depth deep
 ```
 
 ## Posting behavior
@@ -223,7 +227,7 @@ Run from any git repository, on the branch you want to review:
 
 ## Agent roster
 
-Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model.
+Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model (Opus 4.7 as of this release). In `--depth deep` mode, `blind-hunter` and `edge-case-hunter` also run on Opus 4.7.
 
 ### Full run
 
@@ -247,7 +251,7 @@ In addition to LLM agents, the skill runs a deterministic CVE check when depende
 
 | Check | Trigger | Runs in `--quick`? |
 |-------|---------|-------------------|
-| **dependency-check** — queries [OSV.dev](https://osv.dev/) for known vulnerabilities in declared dependency versions | `go.mod`, `package.json`, `requirements.txt`, or `composer.json` changed | Yes |
+| **dependency-check** — queries [OSV.dev](https://osv.dev/) for known vulnerabilities in declared dependency versions | `go.mod`, `package.json`, `requirements*.txt`, or `composer.json` changed | Yes |
 
 No API key required. Network failures are non-blocking (returns empty, warns to stderr). Findings appear in Block B as `[dependency-check]` entries.
 
@@ -327,7 +331,7 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **Medium/large diffs (300+ lines):** Custom agents receive a structured file manifest and read specific files on demand. Toolkit agents receive only the diff slices relevant to their specialty.
 - **Pre-flight context sharing:** The orchestrator reads CLAUDE.md and the commit log once in Phase 0 and passes condensed versions to agents, eliminating redundant reads.
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
-- **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Reduces cost by ~75% vs. full run (measured: ~79K agent tokens for --quick vs ~317K for a full run on a documentation PR; code-heavy PRs with deeper Opus analysis yield higher savings).
+- **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Roughly 60–80% cheaper vs. full run depending on diff composition (measured: ~79K agent tokens for --quick vs ~317K for a full run on a documentation PR; code-heavy PRs with deeper Opus analysis yield higher savings).
 - **blind-hunter cost:** Particularly cheap — it receives only the raw diff or plain file list, with no project context passed at all.
 
 ## claude-mem integration (optional)

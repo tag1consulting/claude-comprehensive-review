@@ -10,10 +10,10 @@ Flags
   --base <branch>    Compare against a different base branch (default: auto-detect or main)
   --quick            Fast mode: pr-summarizer + code-reviewer + triggered error/test agents.
                      Skips security, architecture, blind-hunter, edge-case-hunter, comment,
-                     and type analysis. ~75% cheaper.
+                     and type analysis. Roughly 60–80% cheaper depending on diff composition.
   --diagrams         Include Mermaid sequence diagrams in the summary (default: omitted;
                      always omitted in --quick)
-  --security-only    Run security-reviewer only
+  --security-only    Run security-reviewer + CVE check (on changed dep manifests) only
   --summary-only     Run pr-summarizer only
 
   --create-pr        Create a PR using the summary (Block A) as the description
@@ -23,6 +23,11 @@ Flags
   --no-post / --local  Skip all remote operations and issue-linker, display everything locally
   --pr <number>      Review an existing PR/MR by number (external review mode;
                      use --pr for all providers, including GitLab MRs)
+  --depth <tier>     Agent depth: normal (default) or deep.
+                     deep: blind-hunter and edge-case-hunter run on Opus 4.7,
+                     Opus agents use extended step-by-step reasoning, and a
+                     CVE reachability triage pass annotates which vulns are
+                     actually reachable in the diff.
   --provider <name>  Override git provider detection (github, gitlab, bitbucket)
   --no-mem           Disable claude-mem integration (auto-detected when available)
 
@@ -44,10 +49,12 @@ Agents — --quick mode
   Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
   Skipped:           all full-run-only + comment-analyzer, type-design-analyzer, issue-linker
 
-Deterministic checks (both full and --quick)
+Deterministic checks (all modes except --summary-only)
   dependency-check:  Queries OSV.dev for CVEs in changed dependency manifests.
-                     Triggers on: go.mod, package.json, requirements.txt, composer.json.
-                     No API key required. Network failures are non-blocking.
+                     Also runs in --security-only mode (CVE checks are security checks).
+                     Triggers on: go.mod, package.json, requirements*.txt, composer.json.
+                     Uses OSV /v1/querybatch for speed. No API key required.
+                     Network failures are non-blocking.
 
 claude-mem Integration (optional)
   When claude-mem is detected, the skill automatically stores a structured review

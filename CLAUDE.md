@@ -85,7 +85,7 @@ The key invariant: Block A is posted only when `--create-pr` is passed and no PR
 
 ### Severity normalization
 
-Each agent uses its own severity scale. The skill's `SKILL.md` defines a normalization table (Phase 2) that maps agent-specific scales to a unified Critical/High/Medium/Low scale, and deduplicates findings when two agents flag the same `file:line`.
+Each agent uses its own severity scale. The skill's `SKILL.md` defines a normalization table (Phase 2) that maps agent-specific scales to a unified Critical/High/Medium/Low scale, and deduplicates findings when two agents flag the same `file:line`. CVE findings whose CVSS vector cannot be parsed (CVSS v4.0/v2 vectors, or no severity entry) are emitted as `"High"` by the script's `severity_label()` function — a conservative fallback that prevents a real Critical CVE from silently appearing as Medium.
 
 ### Agent tiers
 
@@ -94,9 +94,11 @@ Agents are divided into four tiers:
 1. **Always-run:** pr-summarizer, code-reviewer — run in every mode including `--quick`
 2. **Full-run only (skip with `--quick`):** architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker (also skipped with `--pr`, `--no-post`/`--local`, and on non-GitHub repos)
 3. **Conditional (run in both full and `--quick` when triggered by diff content):** silent-failure-hunter (error patterns), pr-test-analyzer (test files)
-4. **Deterministic (non-agent, conditional on manifest files):** `dependency-check` via `scripts/run-cve-check.sh` — runs in both full and `--quick` when `go.mod`, `package.json`, `requirements.txt`, or `composer.json` appear in the diff
+4. **Deterministic (non-agent, conditional on manifest files):** `dependency-check` via `scripts/run-cve-check.sh` — runs in both full and `--quick` when `go.mod`, `package.json`, `requirements*.txt`, or `composer.json` appear in the diff
 
-The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by ~75% while preserving the core code review and error/test analysis.
+The `--quick` flag eliminates the two expensive Opus review agents, the two BMAD-inspired Sonnet agents (blind-hunter, edge-case-hunter), and the lower-value conditional agents, reducing cost by roughly 60–80% while preserving the core code review and error/test analysis.
+
+The `--depth deep` flag promotes blind-hunter and edge-case-hunter to Opus 4.7, enables extended step-by-step reasoning for architecture-reviewer and security-reviewer, and adds a Phase 1c CVE reachability triage pass that annotates each CVE finding with `reachability: reachable|dev-only|transitive-only|unknown`. Defaults are unchanged when `--depth` is omitted.
 
 ### claude-mem integration (optional)
 
@@ -176,6 +178,7 @@ install.sh                             ← legacy file-copy installer (recommend
 - When adding a new agent to the skill, add it to: the agent roster table in `README.md`, the Phase 1 launch conditions in `SKILL.md`, and the severity normalization table in `SKILL.md` if it uses a non-standard scale.
 - The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
 - When modifying `--quick` or `--diagrams` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and `HELP.md`.
+- When adding a new flag, update: the flags parse block in `SKILL.md` (Phase 0, L32–46 area), the mode table in `SKILL.md` (Phase 1 L242–250 area), the flags table in `README.md`, and `HELP.md`.
 - **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
 - When modifying provider-specific behavior, update the Provider Operations Reference block, all three provider branches (github/gitlab/bitbucket) within Phases 0, 4, and 4b, and the provider support matrix in README.md.
 - **BMAD attribution**: `blind-hunter` and `edge-case-hunter` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in both agent files and in README.md. Do not remove attribution when editing these agents.

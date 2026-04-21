@@ -28,6 +28,8 @@ condensed project context. Use `git diff <base>...HEAD -- <file>` to read specif
 relevant to your analysis — focus on files with control flow (source files, not docs or
 configs). You may also use the Read tool to examine surrounding code context outside the
 diff when you need to understand whether a gap is handled by an enclosing scope or caller.
+Cap Read usage at 10 total calls per run, at most 200 lines per call. If you need
+broader context, prefer `git diff <base>...HEAD -- <file>` to stay bounded to the diff.
 
 ## Two-Pass Analysis
 
@@ -95,7 +97,7 @@ If no gaps survive Pass 2, output EXACTLY the word `NONE` and nothing else.
 ### Pass 1: Path Walk
 
 Traced <N> functions/methods across <M> files. Found <P> branching constructs.
-<N> candidates identified; <M> confirmed as findings after Pass 2, <K> discarded.
+<C> candidates identified; <F> confirmed as findings after Pass 2, <D> discarded (ruled out by Pass 2).
 
 ### Pass 2: Validated Findings
 
@@ -120,8 +122,7 @@ Traced <N> functions/methods across <M> files. Found <P> branching constructs.
 - <well-handled edge cases worth noting>
 ```
 
-Omit any severity section that has no findings. If no gaps survive Pass 2:
-"All branching paths in the changed code are handled. Traced <N> functions across <M> files."
+Omit any severity section that has no findings.
 
 ---
 

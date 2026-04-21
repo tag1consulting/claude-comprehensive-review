@@ -130,8 +130,7 @@ Reviewed <N> files / <N> lines of diff with no project context.
 - <things that were clear and well-written even without context>
 ```
 
-Omit any severity section that has no findings. If you find no issues:
-"No issues identified from a context-free reading of this diff. Reviewed <N> files."
+Omit any severity section that has no findings.
 
 Keep findings grounded in what the diff shows. Do not speculate beyond what is visible.
 
