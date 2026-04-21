@@ -42,6 +42,7 @@ Supported flags:
 - `--no-post` / `--local` — display everything locally, skip all remote operations
 - `--pr <number>` — review an existing PR/MR by number (external review mode)
 - `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
+- `--depth <normal|deep>` — agent-depth promotion: `deep` runs blind-hunter and edge-case-hunter on Opus 4.7 (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
 - `--no-mem` — disable claude-mem integration even if claude-mem is detected
 - `--help` — show this usage
 
@@ -138,6 +139,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
    - Note mode flags: `--quick`, `--diagrams`, `--security-only`, `--summary-only`, `--create-pr`,
      `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--no-mem`
+   - Extract `--depth <normal|deep>` if present; default DEPTH=`normal`. If value is not one of `{normal, deep}`, report "Error: Invalid --depth value '<value>'. Valid values are: normal, deep." and stop.
    - **Flag conflict checks:**
      - If both `--post-findings` and `--no-findings` are present, report
        "Error: --post-findings and --no-findings are mutually exclusive." and stop.
@@ -254,22 +256,22 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `--security-only` | security-reviewer + CVE check (if manifest files changed) |
 | `--summary-only` | pr-summarizer only |
 
-**Model assignments** — always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool to prevent inheritance of the orchestrator's model and to avoid incorrect plugin-namespace inference:
+**Model assignments** — the table below is the source of truth. Always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool. If this table disagrees with an agent's frontmatter `model:` field, this table wins — the frontmatter is a standalone default for agents running outside this skill.
 
-| Agent | subagent_type | Model |
-|-------|--------------|-------|
-| pr-summarizer | `pr-summarizer` | sonnet |
-| code-reviewer | `pr-review-toolkit:code-reviewer` | sonnet |
-| architecture-reviewer | `architecture-reviewer` | opus |
-| security-reviewer | `security-reviewer` | opus |
-| blind-hunter | `blind-hunter` | sonnet |
-| edge-case-hunter | `edge-case-hunter` | sonnet |
-| silent-failure-hunter | `pr-review-toolkit:silent-failure-hunter` | sonnet |
-| pr-test-analyzer | `pr-review-toolkit:pr-test-analyzer` | sonnet |
-| comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet |
-| type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet |
-| issue-linker | `issue-linker` | haiku |
-| dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a |
+| Agent | subagent_type | Model (depth=normal) | Model (depth=deep) |
+|-------|--------------|----------------------|---------------------|
+| pr-summarizer | `pr-summarizer` | sonnet | sonnet |
+| code-reviewer | `pr-review-toolkit:code-reviewer` | sonnet | sonnet |
+| architecture-reviewer | `architecture-reviewer` | opus | opus |
+| security-reviewer | `security-reviewer` | opus | opus |
+| blind-hunter | `blind-hunter` | sonnet | **opus** |
+| edge-case-hunter | `edge-case-hunter` | sonnet | **opus** |
+| silent-failure-hunter | `pr-review-toolkit:silent-failure-hunter` | sonnet | sonnet |
+| pr-test-analyzer | `pr-review-toolkit:pr-test-analyzer` | sonnet | sonnet |
+| comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet | sonnet |
+| type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet | sonnet |
+| issue-linker | `issue-linker` | haiku | haiku |
+| dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
 
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
@@ -281,13 +283,15 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 - **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
+  If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
 - **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, commit log, detected languages, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
-- **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
+  If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
+- **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
-- **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Has full codebase read access for surrounding context.
 
 **Conditional agents — run in both full and `--quick` when triggered:**
@@ -335,7 +339,19 @@ fi
 - Network failures are non-blocking: the script returns `[]` and logs to stderr.
 - `--no-post`/`--local` does **not** skip the CVE check; it only gates posting.
 
-After all Phase 1 agents complete and Phase 1b finishes, proceed to Phase 2.
+After all Phase 1 agents complete and Phase 1b finishes, run Phase 1c if applicable.
+
+### Phase 1c: CVE Reachability Triage (depth=deep only)
+
+**Skip Phase 1c** unless ALL of:
+- `--depth deep` was passed
+- `CVE_JSON` is non-empty (Phase 1b found vulnerabilities)
+
+When running: launch a single Opus agent to annotate each CVE finding with a `reachability` tag without dropping or modifying any findings. Pass `CVE_JSON` and the diff of the changed manifest files. Task description:
+
+> "You are a dependency security analyst. For each CVE finding in the JSON array below, determine whether the vulnerable package is actually reachable in this diff — i.e., is it used directly in changed code, or is it only a dev dependency, or is it a transitive dependency with no import visible in the diff? Return the same JSON array with one additional field per entry: `reachability` (string, one of: `reachable` | `dev-only` | `transitive-only` | `unknown`). Never drop findings. Never change any existing field. Only add the `reachability` field."
+
+Annotate findings in Phase 3 Block B with `(reachability: <value>)` when `reachability` is not `reachable` or `unknown`. On Opus agent failure, skip annotation silently and use the original CVE_JSON.
 
 ### Phase 2: Collect and Normalize Results
 
