@@ -3,6 +3,12 @@
 Run a full CodeRabbit-style review using specialized agents.
 Supports GitHub (including Enterprise), GitLab, and Bitbucket.
 
+Model tip: run this skill on Sonnet (not Opus) — the orchestrator does structured
+workflow coordination, not deep reasoning. Opus is reserved for the specialist agents
+(architecture-reviewer, security-reviewer) that are spawned internally. Running on
+Opus costs ~$60–80 for a medium PR; Sonnet costs ~$30–45. Use --quick for ~60–80%
+cheaper reviews that skip the two Opus agents entirely.
+
 Usage
   /comprehensive-review [flags]
 
@@ -30,6 +36,10 @@ Flags
                      actually reachable in the diff.
   --provider <name>  Override git provider detection (github, gitlab, bitbucket)
   --no-mem           Disable claude-mem integration (auto-detected when available)
+  --output-file <p>  Write Block A + Block B to a markdown file at path <p> during Phase 5.
+                     Use this to avoid re-running the review in a fresh session just to save
+                     the output — saves ~$5–15 on large PRs where the post-review context
+                     would otherwise force a new expensive session.
 
   --help             Show this help
 

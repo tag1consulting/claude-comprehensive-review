@@ -120,6 +120,8 @@ Copy files to your Claude config directory (default: `~/.claude`):
 mkdir -p ~/.claude/skills/comprehensive-review
 cp skills/comprehensive-review/SKILL.md ~/.claude/skills/comprehensive-review/
 cp skills/comprehensive-review/HELP.md ~/.claude/skills/comprehensive-review/
+cp skills/comprehensive-review/PROVIDERS.md ~/.claude/skills/comprehensive-review/
+cp skills/comprehensive-review/SEVERITY.md ~/.claude/skills/comprehensive-review/
 
 # Agents
 mkdir -p ~/.claude/agents
@@ -168,6 +170,7 @@ Run from any git repository, on the branch you want to review:
 | `--pr <number>` | Review an existing PR/MR by number (external review mode) |
 | `--provider <name>` | Override auto-detected git provider (`github`, `gitlab`, `bitbucket`) |
 | `--no-mem` | Disable claude-mem integration (auto-detected when available) |
+| `--output-file <path>` | Write Block A + Block B to a markdown file during Phase 5. Avoids re-running the review in a fresh session just to save the output — saves ~$5–15 on large PRs where the post-review context would otherwise force a new expensive session. |
 | `--help` | Show usage |
 
 ### Examples
@@ -313,6 +316,8 @@ implementation detail of Claude Code and may change between versions).
 ```
 ~/.claude/skills/comprehensive-review/SKILL.md
 ~/.claude/skills/comprehensive-review/HELP.md
+~/.claude/skills/comprehensive-review/PROVIDERS.md
+~/.claude/skills/comprehensive-review/SEVERITY.md
 ~/.claude/agents/pr-summarizer.md
 ~/.claude/agents/issue-linker.md
 ~/.claude/agents/security-reviewer.md
@@ -322,6 +327,25 @@ implementation detail of Claude Code and may change between versions).
 ```
 
 The `pr-review-toolkit` plugin installs its agents to `~/.claude/plugins/` automatically.
+
+## Cost expectations
+
+**Orchestrator model matters most.** The orchestrator coordinates workflow and normalizes findings — it does not need Opus-level reasoning. Run this skill on **Sonnet** for ~5× lower orchestrator cost. Opus is reserved for the internally-spawned `architecture-reviewer` and `security-reviewer` agents.
+
+| Orchestrator model | Typical cost (medium PR, ~1,700 lines, full run) |
+|--------------------|------------------------------------------------:|
+| Opus 4.7 | **$60–80** |
+| Sonnet 4.6 (recommended) | **$30–45** |
+
+Cost drivers:
+- ~80% of cost comes from the two Opus specialist agents (architecture-reviewer, security-reviewer) and the orchestrator itself when run on Opus.
+- The orchestrator accumulates ~100k+ cached tokens over 100+ tool-call turns; at Opus cache-read rates ($1.50/M) this alone costs ~$15–30 per review.
+- At Sonnet cache-read rates ($0.30/M) the same context costs ~$3–6.
+
+**Cost-saving options:**
+- `--quick`: skips architecture-reviewer, security-reviewer, and four other agents. Roughly 60–80% cheaper.
+- `--depth normal` (default): Opus reserved for 2 agents. `--depth deep` promotes 2 more to Opus and roughly doubles cost.
+- `--output-file <path>`: writes the report to disk during the review session, so you don't need a separate follow-up request that pays Opus rates against a large accumulated context.
 
 ## Token efficiency
 
@@ -333,6 +357,9 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **Agent scope boundaries:** Explicit boundaries prevent duplicate analysis across agents (e.g., security-reviewer handles dependency security, architecture-reviewer handles dependency architecture).
 - **`--quick` mode:** Skips the two Opus review agents (architecture-reviewer, security-reviewer), the two BMAD-inspired agents (blind-hunter, edge-case-hunter), and the two lower-value conditional agents (comment-analyzer, type-design-analyzer). Roughly 60–80% cheaper vs. full run depending on diff composition (measured: ~79K agent tokens for --quick vs ~317K for a full run on a documentation PR; code-heavy PRs with deeper Opus analysis yield higher savings).
 - **blind-hunter cost:** Particularly cheap — it receives only the raw diff or plain file list, with no project context passed at all.
+- **Per-file diff digest:** The orchestrator pre-computes a compact per-file summary (stat line + first changed hunk, ≤20 lines per file, capped at 200 total lines) and passes it to Opus agents upfront. This allows them to prioritize which files to investigate deeply without burning tool calls on discovery, reducing the cache-read multiplier that accumulates with every tool turn.
+- **Opus agent tool-call budget:** architecture-reviewer and security-reviewer are instructed to prefer parallel batched reads and stop at 25 tool calls. Phase 5 reports actual tool-call counts with a warning if the budget is exceeded, making regressions visible.
+- **Token utilization table:** Phase 5 always prints a per-agent breakdown of input/output/cache tokens and estimated USD cost, so you can see where budget is going without running `/cost`.
 
 ## claude-mem integration (optional)
 

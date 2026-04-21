@@ -184,6 +184,10 @@ install_file "skills/comprehensive-review/SKILL.md" \
   "$CLAUDE_DIR/skills/comprehensive-review/SKILL.md"
 install_file "skills/comprehensive-review/HELP.md" \
   "$CLAUDE_DIR/skills/comprehensive-review/HELP.md"
+install_file "skills/comprehensive-review/PROVIDERS.md" \
+  "$CLAUDE_DIR/skills/comprehensive-review/PROVIDERS.md"
+install_file "skills/comprehensive-review/SEVERITY.md" \
+  "$CLAUDE_DIR/skills/comprehensive-review/SEVERITY.md"
 info "Installed skill  → $CLAUDE_DIR/skills/comprehensive-review/"
 
 # ---------------------------------------------------------------------------
