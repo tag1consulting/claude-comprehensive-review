@@ -13,7 +13,7 @@ Flags
                      and type analysis. ~75% cheaper.
   --diagrams         Include Mermaid sequence diagrams in the summary (default: omitted;
                      always omitted in --quick)
-  --security-only    Run security-reviewer only
+  --security-only    Run security-reviewer + CVE check (on changed dep manifests) only
   --summary-only     Run pr-summarizer only
 
   --create-pr        Create a PR using the summary (Block A) as the description
@@ -44,10 +44,12 @@ Agents — --quick mode
   Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
   Skipped:           all full-run-only + comment-analyzer, type-design-analyzer, issue-linker
 
-Deterministic checks (both full and --quick)
+Deterministic checks (all modes except --summary-only)
   dependency-check:  Queries OSV.dev for CVEs in changed dependency manifests.
-                     Triggers on: go.mod, package.json, requirements.txt, composer.json.
-                     No API key required. Network failures are non-blocking.
+                     Also runs in --security-only mode (CVE checks are security checks).
+                     Triggers on: go.mod, package.json, requirements*.txt, composer.json.
+                     Uses OSV /v1/querybatch for speed. No API key required.
+                     Network failures are non-blocking.
 
 claude-mem Integration (optional)
   When claude-mem is detected, the skill automatically stores a structured review
