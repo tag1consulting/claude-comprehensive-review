@@ -2,6 +2,9 @@ name: AI PR Review
 
 on:
   pull_request:
+    # ready_for_review fires when a draft PR is converted to ready. reopened is
+    # intentionally omitted — use the ai-review-rescan label to re-trigger on a
+    # reopened or otherwise stale PR.
     types: [opened, synchronize, ready_for_review, labeled]
 
 # Fork PRs cannot access secrets anyway; per-job guards below prevent
@@ -21,6 +24,11 @@ jobs:
   # submodule) using the PAT. Credentials are scrubbed from .git/config
   # before uploading the workspace artifact so the PAT does not travel
   # to the review job.
+  #
+  # Skipped for: fork PRs (no secret access anyway), draft PRs, bot actors
+  # (dependabot, renovate), PRs with skip-ai-review label, and label events
+  # that are not the two review-triggering labels. The review job propagates
+  # these skips via needs: prepare — it does not re-enumerate the conditions.
   prepare:
     runs-on: ubuntu-latest
     if: >-
@@ -79,10 +87,16 @@ jobs:
   # Job 2: run the composite action against the downloaded workspace.
   # This job does NOT run actions/checkout with the PAT, so the repo-scoped
   # PAT is never in its git config or accessible to the composite action.
+  # The prepare guard conditions are enforced by transitivity: when prepare
+  # is skipped (draft, bot, skip-ai-review, irrelevant label), needs.prepare.result
+  # is 'skipped', the if condition below is false, and this job is also skipped
+  # without attempting the artifact download.
   review:
     needs: prepare
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      needs.prepare.result == 'success' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Download workspace
         uses: actions/download-artifact@v8
@@ -101,7 +115,7 @@ jobs:
         with:
           api-key: ${{ secrets.AI_REVIEW_API_KEY }}
           provider: ${{ vars.AI_REVIEW_PROVIDER || 'anthropic' }}
-          base-url: ${{ vars.AI_REVIEW_BASE_URL || '' }}
+          base-url: ${{ vars.AI_REVIEW_BASE_URL }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           base-ref: ${{ github.base_ref }}
           head-sha: ${{ github.event.pull_request.head.sha }}
@@ -110,14 +124,20 @@ jobs:
           model-premium: ${{ vars.AI_REVIEW_MODEL_PREMIUM }}
           review-mode: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full' || 'quick' }}
           force-full-diff: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') && 'true' || 'false' }}
+          # parallel defaults to true in the action since v71; no override needed
 
   # Job 3: always attempt to remove the ai-review-rescan label.
-  # needs: [prepare, review] with if: always() ensures this runs even when
-  # the review job is cancelled (e.g. by the concurrency rule on a new push)
-  # and when prepare is skipped (e.g. fork PRs or draft PRs). The gh api
-  # DELETE call returns 404 when the label is absent; || true swallows it.
-  # Excluded for skip-ai-review PRs to avoid stripping labels from intentionally
-  # bypassed reviews.
+  # Running on every non-fork, non-skip-ai-review PR event (even when prepare
+  # was skipped) avoids a "Skipped" indicator in the PR checks panel on normal
+  # pushes and ensures the label is cleaned up even when review is cancelled
+  # mid-run by the concurrency rule. The gh api DELETE returns 404 when the
+  # label is absent; || true swallows it so the step always succeeds.
+  #
+  # Intentionally does NOT replicate prepare's draft/bot/label-action guards:
+  # those are skips that suppress review, not reasons to leave a stale label.
+  # skip-ai-review is excluded to avoid stripping labels from intentionally
+  # bypassed PRs. Note: if ai-review-rescan is applied alongside skip-ai-review,
+  # the rescan label will persist until skip-ai-review is removed.
   cleanup-rescan-label:
     needs: [prepare, review]
     if: >-
