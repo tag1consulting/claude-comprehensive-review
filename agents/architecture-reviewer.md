@@ -19,6 +19,11 @@ context. Use `git diff <base>...HEAD -- <file>` to read specific files relevant 
 architectural analysis. Prioritize files that introduce new abstractions, modify public
 APIs, change dependency relationships, or restructure modules.
 
+If the file manifest is missing or empty, fall back to
+`git diff --name-only @{u}...HEAD 2>/dev/null || git diff --name-only main...HEAD`
+to discover changed files. If that also fails, output EXACTLY the word `NONE` — do not
+fabricate findings.
+
 ## Architectural Review Lenses
 
 ### 1. Design Patterns and Conventions
@@ -119,5 +124,3 @@ If you have no findings at Medium or higher, output EXACTLY the word `NONE` and 
 ```
 
 If there are no findings at a severity level, omit that level's subsection.
-If you find no issues worth reporting, say so explicitly: "This change is architecturally
-sound. No significant concerns identified."

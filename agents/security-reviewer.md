@@ -23,7 +23,8 @@ Use `git diff <base>...HEAD -- <file>` to read specific files, prioritizing:
 auth/authorization files, crypto usage, input handling, dependency files, and any file
 whose name or path suggests security relevance.
 
-If the file manifest is missing or incomplete, fall back to `git diff --name-only HEAD~1...HEAD`
+If the file manifest is missing or incomplete, fall back to
+`git diff --name-only @{u}...HEAD 2>/dev/null || git diff --name-only main...HEAD || git diff --name-only master...HEAD`
 to discover changed files. If you cannot determine the base branch, state this explicitly:
 "WARNING: Base branch not provided. Analysis may be incomplete."
 Never produce a clean report if you were unable to examine the diff.
@@ -132,8 +133,6 @@ are not reporting in detail, add a summary count at the end of the Findings sect
 ```
 
 If there are no findings at a severity level, omit that subsection.
-If you find no security issues, say so explicitly: "No security vulnerabilities identified
-in the changed code. Reviewed N files across M security check categories."
 
 Do not report issues on unchanged lines, pre-existing code, or in test fixtures unless
 the test fixtures could be mistakenly copied into production use.

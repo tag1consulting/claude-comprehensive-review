@@ -170,7 +170,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
 4. **Build the file manifest** from `git diff --stat <base>...HEAD -- ':!*lock.json' ':!*lock.yaml' ':!*.lock' ':!*.sum' ':!vendor/*' ':!node_modules/*'`:
    Lockfiles, vendor directories, and checksum files are excluded — the full DIFF_FILE still includes them.
    - Detect languages from extensions; categorize files as **Source**, **Tests**, **Config**, **Docs**, or **Dependency**
-   - Also collect `MANIFEST_FILES` — the subset of changed files named `go.mod`, `package.json`, `requirements.txt`, or `composer.json`. Use `git diff --name-only <base>...HEAD` (no exclusions) and filter by basename. Store as a newline-separated list for Phase 1b.
+   - Also collect `MANIFEST_FILES` — the subset of changed files named `go.mod`, `package.json`, `requirements*.txt` (any requirements file), or `composer.json`. Use `git diff --name-only <base>...HEAD` (no exclusions) and filter by basename. Store as a newline-separated list for Phase 1b.
    - Format:
      ```
      BASE: <base>  |  LANGUAGES: Go, TypeScript  |  FILES: <N>  |  LINES: +<added>/-<removed>
@@ -269,7 +269,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
 - **pr-summarizer** (subagent_type: `pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
-  Unless `--diagrams` is passed (and not `--quick`): add "Omit the Sequence Diagrams section entirely."
+  If `--diagrams` was passed (and not `--quick`): include `DIAGRAMS=true` in the task description. Otherwise: include `DIAGRAMS=false`.
 - **code-reviewer** (subagent_type: `pr-review-toolkit:code-reviewer`, model: sonnet) — always pass the full diff.
 
 **Full-run-only agents** (skipped with `--quick`):

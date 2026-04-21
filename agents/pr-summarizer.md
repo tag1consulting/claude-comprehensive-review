@@ -48,11 +48,15 @@ Effort: 1=trivial 2=small(<50L) 3=medium(50-200L) 4=large(200-500L/schema) 5=maj
 **Summary**: single short phrase describing what changed in that file (not what the
 file does in general). Sort by most significant changes first, then alphabetically.
 
-## Step 4: Generate `## Sequence Diagrams`
+## Step 4: Generate `## Sequence Diagrams` (only when `DIAGRAMS=true`)
 
-For each file modifying **control flow** (function call chains, API interactions, error
-paths, event handling), generate a Mermaid `sequenceDiagram` block showing the flow
-**after** the change.
+**Only generate this section if the orchestrator passed `DIAGRAMS=true` in the task
+description. If `DIAGRAMS=false` or no `DIAGRAMS` flag was provided, omit the
+`## Sequence Diagrams` heading and its content entirely.**
+
+When generating diagrams: for each file modifying **control flow** (function call chains,
+API interactions, error paths, event handling), generate a Mermaid `sequenceDiagram` block
+showing the flow **after** the change.
 
 Skip files that are purely data structures, configuration, documentation, test fixtures,
 or minor cosmetic edits. If no files have meaningful control flow changes, write:
@@ -82,6 +86,7 @@ Produce exactly these sections in order, with no preamble:
 
 ## Sequence Diagrams
 
+<!-- Only present when DIAGRAMS=true; omit this section otherwise -->
 <diagrams or "No significant control flow changes in this PR.">
 
 ## Related Issues & PRs
