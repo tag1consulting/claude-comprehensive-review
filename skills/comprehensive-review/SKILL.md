@@ -322,7 +322,7 @@ else
 fi
 ```
 
-`CLAUDE_DIR` defaults to `$HOME/.claude` (the standard Claude Code config directory). The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency, and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`.
+`CLAUDE_DIR` defaults to `$HOME/.claude` (the standard Claude Code config directory). The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency via a single `/v1/querybatch` POST (not one call per package), and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`. Each finding text includes the CVSS score (e.g., `[CVSS 9.8]`) or version prefix (e.g., `[CVSS:4.0]`) when the score cannot be computed. CVSS v4.0 and v2 vectors map to High conservatively rather than silently defaulting to Medium.
 
 - Capture `CVE_JSON` from stdout; on any non-zero exit, set to `[]` and emit a warning to stderr.
 - Network failures are non-blocking: the script returns `[]` and logs to stderr.
