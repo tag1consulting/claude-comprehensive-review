@@ -31,9 +31,9 @@ Run a full CodeRabbit-style review of all changes on the current branch (or a sp
 
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (~75% cheaper)
+- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (roughly 60–80% cheaper depending on diff composition)
 - `--diagrams` — include Mermaid sequence diagrams in Block A (default: omitted; always omitted in `--quick`)
-- `--security-only` — run security-reviewer only
+- `--security-only` — run security-reviewer + CVE check (on changed dependency manifests) only
 - `--summary-only` — run pr-summarizer only
 - `--create-pr` — create a PR using Block A as the description (without this flag, no PR is created)
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR/MR
@@ -273,6 +273,15 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | issue-linker | `issue-linker` | haiku | haiku |
 | dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
 
+**Agent task-description directive protocol** — Agents key off `KEY=value` strings embedded in their task description to enable optional behaviors. This is the authoritative registry:
+
+| Directive | Value | Consumed by | Default when absent |
+|-----------|-------|-------------|---------------------|
+| `DIAGRAMS` | `true` / `false` | pr-summarizer | `false` (omit diagrams) |
+| `EXTENDED_THINKING` | `true` | architecture-reviewer, security-reviewer | not set (standard reasoning) |
+
+Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
+
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
 - **pr-summarizer** (subagent_type: `pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
@@ -347,11 +356,13 @@ After all Phase 1 agents complete and Phase 1b finishes, run Phase 1c if applica
 - `--depth deep` was passed
 - `CVE_JSON` is non-empty (Phase 1b found vulnerabilities)
 
-When running: launch a single Opus agent to annotate each CVE finding with a `reachability` tag without dropping or modifying any findings. Pass `CVE_JSON` and the diff of the changed manifest files. Task description:
+When running: launch a single Opus agent (subagent_type: `security-reviewer`, model: `opus`) to annotate each CVE finding with a `reachability` tag without dropping or modifying any findings. Pass `CVE_JSON` and the diff of the changed manifest files. Task description:
 
 > "You are a dependency security analyst. For each CVE finding in the JSON array below, determine whether the vulnerable package is actually reachable in this diff — i.e., is it used directly in changed code, or is it only a dev dependency, or is it a transitive dependency with no import visible in the diff? Return the same JSON array with one additional field per entry: `reachability` (string, one of: `reachable` | `dev-only` | `transitive-only` | `unknown`). Never drop findings. Never change any existing field. Only add the `reachability` field."
 
-Annotate findings in Phase 3 Block B with `(reachability: <value>)` when `reachability` is not `reachable` or `unknown`. On Opus agent failure, skip annotation silently and use the original CVE_JSON.
+**Output validation:** After the agent returns, verify: (a) the output is a valid JSON array, (b) its length equals the input `CVE_JSON` length, (c) no existing field (`severity`, `agent`, `file`, `line`, `finding`, `remediation`) was modified. Use `jq` to diff the fields. If any check fails, discard the annotated output and use the original `CVE_JSON` unchanged — log "WARNING: Phase 1c output failed validation; using unannotated CVE_JSON." On Opus agent failure, also fall back to original `CVE_JSON`.
+
+Annotate findings in Phase 3 Block B: prefix `reachable` findings with `[REACHABLE]` (the most actionable signal); suffix `dev-only` with `(dev dependency)` and `transitive-only` with `(transitive)`. Leave `unknown` unannotated. This ensures the most important signal — confirmed reachability — is the most visible.
 
 ### Phase 2: Collect and Normalize Results
 

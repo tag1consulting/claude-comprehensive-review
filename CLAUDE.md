@@ -85,7 +85,7 @@ The key invariant: Block A is posted only when `--create-pr` is passed and no PR
 
 ### Severity normalization
 
-Each agent uses its own severity scale. The skill's `SKILL.md` defines a normalization table (Phase 2) that maps agent-specific scales to a unified Critical/High/Medium/Low scale, and deduplicates findings when two agents flag the same `file:line`. CVE findings with no CVSS score available use a synthetic `Unknown` tier, which normalizes conservatively to High.
+Each agent uses its own severity scale. The skill's `SKILL.md` defines a normalization table (Phase 2) that maps agent-specific scales to a unified Critical/High/Medium/Low scale, and deduplicates findings when two agents flag the same `file:line`. CVE findings whose CVSS vector cannot be parsed (CVSS v4.0/v2 vectors, or no severity entry) are emitted as `"High"` by the script's `severity_label()` function — a conservative fallback that prevents a real Critical CVE from silently appearing as Medium.
 
 ### Agent tiers
 

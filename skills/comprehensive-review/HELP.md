@@ -10,7 +10,7 @@ Flags
   --base <branch>    Compare against a different base branch (default: auto-detect or main)
   --quick            Fast mode: pr-summarizer + code-reviewer + triggered error/test agents.
                      Skips security, architecture, blind-hunter, edge-case-hunter, comment,
-                     and type analysis. ~75% cheaper.
+                     and type analysis. Roughly 60–80% cheaper depending on diff composition.
   --diagrams         Include Mermaid sequence diagrams in the summary (default: omitted;
                      always omitted in --quick)
   --security-only    Run security-reviewer + CVE check (on changed dep manifests) only

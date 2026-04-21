@@ -97,7 +97,7 @@ If no gaps survive Pass 2, output EXACTLY the word `NONE` and nothing else.
 ### Pass 1: Path Walk
 
 Traced <N> functions/methods across <M> files. Found <P> branching constructs.
-<C> candidates identified; <F> confirmed as findings after Pass 2, <D> discarded.
+<C> candidates identified; <F> confirmed as findings after Pass 2, <D> discarded (ruled out by Pass 2).
 
 ### Pass 2: Validated Findings
 
