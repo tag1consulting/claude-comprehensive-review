@@ -105,6 +105,7 @@ jobs:
           model-premium: ${{ vars.AI_REVIEW_MODEL_PREMIUM }}
           review-mode: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full' || 'quick' }}
           force-full-diff: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') && 'true' || 'false' }}
+          parallel: 'true'
 
   # Job 3: always attempt to remove the ai-review-rescan label.
   # Running unconditionally (on non-fork PRs) avoids the "Skipped" indicator
