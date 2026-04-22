@@ -9,6 +9,11 @@ workflow coordination, not deep reasoning. Opus is reserved for the specialist a
 Opus costs ~$60–80 for a medium PR; Sonnet costs ~$30–45. Use --quick for ~60–80%
 cheaper reviews that skip the two Opus agents entirely.
 
+Tiny-PR tip: when the diff is under 50 lines and ≤3 files, the skill automatically
+selects TIER=tiny — pr-summarizer drops to Haiku, and Opus agents are skipped unless
+infra/security-path triggers promote them back. No flag needed; estimated floor cost
+drops from ~$1 to ~$0.30.
+
 Usage
   /comprehensive-review [flags]
 
@@ -58,6 +63,14 @@ Agents — --quick mode
   Always:            pr-summarizer (no diagrams), code-reviewer
   Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
   Skipped:           all full-run-only + comment-analyzer, type-design-analyzer, issue-linker
+
+Agents — TIER=tiny (auto, <50 lines AND ≤3 files)
+  Always:            pr-summarizer (Haiku), code-reviewer
+  Conditional:       silent-failure-hunter, pr-test-analyzer (if patterns match)
+                     architecture-reviewer (if infra/CI/cross-dir paths in diff)
+                     security-reviewer (if auth/credential/dep-manifest paths in diff)
+  Skipped:           blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer,
+                     issue-linker (GitHub-only conditions still apply)
 
 Deterministic checks (all modes except --summary-only)
   dependency-check:  Queries OSV.dev for CVEs in changed dependency manifests.

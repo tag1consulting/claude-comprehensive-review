@@ -43,10 +43,13 @@ The skill coordinates two groups of agents:
 
 The orchestrator uses a tiered approach to minimize token consumption:
 
-- **Small diffs (under 300 lines)**: Full diff passed inline to all agents — at this size, the tool-call overhead of selective reads exceeds the token cost of including the full diff.
-- **Medium/large diffs (300+ lines)**: Custom agents receive a structured **file manifest** (file list, categories, languages, line counts) and use selective `git diff <base>...HEAD -- <file>` reads. Toolkit agents (which we cannot modify) receive only the diff slices relevant to their specialty. Lockfiles, vendor directories, and checksum files are excluded from the manifest (but remain in DIFF_FILE).
+- **Tiny diffs (under 50 lines AND ≤3 files — TIER=tiny)**: Auto-selected; pr-summarizer routes to Haiku; architecture-reviewer and security-reviewer are skipped unless triggered by infra/CI paths or auth/credential/dep-manifest paths respectively; blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally skipped. PRIOR_REVIEW_CONTEXT and FILE_DIGEST are omitted — the diff is always passed inline. RELATED_FILES (see below) is still built and passed. Floor cost drops from ~$1 to ~$0.30.
+- **Small diffs (under 300 lines — TIER=small)**: Full diff passed inline to all agents — at this size, the tool-call overhead of selective reads exceeds the token cost of including the full diff.
+- **Medium/large diffs (300+ lines — TIER=medium)**: Custom agents receive a structured **file manifest** (file list, categories, languages, line counts) and use selective `git diff <base>...HEAD -- <file>` reads. Toolkit agents (which we cannot modify) receive only the diff slices relevant to their specialty. Lockfiles, vendor directories, and checksum files are excluded from the manifest (but remain in DIFF_FILE).
 
 The orchestrator also pre-reads CLAUDE.md and the commit log in Phase 0, passing condensed versions to agents so they don't fetch these independently. The orchestrator always specifies both `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool — `model:` prevents subagents from inheriting the orchestrator's model, and `subagent_type:` prevents incorrect plugin-namespace inference.
+
+When the diff touches version-pin files (`.nvmrc`, `package.json`, `composer.json`, etc.) or infra/CI configs (Dockerfiles, `.github/workflows/`, etc.), the orchestrator builds a **RELATED_FILES** block — a list of adjacent files outside the diff that may have drifted (e.g., a Dockerfile still pinned to Node 22 when `.nvmrc` now requires 24). This is passed to architecture-reviewer and security-reviewer as an explicit `RELATED_FILES:` directive. CVE script (`run-cve-check.sh`) path is resolved via `$CLAUDE_PLUGIN_ROOT` first (plugin install), then `$CLAUDE_DIR`, then `$HOME/.claude`, then a known marketplace path — first executable match wins.
 
 ### Agent scope boundaries
 

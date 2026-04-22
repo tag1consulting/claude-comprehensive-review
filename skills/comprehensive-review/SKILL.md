@@ -31,7 +31,7 @@ Run a full CodeRabbit-style review of all changes on the current branch (or a sp
 
 Supported flags:
 - `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (roughly 60–80% cheaper depending on diff composition)
+- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (roughly 60–80% cheaper depending on diff composition). When the diff is also tiny (<50 lines, ≤3 files), the auto-selected TIER=tiny further demotes pr-summarizer to Haiku. No flag needed — tiny-tier is automatic.
 - `--diagrams` — include Mermaid sequence diagrams in Block A (default: omitted; always omitted in `--quick`)
 - `--security-only` — run security-reviewer + CVE check (on changed dependency manifests) only
 - `--summary-only` — run pr-summarizer only
@@ -57,6 +57,7 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 - Opus orchestrator: $60–80 total (orchestrator alone ≈ $30 due to 100k+ cached tokens × 100+ turns at Opus cache-read rates)
 - Sonnet orchestrator: $30–45 total (orchestrator ≈ $6)
 - `--quick` mode: saves ~60–80% by skipping the two Opus agents
+- **Tiny-tier PRs (<50 lines, ≤3 files):** auto-selected TIER=tiny saves ~60–70% on top of `--quick` by routing pr-summarizer to Haiku and skipping/conditionally-promoting Opus agents. Floor cost drops from ~$1 to ~$0.30.
 
 ## Pre-flight Context
 
@@ -170,6 +171,71 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    git diff <base>...HEAD -- <file> | awk '/^@@/{found=1; count=0} found && count<20{print; count++}' 2>/dev/null
    ```
    Combine into a `FILE_DIGEST` block (~1 line of stat + ≤20 diff lines per file). Cap the entire FILE_DIGEST at 200 lines total — if more files exist, include stats for all but limit hunks to the top N by lines-changed. Pass FILE_DIGEST as part of the task description for architecture-reviewer and security-reviewer in Phase 1.
+   **TIER=tiny:** skip FILE_DIGEST entirely (saves prompt tokens; the diff is always inlined at tiny tier).
+
+   **Build RELATED_FILES** — a pointer list of adjacent files *outside* the diff that may drift when the diff touches version pins, infra, or CI configs. This surfaces cross-file skew like "Dockerfile pins Node 22 but `.nvmrc` now requires 24." Run immediately after FILE_DIGEST (skip if TIER=medium and diff has no version-pin/infra/CI paths):
+   ```bash
+   RELATED_FILES=""
+   declare -a POINTER_GLOBS=()
+   DIFF_PATHS=$(git diff --name-only <base>...HEAD 2>/dev/null) \
+     || { echo "WARNING: git diff --name-only failed; RELATED_FILES will be empty." >&2; DIFF_PATHS=""; }
+
+   # Language/runtime version pins → infra that consumes them
+   if echo "$DIFF_PATHS" | grep -qE '(^|/)(\.nvmrc|package\.json|\.node-version)$'; then
+     POINTER_GLOBS+=('lagoon/*.dockerfile' 'lagoon/Dockerfile*' 'Dockerfile*'
+                     '.github/workflows/*.yml' '.github/workflows/*.yaml'
+                     '.gitlab-ci.yml' 'bitbucket-pipelines.yml'
+                     'docker-compose*.yml' 'docker-compose*.yaml' '.ddev/config.yaml')
+   fi
+   if echo "$DIFF_PATHS" | grep -qE '(^|/)(composer\.json|pyproject\.toml|go\.mod|\.ruby-version|Gemfile)$'; then
+     POINTER_GLOBS+=('lagoon/*.dockerfile' 'lagoon/Dockerfile*' 'Dockerfile*'
+                     '.github/workflows/*.yml' '.gitlab-ci.yml' 'bitbucket-pipelines.yml')
+   fi
+
+   # Infra changes → language pins they should match
+   if echo "$DIFF_PATHS" | grep -qE '(^|/)Dockerfile|(^|/)lagoon/|(^|/)docker-compose'; then
+     POINTER_GLOBS+=('.nvmrc' '.node-version' 'package.json' 'composer.json'
+                     'pyproject.toml' 'go.mod' '.ruby-version' 'Gemfile'
+                     '.github/workflows/*.yml' '.gitlab-ci.yml' 'bitbucket-pipelines.yml')
+   fi
+
+   # CI changes → Dockerfiles + language pins
+   if echo "$DIFF_PATHS" | grep -qE '(^|/)\.github/workflows/|(^|/)\.gitlab-ci\.yml|(^|/)bitbucket-pipelines\.yml'; then
+     POINTER_GLOBS+=('Dockerfile*' 'lagoon/*.dockerfile' 'lagoon/Dockerfile*'
+                     '.nvmrc' '.node-version' 'package.json' 'composer.json'
+                     'pyproject.toml' 'go.mod' '.ruby-version')
+   fi
+
+   if [[ ${#POINTER_GLOBS[@]} -gt 0 ]]; then
+     ALL_REPO_FILES=$(git ls-tree -r HEAD --name-only 2>/dev/null) \
+       || { echo "WARNING: git ls-tree failed; RELATED_FILES will be empty." >&2; ALL_REPO_FILES=""; }
+     DIFF_SET=$(echo "$DIFF_PATHS" | sort -u)
+     MATCHES=""
+     for pat in "${POINTER_GLOBS[@]}"; do
+       # Convert glob to grep-regex: * → [^/]*, escape dots
+       re=$(echo "$pat" | sed 's/\./\\./g; s/\*/[^\/]*/g')
+       grep_out=$(echo "$ALL_REPO_FILES" | grep -E "(^|/)${re}$" 2>/dev/null); grep_rc=$?
+       if [[ $grep_rc -eq 0 ]]; then
+         MATCHES+="$grep_out"$'\n'
+       elif [[ $grep_rc -ge 2 ]]; then
+         echo "WARNING: grep regex error for pattern '$re' in RELATED_FILES build; skipping." >&2
+       fi
+       # grep_rc=1 (no match) is normal — skip silently
+     done
+     # Keep files that exist in repo, are NOT in the diff, dedupe, cap at 15
+     RELATED_FILES=$(echo "$MATCHES" | sort -u | grep -vxFf <(echo "$DIFF_SET") \
+                     | grep -v '^$' | head -n 15)
+   fi
+   ```
+   When `RELATED_FILES` is non-empty, pass this block in the task description for architecture-reviewer and security-reviewer:
+   ```
+   RELATED_FILES:
+   Consider reviewing these adjacent files for version/config drift (not in the diff):
+     - <file1>
+     - <file2>
+     ...
+   ```
+   If `RELATED_FILES` is empty, omit the section entirely — do not add noise. RELATED_FILES is built and passed at all tiers, including TIER=tiny (it is the primary discovery mechanism for Opus agents promoted by an infra trigger at tiny tier).
 
 5. **Read project context and prior review history concurrently** — run steps 5a and 5b in parallel (single tool-call batch):
 
@@ -202,10 +268,62 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    pre-flight for own-branch; captured fresh for `--pr` mode). Passed to agents so they
    don't fetch independently.
 
-7. **Determine diff size tier** from the manifest's total changed lines (lockfiles excluded):
-   - **Small** (under 300 lines): full diff passed inline to agents
-   - **Medium/Large** (300+ lines): agents receive file manifest and read selectively
-   - Default to **Medium/Large** if line count is ambiguous
+7. **Determine diff size tier** from the manifest's total changed lines and file count (lockfiles/vendor excluded):
+
+   First, write the aggregate diff to a temp file — used by tier triggers and Phase 1 conditional agents:
+   ```bash
+   DIFF_FILE=$(mktemp /tmp/cr-diff-XXXXXXXX.txt)
+   git diff <base>...HEAD > "$DIFF_FILE"   # in --pr mode: git -C "$WORKTREE_PATH" diff ...
+   ```
+   Track DIFF_FILE for Phase 5 cleanup.
+
+   Then compute:
+   - `LINES_CHANGED` — total added+removed lines from the manifest stat (lockfiles already excluded)
+   - `FILES_CHANGED` — count of non-lockfile/vendor changed files from the manifest
+
+   Set **TIER** using both counts:
+   - **TIER=tiny**: `LINES_CHANGED < 50` AND `FILES_CHANGED <= 3`
+   - **TIER=small**: `LINES_CHANGED < 300` (and not tiny)
+   - **TIER=medium**: `LINES_CHANGED >= 300` (or if either count is ambiguous, default here)
+
+   The two-count gate prevents a 2-line change across 4 unrelated directories from being misclassified as tiny.
+
+   **TIER=tiny context reduction** — apply immediately before agent launch:
+   - Skip PRIOR_REVIEW_CONTEXT fetch (step 5b short-circuits — treat as if already empty).
+   - Do not build FILE_DIGEST (step 4 second half — skip the per-file digest portion).
+   - Commit log is passed only to pr-summarizer; all other agents get diff + PR title only.
+   - RELATED_FILES (step 4 tail) is still built and passed when non-empty — it is the primary signal for version-pin drift at tiny tier.
+
+   **TIER=tiny promotion triggers** — fetch the changed-file list once, check the exit code, then run all greps against the cached output:
+   ```bash
+   # Fetch once; default-promote if git fails so Opus agents aren't silently skipped.
+   TINY_DIFF_NAMES=$(git diff --name-only <base>...HEAD 2>/dev/null)
+   if [[ $? -ne 0 ]]; then
+     echo "WARNING: git diff --name-only failed during tiny-tier trigger evaluation; defaulting to ARCH_PROMOTED=true, SECURITY_PROMOTED=false." >&2
+     ARCH_PROMOTED=true
+     SECURITY_PROMOTED=false
+   else
+     # Security trigger: auth/credential/dependency paths
+     SECURITY_PROMOTED=false
+     if echo "$TINY_DIFF_NAMES" | grep -qE '(auth|passwords?|routes?/|/api/|credentials?|token|secret)' \
+       || echo "$TINY_DIFF_NAMES" | grep -qE '(^|/)(package\.json|go\.mod|composer\.json|requirements.*\.txt|pyproject\.toml|Gemfile|Pipfile|[Cc]argo\.toml)$' \
+       || echo "$TINY_DIFF_NAMES" | grep -qE '(^|/)\.env' \
+       || echo "$TINY_DIFF_NAMES" | grep -qE 'settings\.(py|ya?ml|json|toml)$'; then
+       SECURITY_PROMOTED=true
+     fi
+
+     # Architecture trigger: infra/CI files or cross-directory change
+     ARCH_PROMOTED=false
+     if echo "$TINY_DIFF_NAMES" | grep -qE '(^|/)(Dockerfile|\.nvmrc|\.node-version|\.ddev/|\.github/workflows/|\.gitlab-ci\.yml|bitbucket-pipelines\.yml|lagoon/|helm/|k8s/|kubernetes/|terraform/|docker-compose)'; then
+       ARCH_PROMOTED=true
+     elif [[ $(echo "$TINY_DIFF_NAMES" | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ') -ge 2 ]]; then
+       ARCH_PROMOTED=true
+     fi
+   fi
+   ```
+   In `--pr` mode, prefix the `git diff` command with `git -C "$WORKTREE_PATH"`.
+   These triggers only apply at TIER=tiny; at TIER=small or TIER=medium they are ignored.
+   Surface both flags in Phase 5 metadata (e.g., `TIER=tiny — architecture-reviewer promoted by infra trigger`).
 
 8. Determine which agents to run (see Phase 1).
 
@@ -213,9 +331,9 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 
 #### Context Passing
 
-**Do not display raw diffs to the user.** Write diffs to temp files via `mktemp /tmp/cr-diff-XXXXXXXX.txt`, then Read them. Track all temp files for Phase 5 cleanup.
+**Do not display raw diffs to the user.** Write diffs to temp files (tracked for Phase 5 cleanup). `$DIFF_FILE` was already written in Phase 0 step 7; use it here. Write any per-agent slice files via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt`.
 
-**Small diffs (under 300 lines):** Capture full diff once to a temp file. Pass inline to all agents.
+**Small diffs (under 300 lines, i.e., TIER=small or TIER=tiny):** Pass full diff inline to all agents that receive a diff.
 
 **Medium/large diffs (300+ lines):** Pass each agent: file manifest, base branch name, condensed project context, and commit log (where needed). Custom agents read files selectively via `git diff <base>...HEAD -- <file>`.
 
@@ -239,6 +357,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `--no-post` / `--local` | Same as default but skips issue-linker; all Phase 4 GitHub operations suppressed |
 | `--security-only` | security-reviewer + CVE check (if manifest files changed) |
 | `--summary-only` | pr-summarizer only |
+| `TIER=tiny` (auto, <50 lines AND ≤3 files) | pr-summarizer (Haiku) + code-reviewer + CVE check if manifest files changed + triggered silent-failure-hunter / pr-test-analyzer; architecture-reviewer and security-reviewer run only when promoted by their respective triggers (infra/cross-dir vs auth/dep paths); blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally skipped. When `--quick` is also active, stricter rule wins (TIER=tiny further demotes pr-summarizer to Haiku). `--security-only` overrides TIER=tiny — security-reviewer always runs. `--depth deep` promotes any trigger-activated Opus agents to opus+extended-thinking but does NOT un-skip unconditionally-skipped agents. |
 
 **Model assignments** — the table below is the source of truth. Always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool. If this table disagrees with an agent's frontmatter `model:` field, this table wins — the frontmatter is a standalone default for agents running outside this skill.
 
@@ -257,12 +376,29 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | issue-linker | `issue-linker` | haiku | haiku |
 | dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
 
+**TIER=tiny model overrides** — when TIER=tiny was computed in Phase 0 step 7, apply these overrides on top of the model table. Overrides only apply at TIER=tiny; at TIER=small/medium the model table governs unchanged.
+
+| Agent | TIER=tiny override |
+|-------|-------------------|
+| pr-summarizer | haiku (instead of sonnet); drop commit log and project context — pass diff + PR title only |
+| architecture-reviewer | **skip** unless ARCH_PROMOTED=true; if promoted, run at opus (or opus+extended-thinking if depth=deep), pass diff inline + RELATED_FILES only (no FILE_DIGEST, no commit log, no project context) |
+| security-reviewer | **skip** unless SECURITY_PROMOTED=true; if promoted, run at opus (or opus+extended-thinking if depth=deep), pass diff inline + RELATED_FILES only |
+| blind-hunter | **skip unconditionally** |
+| edge-case-hunter | **skip unconditionally** |
+| comment-analyzer | **skip** |
+| type-design-analyzer | **skip** |
+| code-reviewer | unchanged (always pass full diff) |
+| silent-failure-hunter | unchanged (runs on content trigger) |
+| pr-test-analyzer | unchanged (runs on content trigger) |
+| issue-linker | unchanged (haiku, GitHub-only conditions unchanged) |
+
 **Agent task-description directive protocol** — Agents key off `KEY=value` strings embedded in their task description to enable optional behaviors. This is the authoritative registry:
 
 | Directive | Value | Consumed by | Default when absent |
 |-----------|-------|-------------|---------------------|
 | `DIAGRAMS` | `true` / `false` | pr-summarizer | `false` (omit diagrams) |
 | `EXTENDED_THINKING` | `true` | architecture-reviewer, security-reviewer | not set (standard reasoning) |
+| `RELATED_FILES` | newline-separated file paths | architecture-reviewer, security-reviewer | unset (no pointer list) |
 
 Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
 
@@ -270,24 +406,31 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
 
 - **pr-summarizer** (subagent_type: `pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   If `--diagrams` was passed (and not `--quick`): include `DIAGRAMS=true` in the task description. Otherwise: include `DIAGRAMS=false`.
+  **TIER=tiny:** use haiku instead of sonnet; pass only diff + PR title (drop manifest, commit log, project context).
 - **code-reviewer** (subagent_type: `pr-review-toolkit:code-reviewer`, model: sonnet) — always pass the full diff.
 
 **Full-run-only agents** (skipped with `--quick`):
 
 - **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
+  If RELATED_FILES is non-empty, include it in the task description (see directive table above).
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Read/Grep calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
+  **TIER=tiny:** skip unless ARCH_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, and PRIOR_REVIEW_CONTEXT.
 - **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, detected languages, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
+  If RELATED_FILES is non-empty, include it in the task description (see directive table above).
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Bash/Read calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
+  **TIER=tiny:** skip unless SECURITY_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, and PRIOR_REVIEW_CONTEXT.
 - **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
+  **TIER=tiny:** skip unconditionally. `--depth deep` does not override this skip.
 - **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   Has full codebase read access for surrounding context.
+  **TIER=tiny:** skip unconditionally. `--depth deep` does not override this skip.
 
 **Conditional agents — run in both full and `--quick` when triggered:**
 
@@ -304,7 +447,9 @@ The grep checks the aggregate diff as a boolean — if it matches anywhere, the 
 **Conditional agents — full-run only** (skip in `--quick` and when not triggered):
 
 - **comment-analyzer** (subagent_type: `pr-review-toolkit:comment-analyzer`, model: sonnet) — trigger: comment lines (`//`, `#`, `/*`, `"""`, `'''`) present in the diff. Pass the full diff when triggered.
+  **TIER=tiny:** skip.
 - **type-design-analyzer** (subagent_type: `pr-review-toolkit:type-design-analyzer`, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `) in the diff. Pass the full diff when triggered.
+  **TIER=tiny:** skip.
 - **issue-linker** (subagent_type: `issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick`, `--pr`, and `--no-post`/`--local` modes. Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
@@ -316,19 +461,33 @@ Run after all Phase 1 agents are launched (they run in parallel; this runs in th
 **CVE / dependency vulnerability check** — run when `MANIFEST_FILES` is non-empty (skip only if `--summary-only` mode; run in all other modes including `--quick` and `--security-only`):
 
 ```bash
-CVE_SCRIPT="${CLAUDE_DIR:-$HOME/.claude}/scripts/run-cve-check.sh"
+# Resolve run-cve-check.sh — try each install location in priority order.
+# TODO(follow-up): relocate to skills/comprehensive-review/scripts/ for simpler plugin-relative resolution.
+CVE_SCRIPT=""
+for candidate in \
+  "${CLAUDE_PLUGIN_ROOT:-}/scripts/run-cve-check.sh" \
+  "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts/run-cve-check.sh" \
+  "${CLAUDE_DIR:-}/scripts/run-cve-check.sh" \
+  "$HOME/.claude/scripts/run-cve-check.sh" \
+  "$HOME/.claude/plugins/marketplaces/tag1consulting/plugins/comprehensive-review/scripts/run-cve-check.sh"; do
+  [[ -n "$candidate" && -x "$candidate" ]] && { CVE_SCRIPT="$candidate"; break; }
+done
+
 CVE_JSON="[]"
-if [[ -x "$CVE_SCRIPT" ]]; then
+CVE_CHECK_FAILED=false
+if [[ -n "$CVE_SCRIPT" ]]; then
   CVE_JSON=$(bash "$CVE_SCRIPT" <<<"$MANIFEST_FILES") || {
-    echo "WARNING: run-cve-check.sh failed; CVE findings will be skipped." >&2
+    echo "WARNING: run-cve-check.sh ($CVE_SCRIPT) failed; CVE findings will be skipped." >&2
     CVE_JSON="[]"
+    CVE_CHECK_FAILED=true
   }
 else
-  echo "WARNING: scripts/run-cve-check.sh not found; CVE check skipped. Re-run install to add it." >&2
+  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/scripts, \$CLAUDE_DIR/scripts, ~/.claude/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting' or './install.sh --local'." >&2
+  CVE_CHECK_FAILED=true
 fi
 ```
 
-`CLAUDE_DIR` defaults to `$HOME/.claude` (the standard Claude Code config directory). The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency via a single `/v1/querybatch` POST (not one call per package), and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`. Each finding text includes the CVSS score (e.g., `[CVSS 9.8]`) or version prefix (e.g., `[CVSS:4.0]`) when the score cannot be computed. CVSS v4.0 and v2 vectors map to High conservatively rather than silently defaulting to Medium.
+Path resolution order: `$CLAUDE_PLUGIN_ROOT` (set by the plugin harness when the skill runs as an installed plugin) → `$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts/` → `$CLAUDE_DIR` → `$HOME/.claude` → known marketplace install path. First executable match wins. The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency via a single `/v1/querybatch` POST (not one call per package), and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`. Each finding text includes the CVSS score (e.g., `[CVSS 9.8]`) or version prefix (e.g., `[CVSS:4.0]`) when the score cannot be computed. CVSS v4.0 and v2 vectors map to High conservatively rather than silently defaulting to Medium.
 
 - Capture `CVE_JSON` from stdout; on any non-zero exit, set to `[]` and emit a warning to stderr.
 - Network failures are non-blocking: the script returns `[]` and logs to stderr.
@@ -554,7 +713,9 @@ Note in terminal: "Review written to <path>"
 3. Review posted → "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
 4. Always display Block B (findings).
 5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ..."
-6. Report Opus agent tool-call usage: "Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)" — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time.
+6. Report diff tier and Opus agent tool-call usage:
+   - `"Diff tier: <tiny|small|medium>  (<N> lines, <M> files)"` — if TIER=tiny, also show which agents were promoted or skipped, e.g.: `"TIER=tiny — architecture-reviewer: promoted (infra trigger) | security-reviewer: skipped | blind-hunter: skipped | edge-case-hunter: skipped"`
+   - `"Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)"` — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time. Omit any agent that was skipped.
 7. **Display a token utilization table** (always shown, even if no findings). **Always include both token counts AND the estimated cost — do not simplify to tools+cost only.** Include every agent that ran plus the orchestrator row as "orchestrator (this session)". Build the table from the agent task result metadata (tool-call counts are tracked per agent as each completes). Use these pricing constants: Opus input $15/M, Opus output $75/M, Opus cache_write $18.75/M, Opus cache_read $1.50/M; Sonnet input $3/M, Sonnet output $15/M, Sonnet cache_write $3.75/M, Sonnet cache_read $0.30/M. For the orchestrator row, use the actual tool-call counts from the session (tracked by TaskCreate/TaskUpdate overhead), and note that orchestrator cost is an estimate (exact figures require `/cost`):
    ```
    Token utilization:
@@ -583,6 +744,7 @@ Note in terminal: "Review written to <path>"
    - If token counts are unavailable for a specific agent (e.g., toolkit agents that don't expose metadata), show "—" for those cells.
 8. Critical/High findings → "⚠ Address Critical/High findings before requesting review."
 9. Agent failures → "⚠ Review incomplete — <N> agent(s) failed."
+   If CVE_CHECK_FAILED=true → "⚠ CVE check did not run (script not found or execution failed) — dependency vulnerabilities not scanned." Show this even when CVE_JSON is [] so the user knows the empty result means 'check skipped', not 'no vulnerabilities'.
 10. No findings + no failures → "No significant issues found. Ready for review."
 11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
 
