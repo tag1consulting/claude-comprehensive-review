@@ -555,7 +555,7 @@ Note in terminal: "Review written to <path>"
 4. Always display Block B (findings).
 5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ..."
 6. Report Opus agent tool-call usage: "Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)" — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time.
-7. **Display a token utilization table** (always shown, even if no findings). Include every agent that ran plus the orchestrator row as "orchestrator (this session)". Build the table from the agent task result metadata (tool-call counts are tracked per agent as each completes). Use these pricing constants: Opus input $15/M, Opus output $75/M, Opus cache_write $18.75/M, Opus cache_read $1.50/M; Sonnet input $3/M, Sonnet output $15/M, Sonnet cache_write $3.75/M, Sonnet cache_read $0.30/M. For the orchestrator row, use the actual tool-call counts from the session (tracked by TaskCreate/TaskUpdate overhead), and note that orchestrator cost is an estimate (exact figures require `/cost`):
+7. **Display a token utilization table** (always shown, even if no findings). **Always include both token counts AND the estimated cost — do not simplify to tools+cost only.** Include every agent that ran plus the orchestrator row as "orchestrator (this session)". Build the table from the agent task result metadata (tool-call counts are tracked per agent as each completes). Use these pricing constants: Opus input $15/M, Opus output $75/M, Opus cache_write $18.75/M, Opus cache_read $1.50/M; Sonnet input $3/M, Sonnet output $15/M, Sonnet cache_write $3.75/M, Sonnet cache_read $0.30/M. For the orchestrator row, use the actual tool-call counts from the session (tracked by TaskCreate/TaskUpdate overhead), and note that orchestrator cost is an estimate (exact figures require `/cost`):
    ```
    Token utilization:
    Agent                    Model    In     Out   Cache$W  Cache$R  Tools  Est. Cost
@@ -576,6 +576,7 @@ Note in terminal: "Review written to <path>"
    Tip: Run on Sonnet instead of Opus for ~5× lower orchestrator cost.
    ```
    Notes on the table:
+   - **All seven columns (Agent, Model, In, Out, Cache$W, Cache$R, Tools, Est. Cost) are required** — never drop token-count columns even when counts are small or zero.
    - Populate the "orchestrator (est.)" row only if you can derive approximate figures from the session; otherwise show "— see /cost" for that row.
    - Always show the "Tip: Run on Sonnet..." line if the orchestrator model is Opus.
    - Omit skipped agents from the table.
