@@ -177,7 +177,8 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    ```bash
    RELATED_FILES=""
    declare -a POINTER_GLOBS=()
-   DIFF_PATHS=$(git diff --name-only <base>...HEAD)  # in --pr mode: git -C "$WORKTREE_PATH" diff ...
+   DIFF_PATHS=$(git diff --name-only <base>...HEAD 2>/dev/null) \
+     || { echo "WARNING: git diff --name-only failed; RELATED_FILES will be empty." >&2; DIFF_PATHS=""; }
 
    # Language/runtime version pins → infra that consumes them
    if echo "$DIFF_PATHS" | grep -qE '(^|/)(\.nvmrc|package\.json|\.node-version)$'; then
@@ -206,14 +207,20 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    fi
 
    if [[ ${#POINTER_GLOBS[@]} -gt 0 ]]; then
-     ALL_REPO_FILES=$(git ls-tree -r HEAD --name-only)  # in --pr mode: git -C "$WORKTREE_PATH" ls-tree ...
+     ALL_REPO_FILES=$(git ls-tree -r HEAD --name-only 2>/dev/null) \
+       || { echo "WARNING: git ls-tree failed; RELATED_FILES will be empty." >&2; ALL_REPO_FILES=""; }
      DIFF_SET=$(echo "$DIFF_PATHS" | sort -u)
      MATCHES=""
      for pat in "${POINTER_GLOBS[@]}"; do
        # Convert glob to grep-regex: * → [^/]*, escape dots
        re=$(echo "$pat" | sed 's/\./\\./g; s/\*/[^\/]*/g')
-       MATCHES+=$(echo "$ALL_REPO_FILES" | grep -E "(^|/)${re}$" || true)
-       MATCHES+=$'\n'
+       grep_out=$(echo "$ALL_REPO_FILES" | grep -E "(^|/)${re}$" 2>/dev/null); grep_rc=$?
+       if [[ $grep_rc -eq 0 ]]; then
+         MATCHES+="$grep_out"$'\n'
+       elif [[ $grep_rc -ge 2 ]]; then
+         echo "WARNING: grep regex error for pattern '$re' in RELATED_FILES build; skipping." >&2
+       fi
+       # grep_rc=1 (no match) is normal — skip silently
      done
      # Keep files that exist in repo, are NOT in the diff, dedupe, cap at 15
      RELATED_FILES=$(echo "$MATCHES" | sort -u | grep -vxFf <(echo "$DIFF_SET") \
@@ -287,26 +294,34 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    - Commit log is passed only to pr-summarizer; all other agents get diff + PR title only.
    - RELATED_FILES (step 4 tail) is still built and passed when non-empty — it is the primary signal for version-pin drift at tiny tier.
 
-   **TIER=tiny promotion triggers** — evaluate once via boolean grep on `$DIFF_FILE`:
+   **TIER=tiny promotion triggers** — fetch the changed-file list once, check the exit code, then run all greps against the cached output:
    ```bash
-   # Security trigger: auth/credential/dependency paths
-   SECURITY_PROMOTED=false
-   if git diff --name-only <base>...HEAD | grep -qE '(auth|passwords?|routes?/|/api/|credentials?|token|secret)' \
-     || git diff --name-only <base>...HEAD | grep -qE '(^|/)(package\.json|go\.mod|composer\.json|requirements.*\.txt|pyproject\.toml|Gemfile|Pipfile|[Cc]argo\.toml)$' \
-     || git diff --name-only <base>...HEAD | grep -qE '(^|/)\.env' \
-     || git diff --name-only <base>...HEAD | grep -qE 'settings\.(py|ya?ml|json|toml)$'; then
-     SECURITY_PROMOTED=true
-   fi
+   # Fetch once; default-promote if git fails so Opus agents aren't silently skipped.
+   TINY_DIFF_NAMES=$(git diff --name-only <base>...HEAD 2>/dev/null)
+   if [[ $? -ne 0 ]]; then
+     echo "WARNING: git diff --name-only failed during tiny-tier trigger evaluation; defaulting to ARCH_PROMOTED=true, SECURITY_PROMOTED=false." >&2
+     ARCH_PROMOTED=true
+     SECURITY_PROMOTED=false
+   else
+     # Security trigger: auth/credential/dependency paths
+     SECURITY_PROMOTED=false
+     if echo "$TINY_DIFF_NAMES" | grep -qE '(auth|passwords?|routes?/|/api/|credentials?|token|secret)' \
+       || echo "$TINY_DIFF_NAMES" | grep -qE '(^|/)(package\.json|go\.mod|composer\.json|requirements.*\.txt|pyproject\.toml|Gemfile|Pipfile|[Cc]argo\.toml)$' \
+       || echo "$TINY_DIFF_NAMES" | grep -qE '(^|/)\.env' \
+       || echo "$TINY_DIFF_NAMES" | grep -qE 'settings\.(py|ya?ml|json|toml)$'; then
+       SECURITY_PROMOTED=true
+     fi
 
-   # Architecture trigger: infra/CI files or cross-directory change
-   ARCH_PROMOTED=false
-   if git diff --name-only <base>...HEAD | grep -qE '(^|/)(Dockerfile|\.nvmrc|\.node-version|\.ddev/|\.github/workflows/|\.gitlab-ci\.yml|bitbucket-pipelines\.yml|lagoon/|helm/|k8s/|kubernetes/|terraform/|docker-compose)'; then
-     ARCH_PROMOTED=true
-   elif [[ $(git diff --name-only <base>...HEAD | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ') -ge 2 ]]; then
-     ARCH_PROMOTED=true
+     # Architecture trigger: infra/CI files or cross-directory change
+     ARCH_PROMOTED=false
+     if echo "$TINY_DIFF_NAMES" | grep -qE '(^|/)(Dockerfile|\.nvmrc|\.node-version|\.ddev/|\.github/workflows/|\.gitlab-ci\.yml|bitbucket-pipelines\.yml|lagoon/|helm/|k8s/|kubernetes/|terraform/|docker-compose)'; then
+       ARCH_PROMOTED=true
+     elif [[ $(echo "$TINY_DIFF_NAMES" | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ') -ge 2 ]]; then
+       ARCH_PROMOTED=true
+     fi
    fi
    ```
-   In `--pr` mode, prefix all git commands above with `git -C "$WORKTREE_PATH"`.
+   In `--pr` mode, prefix the `git diff` command with `git -C "$WORKTREE_PATH"`.
    These triggers only apply at TIER=tiny; at TIER=small or TIER=medium they are ignored.
    Surface both flags in Phase 5 metadata (e.g., `TIER=tiny — architecture-reviewer promoted by infra trigger`).
 
@@ -459,13 +474,16 @@ for candidate in \
 done
 
 CVE_JSON="[]"
+CVE_CHECK_FAILED=false
 if [[ -n "$CVE_SCRIPT" ]]; then
   CVE_JSON=$(bash "$CVE_SCRIPT" <<<"$MANIFEST_FILES") || {
     echo "WARNING: run-cve-check.sh ($CVE_SCRIPT) failed; CVE findings will be skipped." >&2
     CVE_JSON="[]"
+    CVE_CHECK_FAILED=true
   }
 else
   echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/scripts, \$CLAUDE_DIR/scripts, ~/.claude/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting' or './install.sh --local'." >&2
+  CVE_CHECK_FAILED=true
 fi
 ```
 
@@ -726,6 +744,7 @@ Note in terminal: "Review written to <path>"
    - If token counts are unavailable for a specific agent (e.g., toolkit agents that don't expose metadata), show "—" for those cells.
 8. Critical/High findings → "⚠ Address Critical/High findings before requesting review."
 9. Agent failures → "⚠ Review incomplete — <N> agent(s) failed."
+   If CVE_CHECK_FAILED=true → "⚠ CVE check did not run (script not found or execution failed) — dependency vulnerabilities not scanned." Show this even when CVE_JSON is [] so the user knows the empty result means 'check skipped', not 'no vulnerabilities'.
 10. No findings + no failures → "No significant issues found. Ready for review."
 11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
 
