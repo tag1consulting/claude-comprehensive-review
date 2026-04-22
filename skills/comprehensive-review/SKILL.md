@@ -42,9 +42,21 @@ Supported flags:
 - `--no-post` / `--local` — display everything locally, skip all remote operations
 - `--pr <number>` — review an existing PR/MR by number (external review mode)
 - `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
-- `--depth <normal|deep>` — agent-depth promotion: `deep` runs blind-hunter and edge-case-hunter on Opus 4.7 (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
+- `--depth <normal|deep>` — agent-depth promotion: `deep` promotes blind-hunter and edge-case-hunter to the `opus` alias (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
 - `--no-mem` — disable claude-mem integration even if claude-mem is detected
 - `--help` — show this usage
+- `--output-file <path>` — write Block A + Block B to a markdown file during Phase 5, in addition to terminal output
+
+## Orchestrator Model Recommendation
+
+The orchestrator performs template-filling, tool dispatch, and structured severity normalization — it does not require Opus-level reasoning. **Run this skill on Sonnet for 5× lower orchestrator cost.** The `opus` alias is reserved for `architecture-reviewer` and `security-reviewer` (and `blind-hunter`/`edge-case-hunter` in `--depth deep`), where deep reasoning pays off.
+
+Haiku is not recommended: Phase 2 deduplication and severity normalization across 8 agent outputs benefits from Sonnet-tier instruction following.
+
+**Rough cost guidance on a medium PR (~1,700 lines, full run):**
+- Opus orchestrator: $60–80 total (orchestrator alone ≈ $30 due to 100k+ cached tokens × 100+ turns at Opus cache-read rates)
+- Sonnet orchestrator: $30–45 total (orchestrator ≈ $6)
+- `--quick` mode: saves ~60–80% by skipping the two Opus agents
 
 ## Pre-flight Context
 
@@ -81,54 +93,15 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
    - GitHub: `gh --version` must succeed. If not: "Error: gh CLI is required for GitHub repositories. Install: https://cli.github.com/"
    - GitLab: `glab --version` must succeed. If not: "Error: glab CLI is required for GitLab repositories. Install: https://gitlab.com/gitlab-org/cli"
    - GitLab/Bitbucket: `jq --version` must succeed **unless `--no-post`/`--local` was passed** (no JSON parsing needed in local mode). If not: "Error: jq is required for GitLab/Bitbucket repositories. Install: https://jqlang.org/"
-   - Bitbucket: `curl --version` must succeed (should always be available). Also verify BITBUCKET_TOKEN env var is set **unless `--no-post`/`--local` was passed** (no API calls needed in local mode). If BITBUCKET_APP_PASSWORD is set but BITBUCKET_TOKEN is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If neither is set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your access token or app password."
+   - Bitbucket: `curl --version` must succeed (should always be available). Also verify both `BITBUCKET_EMAIL` and `BITBUCKET_TOKEN` env vars are set **unless `--no-post`/`--local` was passed** (no API calls needed in local mode). If `BITBUCKET_APP_PASSWORD` is set but `BITBUCKET_TOKEN` is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If `BITBUCKET_TOKEN` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your Atlassian API token." If `BITBUCKET_EMAIL` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_EMAIL environment variable is required for Bitbucket repositories. Set BITBUCKET_EMAIL to your Atlassian account email address."
 
 Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only used when PROVIDER=github. For other providers, all operations use CLI tools (glab, curl) via Bash.
 
 ### Provider Operations Reference
 
-> **Skip this entire section** if `--no-post` or `--local` was passed — no provider operations will fire in that mode.
-
-The following operations are referenced by name throughout Phases 0, 4, and 4b. Use the command corresponding to the detected PROVIDER.
-
-#### OP: Fetch PR/MR metadata (returns JSON with number, title, base branch, head branch, state)
-
-- **github:** `gh pr view <N> --json number,title,baseRefName,headRefName,state`
-- **gitlab:** `glab mr view <N> --output json` (fields: iid, title, source_branch, target_branch, state). Map: iid→number, target_branch→baseRefName, source_branch→headRefName. State values: "opened"→OPEN, "closed"→CLOSED, "merged"→MERGED. If state is unrecognized, warn "Unrecognized MR state '<value>' — proceeding as OPEN." and treat as OPEN.
-- **bitbucket:** `curl -sf -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>"`. Map: id→number, destination.branch.name→baseRefName, source.branch.name→headRefName. State values: "OPEN", "DECLINED"→CLOSED, "MERGED".
-
-#### OP: Checkout PR/MR branch into current worktree
-
-- **github:** `gh pr checkout <N>`
-- **gitlab:** `glab mr checkout <N>`
-- **bitbucket:** Extract source branch name from PR metadata, then `git fetch origin <branch> && git checkout FETCH_HEAD`
-
-#### OP: Detect existing PR/MR on current branch (returns metadata or fails)
-
-- **github:** `gh pr view --json number,title,body`
-- **gitlab:** `glab mr list --source-branch "$(git branch --show-current)" --output json` (returns `[]` when no MR exists)
-- **bitbucket:** `curl -sf -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests?q=source.branch.name=\"$(git branch --show-current)\"&state=OPEN"`. If `curl` exits non-zero or the response contains `"type":"error"`, treat as API failure (not "no PR found"). Otherwise check `.size > 0`; if so, first result is the PR.
-
-#### OP: Create PR/MR
-
-- **github:** `gh pr create --title "<title>" --base "<base>" --body "<body>"`
-- **gitlab:** `glab mr create --title "<title>" --target-branch "<base>" --description "<body>" --no-editor`
-- **bitbucket:** `curl -sf -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests" -d '{"title":"<title>","source":{"branch":{"name":"<head>"}},"destination":{"branch":{"name":"<base>"}},"description":"<body>"}'`
-
-#### OP: Post comment on PR/MR
-
-- **github:** `gh pr comment <N> --body "<body>"`
-- **gitlab:** `glab mr comment <N> --message "<body>"`
-- **bitbucket:** `curl -sf -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>/comments" -d '{"content":{"raw":"<body>"}}'`
-
-#### OP: Post inline review (Phase 4b only)
-
-- **github:** `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). Fallback: `gh api`. Supports REQUEST_CHANGES and COMMENT events.
-- **gitlab:** Create a review via Draft Notes API or post individual discussion threads:
-  For each inline comment (shell-escape all interpolated values — body, file path, line — to prevent injection via crafted filenames or review content): `glab api -X POST "projects/${PROJECT_ID}/merge_requests/<N>/discussions" -f "body=<body>" -f "position[base_sha]=<base_sha>" -f "position[head_sha]=<head_sha>" -f "position[start_sha]=<start_sha>" -f "position[position_type]=text" -f "position[new_path]=<file>" -f "position[new_line]=<line>"`.
-  For the review body: `glab mr comment <N> --message "<review body>"`.
-  GitLab does not have a single-call "submit review with inline comments" API like GitHub. Inline comments are posted as discussion threads. There is no REQUEST_CHANGES event — use an "unapprove" or simply post as comments.
-- **bitbucket:** NOT SUPPORTED for inline diff comments. Post Block B as a single PR comment instead (using OP: Post comment). Note in terminal output: "Note: Inline review comments are not supported on Bitbucket. Findings posted as a PR comment."
+> **Skip reading PROVIDERS.md** if `--no-post` or `--local` was passed — no provider operations will fire in that mode.
+>
+> When a provider operation is needed in Phase 0 (external PR checkout), Phase 4, or Phase 4b, read the full command reference from `skills/comprehensive-review/PROVIDERS.md`. All OP names referenced below are defined there.
 
 ### Phase 0: Pre-flight and Manifest Construction
 
@@ -139,6 +112,7 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
    - Note mode flags: `--quick`, `--diagrams`, `--security-only`, `--summary-only`, `--create-pr`,
      `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--no-mem`
+   - Extract `--output-file <path>` if present — set OUTPUT_FILE to the given path for Phase 5 file write
    - Extract `--depth <normal|deep>` if present; default DEPTH=`normal`. If value is not one of `{normal, deep}`, report "Error: Invalid --depth value '<value>'. Valid values are: normal, deep." and stop.
    - **Flag conflict checks:**
      - If both `--post-findings` and `--no-findings` are present, report
@@ -186,6 +160,16 @@ The following operations are referenced by name throughout Phases 0, 4, and 4b. 
      Docs:    README.md (+10/-3)
      ```
      Omit empty categories. Binary/generated files go under **Other**.
+
+   **Also build a per-file diff digest** for Opus agents (architecture-reviewer and security-reviewer). This reduces the number of discovery tool calls those agents need to make, lowering their cache-read multiplier. Run immediately after the manifest:
+   ```bash
+   git diff --stat <base>...HEAD -- ':!*lock.json' ':!*lock.yaml' ':!*.lock' ':!*.sum' ':!vendor/*' ':!node_modules/*'
+   ```
+   For each changed file, also capture the first changed hunk (first `@@` block, up to 20 lines) via:
+   ```bash
+   git diff <base>...HEAD -- <file> | awk '/^@@/{found=1; count=0} found && count<20{print; count++}' 2>/dev/null
+   ```
+   Combine into a `FILE_DIGEST` block (~1 line of stat + ≤20 diff lines per file). Cap the entire FILE_DIGEST at 200 lines total — if more files exist, include stats for all but limit hunks to the top N by lines-changed. Pass FILE_DIGEST as part of the task description for architecture-reviewer and security-reviewer in Phase 1.
 
 5. **Read project context and prior review history concurrently** — run steps 5a and 5b in parallel (single tool-call batch):
 
@@ -290,12 +274,14 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
 
 **Full-run-only agents** (skipped with `--quick`):
 
-- **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
-- **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, commit log, detected languages, project context. Small diffs: also full diff inline.
+  Always include in the task description: `"Tool budget: prefer batching parallel Read/Grep calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
+- **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, detected languages, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
+  Always include in the task description: `"Tool budget: prefer batching parallel Bash/Read calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
 - **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
@@ -372,19 +358,10 @@ Wait for all agents. Check each output:
 - Tool error/timeout → "ERROR: <agent> failed. Reason: <error>."
 - Track failures for Phase 5.
 
-**Severity normalization** (inclusive ranges):
-
-| Agent | Their Scale | Maps To |
-|-------|-------------|---------|
-| code-reviewer | confidence [91,100] / [80,90] / [60,79] / [0,59] | Critical / High / Medium / Low |
-| silent-failure-hunter | CRITICAL/HIGH/MEDIUM | pass through |
-| comment-analyzer | Critical/High/Medium/Low | pass through |
-| pr-test-analyzer | gap [8,10] / [5,7] / [3,4] / [1,2] | Critical / High / Medium / Low |
-| type-design-analyzer | rating [1,2] / [3,5] / [6,10] | High / Medium / Low |
-| architecture-reviewer, security-reviewer | Critical/High/Medium | pass through (Medium+ only) |
-| blind-hunter, edge-case-hunter | Critical/High/Medium/Low | pass through |
-| dependency-check (parsed CVSS) | Critical/High/Medium/Low | pass through (identity mapping) |
-| dependency-check (CVSS unparsed / v4 / v2) | High | maps to High (conservative) |
+**Severity normalization** — read the mapping table from `skills/comprehensive-review/SEVERITY.md` and apply it to all agent findings. Key rules:
+- `code-reviewer` uses confidence scores (not labels); `pr-test-analyzer` uses gap scores. See SEVERITY.md for the numeric ranges.
+- `architecture-reviewer` and `security-reviewer` emit Medium+ only; Low findings from those agents are omitted.
+- `dependency-check` with unparseable CVSS vectors (v4.0, v2, or missing) maps conservatively to High.
 
 Also merge CVE findings from Phase 1b: if `CVE_JSON` is non-empty, add its entries to the normalized findings list before deduplication.
 
@@ -561,16 +538,52 @@ curl -sf -X POST "http://127.0.0.1:${MEM_PORT}/api/memory/save" \
 
 If the POST fails: silently continue. If it succeeds: note "Review summary stored to claude-mem." in terminal output below.
 
+**Write output file** (if `--output-file <path>` was passed): write Block A followed by Block B to the given path via the Write tool. Do this before displaying terminal output so the file exists even if terminal output is truncated by context limits.
+```
+<Block A>
+
+---
+
+<Block B>
+```
+Note in terminal: "Review written to <path>"
+
 **Display in terminal:**
 1. PR/MR created → "${PR_TERM} created: <URL>". No PR/MR + no `--create-pr` → "Tip: use --create-pr to create a ${PR_TERM_LONG}."
 2. Summary posted → "Summary comment posted to ${PR_TERM} #<N>"
 3. Review posted → "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
 4. Always display Block B (findings).
 5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ..."
-6. Critical/High findings → "⚠ Address Critical/High findings before requesting review."
-7. Agent failures → "⚠ Review incomplete — <N> agent(s) failed."
-8. No findings + no failures → "No significant issues found. Ready for review."
-9. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
+6. Report Opus agent tool-call usage: "Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)" — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time.
+7. **Display a token utilization table** (always shown, even if no findings). Include every agent that ran plus the orchestrator row as "orchestrator (this session)". Build the table from the agent task result metadata (tool-call counts are tracked per agent as each completes). Use these pricing constants: Opus input $15/M, Opus output $75/M, Opus cache_write $18.75/M, Opus cache_read $1.50/M; Sonnet input $3/M, Sonnet output $15/M, Sonnet cache_write $3.75/M, Sonnet cache_read $0.30/M. For the orchestrator row, use the actual tool-call counts from the session (tracked by TaskCreate/TaskUpdate overhead), and note that orchestrator cost is an estimate (exact figures require `/cost`):
+   ```
+   Token utilization:
+   Agent                    Model    In     Out   Cache$W  Cache$R  Tools  Est. Cost
+   ─────────────────────────────────────────────────────────────────────────────────
+   pr-summarizer            Sonnet   284    1216   82754   308465    12    $0.42
+   code-reviewer            Sonnet   3792   4802  198488  2382070    30    $1.54
+   architecture-reviewer    Opus       84  10314  166228  5064120    47   $11.49 ⚠ tools>25
+   security-reviewer        Opus       92  14947  157681  6205412    57   $13.39 ⚠ tools>25
+   blind-hunter             Sonnet     53   3399  106531   305366     5    $0.54
+   edge-case-hunter         Sonnet   6789   3926  158657  1439329    24    $1.11
+   silent-failure-hunter    Sonnet    133   3916   47600   143559     5    $0.28
+   comment-analyzer         Sonnet   7951   1837  121272   705926    15    $0.72
+   ─────────────────────────────────────────────────────────────────────────────────
+   Agents total                                                           $29.49
+   Orchestrator (est.)      Opus             —        —        —         ~$30.72
+   ─────────────────────────────────────────────────────────────────────────────────
+   Session total (est.)                                                   ~$60.21
+   Tip: Run on Sonnet instead of Opus for ~5× lower orchestrator cost.
+   ```
+   Notes on the table:
+   - Populate the "orchestrator (est.)" row only if you can derive approximate figures from the session; otherwise show "— see /cost" for that row.
+   - Always show the "Tip: Run on Sonnet..." line if the orchestrator model is Opus.
+   - Omit skipped agents from the table.
+   - If token counts are unavailable for a specific agent (e.g., toolkit agents that don't expose metadata), show "—" for those cells.
+8. Critical/High findings → "⚠ Address Critical/High findings before requesting review."
+9. Agent failures → "⚠ Review incomplete — <N> agent(s) failed."
+10. No findings + no failures → "No significant issues found. Ready for review."
+11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
 
 ## Notes
 
