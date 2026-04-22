@@ -10,7 +10,7 @@ command corresponding to the detected PROVIDER.
 
 - **github:** `gh pr view <N> --json number,title,baseRefName,headRefName,state`
 - **gitlab:** `glab mr view <N> --output json` (fields: iid, title, source_branch, target_branch, state). Map: iid→number, target_branch→baseRefName, source_branch→headRefName. State values: "opened"→OPEN, "closed"→CLOSED, "merged"→MERGED. If state is unrecognized, warn "Unrecognized MR state '<value>' — proceeding as OPEN." and treat as OPEN.
-- **bitbucket:** `curl -sf -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>"`. Map: id→number, destination.branch.name→baseRefName, source.branch.name→headRefName. State values: "OPEN", "DECLINED"→CLOSED, "MERGED".
+- **bitbucket:** `curl -sf --user "${BITBUCKET_EMAIL}:${BITBUCKET_TOKEN}" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>"`. Map: id→number, destination.branch.name→baseRefName, source.branch.name→headRefName. State values: "OPEN", "DECLINED"→CLOSED, "MERGED".
 
 ## OP: Checkout PR/MR branch into current worktree
 
@@ -22,19 +22,19 @@ command corresponding to the detected PROVIDER.
 
 - **github:** `gh pr view --json number,title,body`
 - **gitlab:** `glab mr list --source-branch "$(git branch --show-current)" --output json` (returns `[]` when no MR exists)
-- **bitbucket:** `curl -sf -H "Authorization: Bearer $BITBUCKET_TOKEN" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests?q=source.branch.name=\"$(git branch --show-current)\"&state=OPEN"`. If `curl` exits non-zero or the response contains `"type":"error"`, treat as API failure (not "no PR found"). Otherwise check `.size > 0`; if so, first result is the PR.
+- **bitbucket:** `curl -sf --user "${BITBUCKET_EMAIL}:${BITBUCKET_TOKEN}" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests?q=source.branch.name=\"$(git branch --show-current)\"&state=OPEN"`. If `curl` exits non-zero or the response contains `"type":"error"`, treat as API failure (not "no PR found"). Otherwise check `.size > 0`; if so, first result is the PR.
 
 ## OP: Create PR/MR
 
 - **github:** `gh pr create --title "<title>" --base "<base>" --body "<body>"`
 - **gitlab:** `glab mr create --title "<title>" --target-branch "<base>" --description "<body>" --no-editor`
-- **bitbucket:** `curl -sf -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests" -d '{"title":"<title>","source":{"branch":{"name":"<head>"}},"destination":{"branch":{"name":"<base>"}},"description":"<body>"}'`
+- **bitbucket:** `curl -sf -X POST --user "${BITBUCKET_EMAIL}:${BITBUCKET_TOKEN}" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests" -d '{"title":"<title>","source":{"branch":{"name":"<head>"}},"destination":{"branch":{"name":"<base>"}},"description":"<body>"}'`
 
 ## OP: Post comment on PR/MR
 
 - **github:** `gh pr comment <N> --body "<body>"`
 - **gitlab:** `glab mr comment <N> --message "<body>"`
-- **bitbucket:** `curl -sf -X POST -H "Authorization: Bearer $BITBUCKET_TOKEN" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>/comments" -d '{"content":{"raw":"<body>"}}'`
+- **bitbucket:** `curl -sf -X POST --user "${BITBUCKET_EMAIL}:${BITBUCKET_TOKEN}" -H "Content-Type: application/json" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>/comments" -d '{"content":{"raw":"<body>"}}'`
 
 ## OP: Post inline review (Phase 4b only)
 
