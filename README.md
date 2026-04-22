@@ -158,7 +158,8 @@ Run from any git repository, on the branch you want to review:
 | Flag | Effect |
 |------|--------|
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
-| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. Roughly 60–80% cheaper depending on diff composition. |
+| `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. Roughly 60–80% cheaper depending on diff composition. When the diff is also tiny (<50 lines, ≤3 files), auto-selected TIER=tiny further demotes pr-summarizer to Haiku. No flag needed. |
+| *(auto)* TIER=tiny | Automatically applied when the diff is under 50 lines AND ≤3 files. Routes pr-summarizer to Haiku; skips blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally; skips architecture-reviewer and security-reviewer unless triggered by infra/CI paths or auth/credential/dep-manifest paths respectively. Roughly 60–70% cheaper than `--quick` on tiny diffs (~$1 → ~$0.30). |
 | `--diagrams` | Include Mermaid sequence diagrams in Block A. Default is omitted (saves hundreds of output tokens). Always omitted in `--quick`. |
 | `--security-only` | Run security-reviewer + CVE check on changed dependency manifests only |
 | `--depth <tier>` | Agent depth: `normal` (default) or `deep`. In `deep` mode, blind-hunter and edge-case-hunter run on the `opus` alias, Opus agents use extended step-by-step reasoning, and a CVE reachability triage pass annotates which vulnerabilities are reachable in the diff. |
