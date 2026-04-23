@@ -48,6 +48,20 @@ Effort: 1=trivial 2=small(<50L) 3=medium(50-200L) 4=large(200-500L/schema) 5=maj
 **Summary**: single short phrase describing what changed in that file (not what the
 file does in general). Sort by most significant changes first, then alphabetically.
 
+When there are more than 10 files, group related files into cohorts with a bold header
+row in the table. Example:
+```
+| **API Layer** | | |
+| src/api/users.ts | Modified | Adds pagination to list endpoint |
+| src/api/auth.ts | Modified | Extracts JWT validation to middleware |
+| **Data Layer** | | |
+| src/models/user.ts | Modified | Adds `last_login` field |
+| **Tests** | | |
+| src/api/users_test.ts | Added | Tests for new pagination behavior |
+```
+Use judgment for grouping headers: "API Layer", "Data Layer", "Infrastructure", "Tests",
+"Config", "Docs", etc. — whatever fits the PR's structure.
+
 ## Step 4: Generate `## Sequence Diagrams` (only when `DIAGRAMS=true`)
 
 **Only generate this section if the orchestrator passed `DIAGRAMS=true` in the task
@@ -58,8 +72,15 @@ When generating diagrams: for each file modifying **control flow** (function cal
 API interactions, error paths, event handling), generate a Mermaid `sequenceDiagram` block
 showing the flow **after** the change.
 
-Skip files that are purely data structures, configuration, documentation, test fixtures,
-or minor cosmetic edits. If no files have meaningful control flow changes, write:
+Rules:
+- Use `sequenceDiagram` type only.
+- **Maximum 10 participants and 15 interactions per diagram.**
+- Show the primary happy path, not every error branch.
+- Use descriptive labels on arrows (not "calls" or "returns").
+- Skip files that are purely data structures, configuration, documentation, test fixtures,
+  or minor cosmetic edits.
+
+If no files have meaningful control flow changes, write:
 > No significant control flow changes in this PR.
 
 ## Empty State
@@ -82,7 +103,7 @@ Produce exactly these sections in order, with no preamble:
 
 | File | Change | Summary |
 |------|--------|---------|
-<rows>
+<rows — grouped with bold headers when >10 files>
 
 ## Sequence Diagrams
 

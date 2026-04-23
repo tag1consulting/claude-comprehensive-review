@@ -31,6 +31,7 @@ The skill coordinates two groups of agents:
    Both Opus agents use the `opus` alias; the harness resolves this to the current Opus model at spawn time. The spawn indicator shown by Claude Code when each subagent launches displays the resolved version.
    - `blind-hunter` — context-free "fresh eyes" review; receives only the raw diff (small diffs), a plain file list (large diffs in normal mode), or the full diff from the worktree (large diffs in `--pr` mode) — no project context in any case (runs Sonnet). Adapted from BMAD-METHOD.
    - `edge-case-hunter` — mechanical boundary-condition path tracing (runs Sonnet). Adapted from BMAD-METHOD.
+   - `adversarial-general` — holistic "what's missing" review: completeness gaps, operational blindness, documentation debt, missing defenses. Orthogonal to specialist agents; covers what they are explicitly scoped not to cover. Runs Opus. Adapted from BMAD-METHOD.
 
 2. **pr-review-toolkit agents** — external dependency, installed separately via `/plugins install pr-review-toolkit@claude-plugins-official`:
    - `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer`
@@ -77,14 +78,15 @@ Both blocks are always shown locally. What gets posted to the hosting provider d
 | Existing own PR/MR (default) | Not posted | Not posted |
 | Existing own PR/MR + `--post-summary` | PR/MR comment | Not posted |
 | Existing own PR/MR + `--post-findings` | Not posted | Inline review ¹ |
-| `--pr <N>` mode (default) | Not posted | Inline review ¹ |
-| `--pr <N>` + `--post-summary` | PR/MR comment | Inline review ¹ |
-| `--pr <N>` + `--no-findings` | Not posted | Not posted |
-| Any + `--no-post`/`--local` | Not posted | Not posted |
+| `--pr <N>` mode (default) | Not posted | Not posted |
+| `--pr <N>` + `--post-findings` | Not posted | Inline review ¹ |
+| `--pr <N>` + `--post-summary` | PR/MR comment | Not posted |
+| `--pr <N>` + `--post-summary` + `--post-findings` | PR/MR comment | Inline review ¹ |
+| Any + `--no-post`/`--local` | Not posted | Not posted (explicit alias for the default) |
 
 ¹ Inline review behavior varies by provider: GitHub uses `COMMENT` or `REQUEST_CHANGES` events; GitLab posts individual discussion threads (no review event model); Bitbucket does not support inline diff comments — Block B is posted as a single PR comment instead.
 
-The key invariant: Block A is posted only when `--create-pr` is passed and no PR/MR exists. On existing PRs/MRs, both blocks require explicit opt-in flags. Block B is never hidden from the terminal.
+The key invariant: **no-post is the default**. All remote posting requires explicit opt-in flags. Block B is never hidden from the terminal.
 
 ### Severity normalization
 
@@ -160,17 +162,34 @@ Plugin versions use semver without the `v` prefix (e.g., `1.0.0`). Git tags use 
 ## File layout
 
 ```
-.claude-plugin/plugin.json             ← plugin manifest (name, version, author, keywords)
-skills/comprehensive-review/SKILL.md   ← orchestrator: phases 0–5, all workflow logic
-skills/comprehensive-review/HELP.md    ← --help text (deferred; loaded only when --help is passed)
-agents/pr-summarizer.md                ← Block A generation
-agents/issue-linker.md                 ← issue cross-referencing (GitHub only; returns NONE for other providers)
-agents/security-reviewer.md            ← security analysis
-agents/architecture-reviewer.md        ← architectural analysis
-agents/blind-hunter.md                 ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
-agents/edge-case-hunter.md             ← boundary-condition path tracing (adapted from BMAD-METHOD)
-scripts/run-cve-check.sh               ← deterministic CVE check via OSV.dev (Phase 1b)
-install.sh                             ← legacy file-copy installer (recommends plugin install)
+.claude-plugin/plugin.json                                   ← plugin manifest (name, version, author, keywords)
+skills/comprehensive-review/SKILL.md                         ← orchestrator: phases 0–5, all workflow logic
+skills/comprehensive-review/HELP.md                          ← --help text (deferred; loaded only when --help is passed)
+skills/comprehensive-review/SEVERITY.md                      ← severity normalization + confidence scale
+skills/comprehensive-review/suppressions.json                ← global suppression rules (trimmed per-run by verify checks)
+skills/comprehensive-review/language-profiles/go.md          ← Go-specific review context (injected per detected language)
+skills/comprehensive-review/language-profiles/python.md      ← Python-specific review context
+skills/comprehensive-review/language-profiles/typescript.md  ← TypeScript/JavaScript-specific review context
+skills/comprehensive-review/language-profiles/php.md         ← PHP-specific review context (includes Drupal patterns)
+skills/comprehensive-review/language-profiles/ruby.md        ← Ruby-specific review context
+skills/comprehensive-review/language-profiles/rust.md        ← Rust-specific review context
+skills/comprehensive-review/language-profiles/java.md        ← Java-specific review context
+skills/comprehensive-review/language-profiles/c++.md         ← C++-specific review context
+skills/comprehensive-review/language-profiles/shell.md       ← Shell/Bash-specific review context
+skills/comprehensive-review/scripts/run-cve-check.sh         ← deterministic CVE check via OSV.dev (Phase 1b)
+skills/comprehensive-review/scripts/run-shellcheck.sh        ← ShellCheck static analysis (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-semgrep.sh           ← Semgrep SAST analysis (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-trufflehog.sh        ← TruffleHog secret scanning (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-ruff.sh              ← Ruff Python linting (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-golangci-lint.sh     ← golangci-lint Go analysis (optional; Phase 1b)
+agents/pr-summarizer.md                                      ← Block A generation
+agents/issue-linker.md                                       ← issue cross-referencing (GitHub only; returns NONE for other providers)
+agents/security-reviewer.md                                  ← security analysis
+agents/architecture-reviewer.md                              ← architectural analysis
+agents/blind-hunter.md                                       ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
+agents/edge-case-hunter.md                                   ← boundary-condition path tracing (adapted from BMAD-METHOD)
+agents/adversarial-general.md                                ← holistic completeness/operational review (adapted from BMAD-METHOD)
+install.sh                                                   ← legacy file-copy installer (recommends plugin install)
 ```
 
 ## Editing guidelines
@@ -184,5 +203,10 @@ install.sh                             ← legacy file-copy installer (recommend
 - When adding a new flag, update: the flags parse block in `SKILL.md` (Phase 0, L32–46 area), the mode table in `SKILL.md` (Phase 1 L242–250 area), the flags table in `README.md`, and `HELP.md`.
 - **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
 - When modifying provider-specific behavior, update the Provider Operations Reference block, all three provider branches (github/gitlab/bitbucket) within Phases 0, 4, and 4b, and the provider support matrix in README.md.
-- **BMAD attribution**: `blind-hunter` and `edge-case-hunter` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in both agent files and in README.md. Do not remove attribution when editing these agents.
-- **`scripts/run-cve-check.sh`** implements the CVE check invoked in Phase 1b. CVSS parsing, OSV schema handling, and severity mapping all live in this script. If the OSV API response shape or CVSS vector format changes, update this file. The `OSV_MOCK_FILE` env var is for offline testing only; never set it in production.
+- **BMAD attribution**: `blind-hunter`, `edge-case-hunter`, and `adversarial-general` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in all three agent files and in README.md. Do not remove attribution when editing these agents.
+- **`skills/comprehensive-review/scripts/run-cve-check.sh`** implements the CVE check invoked in Phase 1b. CVSS parsing, OSV schema handling, and severity mapping all live in this script. If the OSV API response shape or CVSS vector format changes, update this file. The `OSV_MOCK_FILE` env var is for offline testing only; never set it in production.
+- **Language profiles** live in `skills/comprehensive-review/language-profiles/`. To add a new language: create `<lang>.md` following the structure of existing profiles (Do-NOT-Flag idioms, common bugs, language-specific security, trust boundaries, idiomatic patterns). The filename (lowercased) must match the extension-based language detection in SKILL.md Phase 0. Do not put language guidance in agent prompts directly — use language profiles instead.
+- **Suppressions** live in `skills/comprehensive-review/suppressions.json`. Each rule has `id`, `reason`, and `match` (with `file` and/or `pattern` fields). Rules with a `verify` field are verify-gated: the skill calls a registry API to confirm the version exists before suppressing. Supported `verify` ecosystems: `github-release`, `npm`, `pypi`, `go-module`, `cargo`, `docker-hub`. Consumers can override via `.claude/comprehensive-review/suppressions.json` in their repo (merged with `jq -s 'add'`). Do not add rules specific to a single project into the global suppressions file.
+- **Static analyzers** in `skills/comprehensive-review/scripts/run-*.sh` are opportunistic — they skip silently if the binary is not installed. Each script reads changed file paths from stdin and emits a `json-findings` JSON array with a stamped `source` field. When adding a new analyzer script, follow the pattern of existing scripts. Add an `OSV_MOCK_FILE`-style mock env var for offline testing.
+- **`json-findings` contract**: All custom findings agents (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, adversarial-general) must emit a trailing ` ```json-findings ` block with fields: `severity` (Critical/High/Medium/Low), `confidence` (0–100), `file`, `line`, `finding`, `remediation`, `source`. The confidence field is required; findings below `--min-confidence` (default 75) are dropped by Phase 2 before suppression. When modifying an agent's output format, keep both the markdown section (for human readability) and the json-findings block (for the pipeline).
+- **adversarial-general** scope boundary: it covers completeness, operational readiness, documentation debt, and deployment/rollback concerns. It must NOT duplicate what specialist agents cover. If you add a new specialist domain, update adversarial-general's scope boundary section in its agent file to explicitly exclude the new domain.

@@ -58,6 +58,7 @@ fabricate findings.
 - Do new external dependencies justify their weight (maintenance burden, license)?
 - Are new internal dependencies between packages appropriate?
 - Is there any circular dependency risk introduced?
+- **Version existence:** Do NOT flag a dependency, GitHub Action, or package version as "nonexistent," "unreleased," "may not exist," or "unverified" based on training-data recall alone. Your training data has a knowledge cutoff — versions released after that cutoff are unknown to you, not nonexistent. Only flag a version when the diff itself provides concrete evidence of a problem (a known CVE, an explicit downgrade, or a syntactically malformed version string). A renovate/dependabot bump to a higher version number is strong evidence the version exists and was verified by that tool.
 
 ### 5. Scalability and Performance
 
@@ -90,8 +91,22 @@ If you have no findings at Medium or higher, output EXACTLY the word `NONE` and 
 - **Critical**: Design flaw that will cause failures or make the system unmaintainable
 - **High**: Significant architectural problem that should be fixed before merge
 - **Medium**: Design concern that should be tracked and addressed soon
+- **Low**: Minor design observation worth noting but with negligible impact
 
 **Only report findings at Medium or higher.**
+
+## Confidence Scoring
+
+Each finding must include a confidence score (0–100) reflecting how certain you are that
+this is a real issue given the visible context:
+
+- **91–100**: Certain — reproducible problem or clear spec violation visible in the diff
+- **76–90**: High — strong evidence, minor ambiguity about runtime context
+- **51–75**: Moderate — plausible but depends on context outside the diff
+- **26–50**: Low — speculative; likely requires deeper context to confirm
+- **0–25**: Very low — hunch or pattern-match; likely noise
+
+**Only include findings with confidence ≥ 75 in the json-findings block.**
 
 ## Output Format
 
@@ -109,16 +124,20 @@ If you have no findings at Medium or higher, output EXACTLY the word `NONE` and 
 - **[lens]** <finding> — `file:line`
   - Why it matters: <explanation>
   - Recommendation: <concrete suggestion>
+  - Confidence: <N>/100
 
 #### High
 
 - **[lens]** <finding> — `file:line`
-  ...
+  - Why it matters: <explanation>
+  - Recommendation: <concrete suggestion>
+  - Confidence: <N>/100
 
 #### Medium
 
 - **[lens]** <finding> — `file:line`
-  ...
+  - Recommendation: <concrete suggestion>
+  - Confidence: <N>/100
 
 ### Positive Observations
 
@@ -130,3 +149,12 @@ If you have no findings at Medium or higher, output EXACTLY the word `NONE` and 
 ```
 
 If there are no findings at a severity level, omit that level's subsection.
+
+After your markdown output, emit a JSON block fenced with ` ```json-findings `:
+```json-findings
+[{"severity":"High","confidence":85,"file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"architecture-reviewer"}]
+```
+`severity` must be exactly one of: `Critical`, `High`, `Medium`, `Low`.
+`confidence` must be an integer 0–100. Only include findings with confidence ≥ 75.
+`source` must be exactly `"architecture-reviewer"`.
+If no findings, emit an empty array: `[]`

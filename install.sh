@@ -207,14 +207,13 @@ done
 # Install scripts
 # ---------------------------------------------------------------------------
 
-mkdir -p "$CLAUDE_DIR/scripts"
-# shellcheck disable=SC2043  # single item now; loop for future scripts
-for script in run-cve-check.sh; do
-  dest="$CLAUDE_DIR/scripts/${script}"
+mkdir -p "$CLAUDE_DIR/skills/comprehensive-review/scripts"
+for script in run-cve-check.sh run-shellcheck.sh run-semgrep.sh run-trufflehog.sh run-ruff.sh run-golangci-lint.sh; do
+  dest="$CLAUDE_DIR/skills/comprehensive-review/scripts/${script}"
   if [[ -f "$dest" ]]; then
     warn "Script already exists, overwriting: $dest"
   fi
-  install_file "scripts/${script}" "$dest"
+  install_file "skills/comprehensive-review/scripts/${script}" "$dest"
   chmod +x "$dest"
   info "Installed script → $dest"
 done
