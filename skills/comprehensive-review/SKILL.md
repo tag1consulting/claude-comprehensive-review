@@ -6,10 +6,11 @@ description: >
   Produces a structured PR/MR summary and a findings report. Supports reviewing
   your own branch (pre-PR/MR) or an existing PR/MR by number (--pr <N>).
 
-  Default behavior:
-    No PR exists:      Everything shown locally. Use --create-pr to create a PR.
-    Existing own PR:   Everything shown locally. Use --post-summary/--post-findings to post.
-    --pr <N>:          Findings posted as inline review; summary local unless --post-summary.
+  Default behavior (all runs):
+    No posting unless explicitly requested. Use --post-summary/--post-findings to post.
+    No PR exists:      Use --create-pr to create one.
+    Existing own PR:   Use --post-summary/--post-findings to post.
+    --pr <N>:          Local only. Use --post-findings to post inline, --post-summary for a comment.
 
   Use before opening a pull request or to review an existing PR.
   Available globally for all projects.
@@ -405,6 +406,8 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `TIER=tiny` (auto, <50 lines AND ≤3 files) | pr-summarizer (Haiku) + code-reviewer + CVE check if manifest files changed + triggered silent-failure-hunter / pr-test-analyzer; architecture-reviewer and security-reviewer run only when promoted by their respective triggers (infra/cross-dir vs auth/dep paths); blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally skipped. When `--quick` is also active, stricter rule wins (TIER=tiny further demotes pr-summarizer to Haiku). `--security-only` overrides TIER=tiny — security-reviewer always runs. `--depth deep` promotes any trigger-activated Opus agents to opus+extended-thinking but does NOT un-skip unconditionally-skipped agents. |
 
 **Model assignments** — the table below is the source of truth. Always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool. If this table disagrees with an agent's frontmatter `model:` field, this table wins — the frontmatter is a standalone default for agents running outside this skill.
+
+**CRITICAL — namespace**: Use the `subagent_type` values from this table **verbatim**. Do NOT prepend `comprehensive-review:` to any agent name. Agents in `pr-review-toolkit:` must be spawned as `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter`, etc. — never as `comprehensive-review:code-reviewer`. The correct values are in the table below.
 
 | Agent | subagent_type | Model (depth=normal) | Model (depth=deep) |
 |-------|--------------|----------------------|---------------------|
