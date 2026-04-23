@@ -560,6 +560,7 @@ SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts"
 Run in background via temp files (background subshell assignments don't propagate to the parent shell):
 ```bash
 _TMPDIR=$(mktemp -d)
+trap 'rm -rf "$_TMPDIR"' EXIT
 # Shellcheck — changed .sh/.bash files
 if command -v shellcheck &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(sh|bash)$' \
    && [[ -x "$SCRIPTS_DIR/run-shellcheck.sh" ]]; then
