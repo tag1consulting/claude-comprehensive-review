@@ -175,7 +175,7 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="${CLAUDE_DIR:-}/../skills/comprehensive-review/language-profiles"
    [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/skills/comprehensive-review/language-profiles"
    if [[ -d "$PROFILE_DIR" ]]; then
-     for lang in $(echo "$LANGUAGES" | tr ',' ' ' | tr -d ' ' | tr '[:upper:]' '[:lower:]'); do
+     for lang in $(echo "$LANGUAGES" | tr ',' '\n' | tr -d ' ' | tr '[:upper:]' '[:lower:]'); do
        profile_file="$PROFILE_DIR/${lang}.md"
        [[ -f "$profile_file" ]] && LANGUAGE_PROFILES+=$'\n'"$(cat "$profile_file")"
      done
@@ -273,7 +273,7 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    # Local override (repo-specific rules)
    LOCAL_SUPP=".claude/comprehensive-review/suppressions.json"
    if [[ -f "$GLOBAL_SUPP" ]] && [[ -f "$LOCAL_SUPP" ]]; then
-     SUPPRESSION_RULES=$(jq -s 'add' "$GLOBAL_SUPP" "$LOCAL_SUPP" 2>/dev/null || cat "$GLOBAL_SUPP")
+     SUPPRESSION_RULES=$(jq -s 'add' "$GLOBAL_SUPP" "$LOCAL_SUPP" 2>/dev/null || { echo 'WARNING: Failed to merge local suppressions; check JSON syntax in .claude/comprehensive-review/suppressions.json. Falling back to global rules only.' >&2; cat "$GLOBAL_SUPP"; })
    elif [[ -f "$GLOBAL_SUPP" ]]; then
      SUPPRESSION_RULES=$(cat "$GLOBAL_SUPP")
    elif [[ -f "$LOCAL_SUPP" ]]; then
@@ -557,39 +557,44 @@ SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts"
 [[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/skills/comprehensive-review/scripts"
 ```
 
-Run in background (all gated on file presence + binary availability):
+Run in background via temp files (background subshell assignments don't propagate to the parent shell):
 ```bash
-SHELLCHECK_JSON="[]"; SEMGREP_JSON="[]"; TRUFFLEHOG_JSON="[]"; RUFF_JSON="[]"; GOLANGCI_JSON="[]"
-
+_TMPDIR=$(mktemp -d)
 # Shellcheck — changed .sh/.bash files
 if command -v shellcheck &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(sh|bash)$' \
    && [[ -x "$SCRIPTS_DIR/run-shellcheck.sh" ]]; then
-  SHELLCHECK_JSON=$(echo "$DIFF_PATHS" | grep -E '\.(sh|bash)$' | bash "$SCRIPTS_DIR/run-shellcheck.sh" 2>/dev/null || echo '[]') &
+  (echo "$DIFF_PATHS" | grep -E '\.(sh|bash)$' | bash "$SCRIPTS_DIR/run-shellcheck.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/shellcheck.json" &
 fi
 
 # Semgrep — any source files
 if command -v semgrep &>/dev/null && [[ -x "$SCRIPTS_DIR/run-semgrep.sh" ]]; then
-  SEMGREP_JSON=$(echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-semgrep.sh" 2>/dev/null || echo '[]') &
+  (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-semgrep.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/semgrep.json" &
 fi
 
 # Trufflehog — secret scanning on diff
 if command -v trufflehog &>/dev/null && [[ -x "$SCRIPTS_DIR/run-trufflehog.sh" ]]; then
-  TRUFFLEHOG_JSON=$(bash "$SCRIPTS_DIR/run-trufflehog.sh" "$DIFF_FILE" 2>/dev/null || echo '[]') &
+  (bash "$SCRIPTS_DIR/run-trufflehog.sh" "$DIFF_FILE" 2>/dev/null || echo '[]') > "$_TMPDIR/trufflehog.json" &
 fi
 
 # Ruff — Python files
 if command -v ruff &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.py$' \
    && [[ -x "$SCRIPTS_DIR/run-ruff.sh" ]]; then
-  RUFF_JSON=$(echo "$DIFF_PATHS" | grep -E '\.py$' | bash "$SCRIPTS_DIR/run-ruff.sh" 2>/dev/null || echo '[]') &
+  (echo "$DIFF_PATHS" | grep -E '\.py$' | bash "$SCRIPTS_DIR/run-ruff.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/ruff.json" &
 fi
 
 # golangci-lint — Go files
 if command -v golangci-lint &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.go$' \
    && [[ -x "$SCRIPTS_DIR/run-golangci-lint.sh" ]]; then
-  GOLANGCI_JSON=$(echo "$DIFF_PATHS" | grep -E '\.go$' | bash "$SCRIPTS_DIR/run-golangci-lint.sh" 2>/dev/null || echo '[]') &
+  (echo "$DIFF_PATHS" | grep -E '\.go$' | bash "$SCRIPTS_DIR/run-golangci-lint.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/golangci.json" &
 fi
 
 wait  # wait for all background analyzer subshells
+SHELLCHECK_JSON=$(cat "$_TMPDIR/shellcheck.json" 2>/dev/null || echo '[]')
+SEMGREP_JSON=$(cat "$_TMPDIR/semgrep.json"    2>/dev/null || echo '[]')
+TRUFFLEHOG_JSON=$(cat "$_TMPDIR/trufflehog.json" 2>/dev/null || echo '[]')
+RUFF_JSON=$(cat "$_TMPDIR/ruff.json"          2>/dev/null || echo '[]')
+GOLANGCI_JSON=$(cat "$_TMPDIR/golangci.json"  2>/dev/null || echo '[]')
+rm -rf "$_TMPDIR"
 ```
 
 After Phase 1 agents and Phase 1b finish, merge all static-analyzer JSON into the findings pipeline in Phase 2 alongside CVE_JSON.
@@ -635,7 +640,7 @@ extract_findings() {
     last_brace=$(echo "$json_block" | grep -n '}' | tail -1 | cut -d: -f1)
     if [[ -n "$last_brace" ]]; then
       local salvaged
-      salvaged=$(echo "$json_block" | head -n "$last_brace")"]"
+      salvaged="[$(echo "$json_block" | head -n "$last_brace" | sed 's/,\s*$//')]"
       if echo "$salvaged" | jq '.' &>/dev/null; then
         json_block="$salvaged"
         echo "WARNING: $agent_name json-findings block was truncated; recovered $(echo "$salvaged" | jq 'length') findings." >&2
