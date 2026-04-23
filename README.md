@@ -134,9 +134,11 @@ cp agents/blind-hunter.md ~/.claude/agents/
 cp agents/edge-case-hunter.md ~/.claude/agents/
 
 # Scripts
-mkdir -p ~/.claude/scripts
-cp scripts/run-cve-check.sh ~/.claude/scripts/
-chmod +x ~/.claude/scripts/run-cve-check.sh
+mkdir -p ~/.claude/skills/comprehensive-review/scripts
+for s in skills/comprehensive-review/scripts/*.sh; do
+  cp "$s" ~/.claude/skills/comprehensive-review/scripts/
+  chmod +x ~/.claude/skills/comprehensive-review/scripts/"$(basename "$s")"
+done
 ```
 
 Then install the dependency plugin inside Claude Code:
@@ -168,10 +170,12 @@ Run from any git repository, on the branch you want to review:
 | `--post-summary` | Post Block A (summary) as a comment on an existing PR/MR |
 | `--post-findings` | Post Block B (findings) as inline review on an existing own PR/MR |
 | `--no-findings` | Suppress posting findings as a review (useful for dry-run with `--pr`) |
-| `--no-post` / `--local` | Display everything locally, skip all remote operations |
+| `--no-post` / `--local` | Explicit alias for the default: display everything locally, skip all remote operations (this is the default — posting requires explicit flags) |
 | `--pr <number>` | Review an existing PR/MR by number (external review mode) |
 | `--provider <name>` | Override auto-detected git provider (`github`, `gitlab`, `bitbucket`) |
 | `--no-mem` | Disable claude-mem integration (auto-detected when available) |
+| `--no-suppress` | Disable all suppression rules (useful for debugging / audit runs where you want to see every finding) |
+| `--min-confidence <N>` | Filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applied before suppression rules. |
 | `--output-file <path>` | Write Block A + Block B to a markdown file during Phase 5. Avoids re-running the review in a fresh session just to save the output — saves ~$5–15 on large PRs where the post-review context would otherwise force a new expensive session. |
 | `--help` | Show usage |
 
@@ -185,7 +189,7 @@ Run from any git repository, on the branch you want to review:
 /comprehensive-review --create-pr
 
 # Fast review — roughly 60–80% cheaper, skips security and architecture agents
-/comprehensive-review --quick --local
+/comprehensive-review --quick
 
 # Review your own open PR and share findings with co-reviewers
 /comprehensive-review --post-findings
@@ -193,20 +197,20 @@ Run from any git repository, on the branch you want to review:
 # Review + post both summary and findings on your own open PR
 /comprehensive-review --post-summary --post-findings
 
-# Review someone else's PR #42 (posts findings as inline review)
+# Review someone else's PR #42 locally (no remote posting)
 /comprehensive-review --pr 42
 
-# Review PR #42 and also post the summary as a comment
-/comprehensive-review --pr 42 --post-summary
+# Review PR #42 and post findings as inline review
+/comprehensive-review --pr 42 --post-findings
 
-# Dry-run: review PR #42 locally, skip the findings review post
-/comprehensive-review --pr 42 --no-findings
+# Review PR #42 and post both summary and findings
+/comprehensive-review --pr 42 --post-summary --post-findings
 
 # Review against a non-default base
 /comprehensive-review --base develop
 
 # Security scan only (includes CVE check on changed dependency manifests)
-/comprehensive-review --security-only --local
+/comprehensive-review --security-only
 
 # Deep review — Opus for all agents + extended reasoning + CVE reachability triage
 /comprehensive-review --depth deep
@@ -223,10 +227,12 @@ Run from any git repository, on the branch you want to review:
 | Existing own PR + `--post-summary` | Yes — PR comment | No | N/A |
 | Existing own PR + `--post-findings` | No | Yes — inline review | `COMMENT` |
 | Existing own PR + both flags | Yes — PR comment | Yes — inline review | `COMMENT` |
-| `--pr <N>` (default) | No | Yes — inline review | `REQUEST_CHANGES` if Medium+ findings; `COMMENT` if Low only |
-| `--pr <N>` + `--post-summary` | Yes — PR comment | Yes — inline review | (same) |
+| `--pr <N>` (default) | No | No | N/A |
+| `--pr <N>` + `--post-findings` | No | Yes — inline review | `REQUEST_CHANGES` if Medium+ findings; `COMMENT` if Low only |
+| `--pr <N>` + `--post-summary` | Yes — PR comment | No | N/A |
+| `--pr <N>` + `--post-summary` + `--post-findings` | Yes — PR comment | Yes — inline review | `REQUEST_CHANGES` if Medium+ findings; `COMMENT` if Low only |
 | `--pr <N>` + `--no-findings` | No | No | N/A |
-| Any + `--no-post` / `--local` | No | No | N/A |
+| Any + `--no-post` / `--local` | No | No | N/A (explicit alias for the default) |
 
 **Inline comment cap:** The top 25 findings by severity are posted as inline comments. Any additional findings appear in the review body. This prevents API throttling on large finding sets.
 
@@ -248,17 +254,23 @@ Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias,
 | **type-design-analyzer** ¹ | — | Type/struct/interface invariants | Full run only, if diff adds type definitions | Relevant file slices |
 | **blind-hunter** | Sonnet | Context-free "fresh eyes" review: catches issues familiarity blinds other agents to | Full run only | Raw diff only (no project context) |
 | **edge-case-hunter** | Sonnet | Mechanical path tracing: missing else/default, unguarded inputs, off-by-one, overflow, race conditions, resource leaks | Full run only | Manifest + selective reads ² |
-| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues (GitHub only) | Full run only; skipped in `--pr`, `--local`/`--no-post`, and non-GitHub repos | Commit log + branch + manifest |
+| **adversarial-general** | Opus | Completeness gaps, missing defenses, operational blindness, documentation debt — what specialist agents are scoped not to cover | Full run only; skipped in TIER=tiny | Manifest + selective reads ² |
+| **issue-linker** | Haiku | Finds referenced issues and related PRs/issues (GitHub only) | Full run only; skipped in `--pr` and when `--no-post`/`--local` is **explicitly** passed, and on non-GitHub repos | Commit log + branch + manifest |
 
 ### Deterministic checks
 
-In addition to LLM agents, the skill runs a deterministic CVE check when dependency manifests are in the diff:
+In addition to LLM agents, the skill runs deterministic checks when relevant files are in the diff:
 
-| Check | Trigger | Runs in `--quick`? |
-|-------|---------|-------------------|
-| **dependency-check** — queries [OSV.dev](https://osv.dev/) for known vulnerabilities in declared dependency versions | `go.mod`, `package.json`, `requirements*.txt`, or `composer.json` changed | Yes |
+| Check | Trigger | Runs in `--quick`? | Binary required |
+|-------|---------|-------------------|----------------|
+| **dependency-check** — queries [OSV.dev](https://osv.dev/) for known vulnerabilities in declared dependency versions | `go.mod`, `package.json`, `requirements*.txt`, or `composer.json` changed | Yes | (uses curl + jq) |
+| **shellcheck** — shell script linting | `.sh` or `.bash` files changed | Yes | `shellcheck` |
+| **semgrep** — polyglot SAST | Any source file changed | Yes | `semgrep` |
+| **trufflehog** — secret scanning | Any file changed | Yes | `trufflehog` |
+| **ruff** — Python linting | `.py` files changed | Yes | `ruff` |
+| **golangci-lint** — Go static analysis | `.go` files changed | Yes | `golangci-lint` |
 
-No API key required. Network failures are non-blocking (returns empty, warns to stderr). Findings appear in Block B as `[dependency-check]` entries.
+No API key required for any check. All static analyzers are **opportunistic** — if the binary is not installed, the check is silently skipped with no error. Install as needed: `brew install shellcheck`, `pip install semgrep ruff`, `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`, [trufflehog releases](https://github.com/trufflesecurity/trufflehog/releases). Findings appear in Block B with the tool name as source (e.g., `[shellcheck]`, `[semgrep]`).
 
 ### `--quick` mode
 
@@ -267,6 +279,68 @@ Still runs: pr-summarizer (no diagrams), code-reviewer, triggered silent-failure
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
 ² For small diffs (under 300 lines), the full diff is passed inline instead.
+
+## Language profiles
+
+The skill ships per-language context profiles for Go, Python, TypeScript, PHP, Ruby, Rust, Java, C++, and Shell. When a language is detected in the diff, the corresponding profile is automatically injected into the relevant agents' task descriptions. Profiles contain:
+
+- **Do-NOT-Flag idioms** — language patterns that look like bugs but are idiomatic (e.g., Go's blank identifier, Python's `pass`, etc.)
+- **Common bugs** — patterns the LLM should actively look for
+- **Language-specific security guidance** — e.g., SQL injection vectors specific to each language
+- **Idiomatic trust boundaries** — what counts as safe vs. untrusted in this ecosystem
+
+**blind-hunter does not receive language profiles** — its zero-context constraint is preserved.
+
+To add a language profile, create `skills/comprehensive-review/language-profiles/<lang>.md` and add the language extension to the detection block in SKILL.md Phase 0.
+
+## Suppressions
+
+The skill ships a default suppressions file (`skills/comprehensive-review/suppressions.json`) and supports per-repo overrides at `.claude/comprehensive-review/suppressions.json`.
+
+Each suppression rule has:
+- `id` — unique identifier
+- `reason` — human-readable explanation
+- `match.pattern` — regex applied to finding text
+- `verify` (optional) — ecosystem to call before suppressing (see below)
+
+**Verify-before-suppress:** Rules with a `verify` field call an external registry API to confirm the flagged version actually exists before suppressing. If the registry returns 2xx, the finding is suppressed. If it returns 404 or errors, the finding is kept (fail-open). Supported ecosystems:
+
+| `verify` value | Registry called |
+|---------------|----------------|
+| `github-release` | GitHub Releases API |
+| `npm` | registry.npmjs.org |
+| `pypi` | pypi.org |
+| `go-module` | proxy.golang.org |
+| `cargo` | crates.io |
+| `docker-hub` | hub.docker.com |
+
+Use `--no-suppress` to disable all suppression rules for a run (useful for audits).
+
+## Confidence filtering
+
+All custom findings agents emit a `confidence` integer (0–100) per finding reflecting certainty that the finding is genuine rather than a false positive. The `--min-confidence` flag (default: 75) filters out findings below the threshold **before** suppression rules are applied.
+
+| Range | Meaning |
+|-------|---------|
+| 91–100 | Certain — reproducible problem, no context needed |
+| 76–90 | High — strong evidence, minor ambiguity |
+| 51–75 | Moderate — plausible but depends on context |
+| 26–50 | Low — speculative |
+| 0–25 | Very low — hunch or pattern-match |
+
+Lower `--min-confidence` to see more findings; raise it to reduce noise. Use `0` to disable filtering entirely.
+
+## Output contract (`json-findings`)
+
+Each custom findings agent appends a structured JSON block to its output:
+
+````
+```json-findings
+[{"severity":"High","confidence":85,"file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"agent-name"}]
+```
+````
+
+This block is consumed by the Phase 2 pipeline for normalization, confidence filtering, suppression, and dedup. The human-readable markdown section remains for inspection; the `json-findings` block drives the structured pipeline.
 
 ## Output structure
 
@@ -428,5 +502,5 @@ rm ~/.claude/agents/security-reviewer.md
 rm ~/.claude/agents/architecture-reviewer.md
 rm ~/.claude/agents/blind-hunter.md
 rm ~/.claude/agents/edge-case-hunter.md
-rm -f ~/.claude/scripts/run-cve-check.sh
+rm ~/.claude/agents/adversarial-general.md
 ```

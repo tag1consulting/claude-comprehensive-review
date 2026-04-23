@@ -188,13 +188,23 @@ install_file "skills/comprehensive-review/PROVIDERS.md" \
   "$CLAUDE_DIR/skills/comprehensive-review/PROVIDERS.md"
 install_file "skills/comprehensive-review/SEVERITY.md" \
   "$CLAUDE_DIR/skills/comprehensive-review/SEVERITY.md"
+install_file "skills/comprehensive-review/suppressions.json" \
+  "$CLAUDE_DIR/skills/comprehensive-review/suppressions.json"
+
+# Install language profiles
+mkdir -p "$CLAUDE_DIR/skills/comprehensive-review/language-profiles"
+for profile in go.md python.md typescript.md php.md ruby.md rust.md java.md c++.md shell.md; do
+  install_file "skills/comprehensive-review/language-profiles/${profile}" \
+    "$CLAUDE_DIR/skills/comprehensive-review/language-profiles/${profile}"
+done
+
 info "Installed skill  → $CLAUDE_DIR/skills/comprehensive-review/"
 
 # ---------------------------------------------------------------------------
 # Install agents
 # ---------------------------------------------------------------------------
 
-for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer blind-hunter edge-case-hunter; do
+for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer blind-hunter edge-case-hunter adversarial-general; do
   dest="$CLAUDE_DIR/agents/${agent}.md"
   if [[ -f "$dest" ]]; then
     warn "Agent already exists, overwriting: $dest"
@@ -207,14 +217,13 @@ done
 # Install scripts
 # ---------------------------------------------------------------------------
 
-mkdir -p "$CLAUDE_DIR/scripts"
-# shellcheck disable=SC2043  # single item now; loop for future scripts
-for script in run-cve-check.sh; do
-  dest="$CLAUDE_DIR/scripts/${script}"
+mkdir -p "$CLAUDE_DIR/skills/comprehensive-review/scripts"
+for script in run-cve-check.sh run-shellcheck.sh run-semgrep.sh run-trufflehog.sh run-ruff.sh run-golangci-lint.sh; do
+  dest="$CLAUDE_DIR/skills/comprehensive-review/scripts/${script}"
   if [[ -f "$dest" ]]; then
     warn "Script already exists, overwriting: $dest"
   fi
-  install_file "scripts/${script}" "$dest"
+  install_file "skills/comprehensive-review/scripts/${script}" "$dest"
   chmod +x "$dest"
   info "Installed script → $dest"
 done

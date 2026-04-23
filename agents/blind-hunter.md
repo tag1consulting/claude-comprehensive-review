@@ -85,6 +85,8 @@ developers who know the codebase:
 
 Do NOT assess: project convention conformance (invisible to you), architectural fitness (no context), in-depth security vulnerabilities (security-reviewer), test coverage (pr-test-analyzer). Overlap with other agents is expected — deduplication happens downstream.
 
+Do NOT flag dependency versions, GitHub Action versions, or package versions as "nonexistent," "unreleased," "may not exist," or "unverified" based on training-data recall. Your training data has a knowledge cutoff — versions released after it are unknown to you, not nonexistent. Only raise a version-related finding if the diff itself provides concrete evidence of a problem (a syntactically malformed version string, an explicit downgrade, or a known CVE). A renovate/dependabot bump to a higher version number is strong evidence the version exists and was verified by that tool.
+
 ## Empty State
 
 If you find no issues, output EXACTLY the word `NONE` and nothing else.
@@ -99,6 +101,19 @@ If you find no issues, output EXACTLY the word `NONE` and nothing else.
   clarifying comment or defensive check
 - **Low**: Minor naming issue, readability concern, or possible copy-paste artifact with
   low risk
+
+## Confidence Scoring
+
+Each finding must include a confidence score (0–100) reflecting how certain you are that
+this is a real issue based solely on what the diff shows:
+
+- **91–100**: Certain — clearly wrong from the diff alone, no context needed
+- **76–90**: High — strong evidence in the diff; minor ambiguity about intent
+- **51–75**: Moderate — plausible concern but depends on context outside the diff
+- **26–50**: Low — speculative; a first-time reader might be confused but it may be fine
+- **0–25**: Very low — hunch; likely fine with context
+
+**Only include findings with confidence ≥ 75 in the json-findings block.**
 
 ## Output Format
 
@@ -115,6 +130,7 @@ Reviewed <N> files / <N> lines of diff with no project context.
 - **[category]** <finding description> — `file:line`
   - **Why (from diff alone):** <explain what in the diff triggers this concern>
   - **Remediation:** <specific suggestion>
+  - **Confidence:** <N>/100
 
 #### High
 ...
@@ -133,6 +149,15 @@ Reviewed <N> files / <N> lines of diff with no project context.
 Omit any severity section that has no findings.
 
 Keep findings grounded in what the diff shows. Do not speculate beyond what is visible.
+
+After your markdown output, emit a JSON block fenced with ` ```json-findings `:
+```json-findings
+[{"severity":"High","confidence":85,"file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"blind-hunter"}]
+```
+`severity` must be exactly one of: `Critical`, `High`, `Medium`, `Low`.
+`confidence` must be an integer 0–100. Only include findings with confidence ≥ 75.
+`source` must be exactly `"blind-hunter"`.
+If no findings, emit an empty array: `[]`
 
 ---
 

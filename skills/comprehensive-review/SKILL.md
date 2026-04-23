@@ -6,10 +6,11 @@ description: >
   Produces a structured PR/MR summary and a findings report. Supports reviewing
   your own branch (pre-PR/MR) or an existing PR/MR by number (--pr <N>).
 
-  Default behavior:
-    No PR exists:      Everything shown locally. Use --create-pr to create a PR.
-    Existing own PR:   Everything shown locally. Use --post-summary/--post-findings to post.
-    --pr <N>:          Findings posted as inline review; summary local unless --post-summary.
+  Default behavior (all runs):
+    No posting unless explicitly requested. Use --post-summary/--post-findings to post.
+    No PR exists:      Use --create-pr to create one.
+    Existing own PR:   Use --post-summary/--post-findings to post.
+    --pr <N>:          Local only. Use --post-findings to post inline, --post-summary for a comment.
 
   Use before opening a pull request or to review an existing PR.
   Available globally for all projects.
@@ -39,11 +40,13 @@ Supported flags:
 - `--post-summary` — post Block A (informational summary) as a comment on an existing PR/MR
 - `--post-findings` — post Block B (findings) as inline review on an existing own PR/MR
 - `--no-findings` — suppress posting findings as a review (useful for dry-run with `--pr`)
-- `--no-post` / `--local` — display everything locally, skip all remote operations
+- `--no-post` / `--local` — explicit alias for the default behavior: display everything locally, skip all remote operations (all runs default to no-post; posting requires explicit flags)
 - `--pr <number>` — review an existing PR/MR by number (external review mode)
 - `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
 - `--depth <normal|deep>` — agent-depth promotion: `deep` promotes blind-hunter and edge-case-hunter to the `opus` alias (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
 - `--no-mem` — disable claude-mem integration even if claude-mem is detected
+- `--no-suppress` — disable suppression rules (useful for debugging / audit runs where you want to see every finding)
+- `--min-confidence <N>` — filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applies to findings from custom agents that emit a confidence score. Applied before suppression rules. See `skills/comprehensive-review/SEVERITY.md` for how external agent scores are mapped.
 - `--help` — show this usage
 - `--output-file <path>` — write Block A + Block B to a markdown file during Phase 5, in addition to terminal output
 
@@ -112,9 +115,10 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
    - Note mode flags: `--quick`, `--diagrams`, `--security-only`, `--summary-only`, `--create-pr`,
-     `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--no-mem`
+     `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--no-mem`, `--no-suppress`
    - Extract `--output-file <path>` if present — set OUTPUT_FILE to the given path for Phase 5 file write
    - Extract `--depth <normal|deep>` if present; default DEPTH=`normal`. If value is not one of `{normal, deep}`, report "Error: Invalid --depth value '<value>'. Valid values are: normal, deep." and stop.
+   - Extract `--min-confidence <N>` if present; default MIN_CONFIDENCE=75. Validate: value must be an integer in [0,100]. If invalid, report "Error: Invalid --min-confidence value '<value>'. Must be an integer 0–100." and stop. A value of 0 disables confidence filtering.
    - **Flag conflict checks:**
      - If both `--post-findings` and `--no-findings` are present, report
        "Error: --post-findings and --no-findings are mutually exclusive." and stop.
@@ -161,6 +165,27 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
      Docs:    README.md (+10/-3)
      ```
      Omit empty categories. Binary/generated files go under **Other**.
+
+   **Build LANGUAGE_PROFILES** — concatenate per-language context blocks for each detected language. These are passed to finding-producing agents so they apply language-specific checks without relying on baked-in patterns alone.
+
+   ```bash
+   LANGUAGE_PROFILES=""
+   PROFILE_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/language-profiles"
+   # Fallback for local installs
+   [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="${CLAUDE_DIR:-}/../skills/comprehensive-review/language-profiles"
+   [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/skills/comprehensive-review/language-profiles"
+   if [[ -d "$PROFILE_DIR" ]]; then
+     for lang in $(echo "$LANGUAGES" | tr ',' '\n' | tr -d ' ' | tr '[:upper:]' '[:lower:]'); do
+       profile_file="$PROFILE_DIR/${lang}.md"
+       [[ -f "$profile_file" ]] && LANGUAGE_PROFILES+=$'\n'"$(cat "$profile_file")"
+     done
+     # Cap at ~8000 tokens (~32KB); if over, truncate with a note
+     if [[ ${#LANGUAGE_PROFILES} -gt 32000 ]]; then
+       LANGUAGE_PROFILES="${LANGUAGE_PROFILES:0:32000}"$'\n\n''[LANGUAGE_PROFILES truncated at 32KB limit]'
+     fi
+   fi
+   ```
+   `LANGUAGE_PROFILES` is passed to: architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, silent-failure-hunter, code-reviewer, pr-test-analyzer. It is **not** passed to blind-hunter (zero-context constraint) or pr-summarizer (no language-specific advice needed for summaries).
 
    **Also build a per-file diff digest** for Opus agents (architecture-reviewer and security-reviewer). This reduces the number of discovery tool calls those agents need to make, lowering their cache-read multiplier. Run immediately after the manifest:
    ```bash
@@ -236,6 +261,27 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
      ...
    ```
    If `RELATED_FILES` is empty, omit the section entirely — do not add noise. RELATED_FILES is built and passed at all tiers, including TIER=tiny (it is the primary discovery mechanism for Opus agents promoted by an infra trigger at tiny tier).
+
+4b. **Load suppression rules** (skip if `--no-suppress` was passed):
+
+   ```bash
+   SUPPRESSION_RULES="[]"
+   # Global rules (shipped with the skill)
+   GLOBAL_SUPP="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/suppressions.json"
+   [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="${CLAUDE_DIR:-}/../skills/comprehensive-review/suppressions.json"
+   [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="$HOME/.claude/skills/comprehensive-review/suppressions.json"
+   # Local override (repo-specific rules)
+   LOCAL_SUPP=".claude/comprehensive-review/suppressions.json"
+   if [[ -f "$GLOBAL_SUPP" ]] && [[ -f "$LOCAL_SUPP" ]]; then
+     SUPPRESSION_RULES=$(jq -s 'add' "$GLOBAL_SUPP" "$LOCAL_SUPP" 2>/dev/null || { echo 'WARNING: Failed to merge local suppressions; check JSON syntax in .claude/comprehensive-review/suppressions.json. Falling back to global rules only.' >&2; cat "$GLOBAL_SUPP"; })
+   elif [[ -f "$GLOBAL_SUPP" ]]; then
+     SUPPRESSION_RULES=$(cat "$GLOBAL_SUPP")
+   elif [[ -f "$LOCAL_SUPP" ]]; then
+     SUPPRESSION_RULES=$(cat "$LOCAL_SUPP")
+   fi
+   SUPP_COUNT=$(echo "$SUPPRESSION_RULES" | jq 'length' 2>/dev/null || echo 0)
+   echo "Loaded $SUPP_COUNT suppression rule(s)."
+   ```
 
 5. **Read project context and prior review history concurrently** — run steps 5a and 5b in parallel (single tool-call batch):
 
@@ -352,14 +398,16 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 | Flag | Agents that run |
 |------|-----------------|
-| (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) + CVE check if manifest files changed |
+| (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) + CVE check if manifest files changed + static analyzers if binaries available |
 | `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer + CVE check if manifest files changed |
-| `--no-post` / `--local` | Same as default but skips issue-linker; all Phase 4 GitHub operations suppressed |
+| `--no-post` / `--local` (explicit flag) | Same as default but also skips issue-linker; all Phase 4 operations suppressed |
 | `--security-only` | security-reviewer + CVE check (if manifest files changed) |
 | `--summary-only` | pr-summarizer only |
 | `TIER=tiny` (auto, <50 lines AND ≤3 files) | pr-summarizer (Haiku) + code-reviewer + CVE check if manifest files changed + triggered silent-failure-hunter / pr-test-analyzer; architecture-reviewer and security-reviewer run only when promoted by their respective triggers (infra/cross-dir vs auth/dep paths); blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally skipped. When `--quick` is also active, stricter rule wins (TIER=tiny further demotes pr-summarizer to Haiku). `--security-only` overrides TIER=tiny — security-reviewer always runs. `--depth deep` promotes any trigger-activated Opus agents to opus+extended-thinking but does NOT un-skip unconditionally-skipped agents. |
 
 **Model assignments** — the table below is the source of truth. Always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool. If this table disagrees with an agent's frontmatter `model:` field, this table wins — the frontmatter is a standalone default for agents running outside this skill.
+
+**CRITICAL — namespace**: Use the `subagent_type` values from this table **verbatim**. Do NOT prepend `comprehensive-review:` to any agent name. Agents in `pr-review-toolkit:` must be spawned as `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter`, etc. — never as `comprehensive-review:code-reviewer`. The correct values are in the table below.
 
 | Agent | subagent_type | Model (depth=normal) | Model (depth=deep) |
 |-------|--------------|----------------------|---------------------|
@@ -373,8 +421,9 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | pr-test-analyzer | `pr-review-toolkit:pr-test-analyzer` | sonnet | sonnet |
 | comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet | sonnet |
 | type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet | sonnet |
+| adversarial-general | `adversarial-general` | opus | opus |
 | issue-linker | `issue-linker` | haiku | haiku |
-| dependency-check | `scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
+| dependency-check | `skills/comprehensive-review/scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
 
 **TIER=tiny model overrides** — when TIER=tiny was computed in Phase 0 step 7, apply these overrides on top of the model table. Overrides only apply at TIER=tiny; at TIER=small/medium the model table governs unchanged.
 
@@ -383,6 +432,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | pr-summarizer | haiku (instead of sonnet); drop commit log and project context — pass diff + PR title only |
 | architecture-reviewer | **skip** unless ARCH_PROMOTED=true; if promoted, run at opus (or opus+extended-thinking if depth=deep), pass diff inline + RELATED_FILES only (no FILE_DIGEST, no commit log, no project context) |
 | security-reviewer | **skip** unless SECURITY_PROMOTED=true; if promoted, run at opus (or opus+extended-thinking if depth=deep), pass diff inline + RELATED_FILES only |
+| adversarial-general | **skip unconditionally** |
 | blind-hunter | **skip unconditionally** |
 | edge-case-hunter | **skip unconditionally** |
 | comment-analyzer | **skip** |
@@ -399,6 +449,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `DIAGRAMS` | `true` / `false` | pr-summarizer | `false` (omit diagrams) |
 | `EXTENDED_THINKING` | `true` | architecture-reviewer, security-reviewer | not set (standard reasoning) |
 | `RELATED_FILES` | newline-separated file paths | architecture-reviewer, security-reviewer | unset (no pointer list) |
+| `LANGUAGE_PROFILES` | concatenated markdown context blocks | architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, silent-failure-hunter, code-reviewer, pr-test-analyzer | unset (agents use built-in language guidance) |
 
 Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
 
@@ -414,21 +465,27 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
 - **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If RELATED_FILES is non-empty, include it in the task description (see directive table above).
+  If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Read/Grep calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
   **TIER=tiny:** skip unless ARCH_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, and PRIOR_REVIEW_CONTEXT.
 - **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, detected languages, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If RELATED_FILES is non-empty, include it in the task description (see directive table above).
+  If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Bash/Read calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
   **TIER=tiny:** skip unless SECURITY_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, and PRIOR_REVIEW_CONTEXT.
+- **adversarial-general** (subagent_type: `adversarial-general`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline. Medium/large: agent reads files via `git diff <base>...HEAD -- <file>`.
+  If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
+  **TIER=tiny:** skip unconditionally. `--quick`: skip.
 - **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
   **TIER=tiny:** skip unconditionally. `--depth deep` does not override this skip.
 - **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+  If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   Has full codebase read access for surrounding context.
   **TIER=tiny:** skip unconditionally. `--depth deep` does not override this skip.
 
@@ -450,7 +507,7 @@ The grep checks the aggregate diff as a boolean — if it matches anywhere, the 
   **TIER=tiny:** skip.
 - **type-design-analyzer** (subagent_type: `pr-review-toolkit:type-design-analyzer`, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `) in the diff. Pass the full diff when triggered.
   **TIER=tiny:** skip.
-- **issue-linker** (subagent_type: `issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick`, `--pr`, and `--no-post`/`--local` modes. Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
+- **issue-linker** (subagent_type: `issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick` and `--pr` modes, and when `--no-post`/`--local` was **explicitly** passed (not the default no-post behavior). Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 
@@ -461,15 +518,13 @@ Run after all Phase 1 agents are launched (they run in parallel; this runs in th
 **CVE / dependency vulnerability check** — run when `MANIFEST_FILES` is non-empty (skip only if `--summary-only` mode; run in all other modes including `--quick` and `--security-only`):
 
 ```bash
-# Resolve run-cve-check.sh — try each install location in priority order.
-# TODO(follow-up): relocate to skills/comprehensive-review/scripts/ for simpler plugin-relative resolution.
+# Resolve run-cve-check.sh from skills/comprehensive-review/scripts/ (primary location).
 CVE_SCRIPT=""
 for candidate in \
-  "${CLAUDE_PLUGIN_ROOT:-}/scripts/run-cve-check.sh" \
   "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts/run-cve-check.sh" \
-  "${CLAUDE_DIR:-}/scripts/run-cve-check.sh" \
-  "$HOME/.claude/scripts/run-cve-check.sh" \
-  "$HOME/.claude/plugins/marketplaces/tag1consulting/plugins/comprehensive-review/scripts/run-cve-check.sh"; do
+  "${CLAUDE_DIR:-}/skills/comprehensive-review/scripts/run-cve-check.sh" \
+  "$HOME/.claude/skills/comprehensive-review/scripts/run-cve-check.sh" \
+  "$HOME/.claude/plugins/marketplaces/tag1consulting/plugins/comprehensive-review/skills/comprehensive-review/scripts/run-cve-check.sh"; do
   [[ -n "$candidate" && -x "$candidate" ]] && { CVE_SCRIPT="$candidate"; break; }
 done
 
@@ -482,7 +537,7 @@ if [[ -n "$CVE_SCRIPT" ]]; then
     CVE_CHECK_FAILED=true
   }
 else
-  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/scripts, \$CLAUDE_DIR/scripts, ~/.claude/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting' or './install.sh --local'." >&2
+  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts, \$CLAUDE_DIR/skills/comprehensive-review/scripts, ~/.claude/skills/comprehensive-review/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting' or './install.sh --local'." >&2
   CVE_CHECK_FAILED=true
 fi
 ```
@@ -492,6 +547,58 @@ Path resolution order: `$CLAUDE_PLUGIN_ROOT` (set by the plugin harness when the
 - Capture `CVE_JSON` from stdout; on any non-zero exit, set to `[]` and emit a warning to stderr.
 - Network failures are non-blocking: the script returns `[]` and logs to stderr.
 - `--no-post`/`--local` does **not** skip the CVE check; it only gates posting.
+
+**Static analyzers** — run in parallel alongside the CVE check (background subshells) when the relevant binary is installed and the diff contains matching files. Each script lives in `skills/comprehensive-review/scripts/`, reads the changed-file list from stdin, and emits `json-findings` JSON with a stamped `source` field. Absence of a binary is silent — analyzers are opportunistic. Skip all static analyzers in `--summary-only` mode.
+
+Detect script root (same priority chain as CVE script):
+```bash
+SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts"
+[[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="${CLAUDE_DIR:-}/skills/comprehensive-review/scripts"
+[[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/skills/comprehensive-review/scripts"
+```
+
+Run in background via temp files (background subshell assignments don't propagate to the parent shell):
+```bash
+_TMPDIR=$(mktemp -d)
+trap 'rm -rf "$_TMPDIR"' EXIT
+# Shellcheck — changed .sh/.bash files
+if command -v shellcheck &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(sh|bash)$' \
+   && [[ -x "$SCRIPTS_DIR/run-shellcheck.sh" ]]; then
+  (echo "$DIFF_PATHS" | grep -E '\.(sh|bash)$' | bash "$SCRIPTS_DIR/run-shellcheck.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/shellcheck.json" &
+fi
+
+# Semgrep — any source files
+if command -v semgrep &>/dev/null && [[ -x "$SCRIPTS_DIR/run-semgrep.sh" ]]; then
+  (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-semgrep.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/semgrep.json" &
+fi
+
+# Trufflehog — secret scanning on diff
+if command -v trufflehog &>/dev/null && [[ -x "$SCRIPTS_DIR/run-trufflehog.sh" ]]; then
+  (bash "$SCRIPTS_DIR/run-trufflehog.sh" "$DIFF_FILE" 2>/dev/null || echo '[]') > "$_TMPDIR/trufflehog.json" &
+fi
+
+# Ruff — Python files
+if command -v ruff &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.py$' \
+   && [[ -x "$SCRIPTS_DIR/run-ruff.sh" ]]; then
+  (echo "$DIFF_PATHS" | grep -E '\.py$' | bash "$SCRIPTS_DIR/run-ruff.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/ruff.json" &
+fi
+
+# golangci-lint — Go files
+if command -v golangci-lint &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.go$' \
+   && [[ -x "$SCRIPTS_DIR/run-golangci-lint.sh" ]]; then
+  (echo "$DIFF_PATHS" | grep -E '\.go$' | bash "$SCRIPTS_DIR/run-golangci-lint.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/golangci.json" &
+fi
+
+wait  # wait for all background analyzer subshells
+SHELLCHECK_JSON=$(cat "$_TMPDIR/shellcheck.json" 2>/dev/null || echo '[]')
+SEMGREP_JSON=$(cat "$_TMPDIR/semgrep.json"    2>/dev/null || echo '[]')
+TRUFFLEHOG_JSON=$(cat "$_TMPDIR/trufflehog.json" 2>/dev/null || echo '[]')
+RUFF_JSON=$(cat "$_TMPDIR/ruff.json"          2>/dev/null || echo '[]')
+GOLANGCI_JSON=$(cat "$_TMPDIR/golangci.json"  2>/dev/null || echo '[]')
+rm -rf "$_TMPDIR"
+```
+
+After Phase 1 agents and Phase 1b finish, merge all static-analyzer JSON into the findings pipeline in Phase 2 alongside CVE_JSON.
 
 After all Phase 1 agents complete and Phase 1b finishes, run Phase 1c if applicable.
 
@@ -517,16 +624,91 @@ Wait for all agents. Check each output:
 - Tool error/timeout → "ERROR: <agent> failed. Reason: <error>."
 - Track failures for Phase 5.
 
-**Severity normalization** — read the mapping table from `skills/comprehensive-review/SEVERITY.md` and apply it to all agent findings. Key rules:
-- `code-reviewer` uses confidence scores (not labels); `pr-test-analyzer` uses gap scores. See SEVERITY.md for the numeric ranges.
-- `architecture-reviewer` and `security-reviewer` emit Medium+ only; Low findings from those agents are omitted.
+**Step 2a — Extract structured findings (json-findings):**
+
+For each findings-producing agent that returned output, extract the fenced `json-findings` block:
+
+```bash
+extract_findings() {
+  local agent_name="$1" raw_output="$2"
+  # Find the json-findings block between ```json-findings and ```
+  local json_block
+  json_block=$(echo "$raw_output" | awk '/^```json-findings/{p=1; next} p && /^```/{p=0; next} p')
+  [[ -z "$json_block" ]] && { echo "[]"; return; }
+  # Truncation salvage: if jq fails, walk backward from last } and attempt to close the array
+  if ! echo "$json_block" | jq '.' &>/dev/null; then
+    local last_brace
+    last_brace=$(echo "$json_block" | grep -n '}' | tail -1 | cut -d: -f1)
+    if [[ -n "$last_brace" ]]; then
+      local salvaged
+      salvaged="[$(echo "$json_block" | head -n "$last_brace" | sed 's/,\s*$//')]"
+      if echo "$salvaged" | jq '.' &>/dev/null; then
+        json_block="$salvaged"
+        echo "WARNING: $agent_name json-findings block was truncated; recovered $(echo "$salvaged" | jq 'length') findings." >&2
+      fi
+    fi
+    if ! echo "$json_block" | jq '.' &>/dev/null; then
+      echo "WARNING: $agent_name json-findings block is malformed and unrecoverable; skipping its structured findings." >&2
+      echo "[]"; return
+    fi
+  fi
+  # Validate each object; drop malformed ones individually
+  echo "$json_block" | jq --arg agent "$agent_name" '
+    [.[] | select(
+      (.severity | test("^(Critical|High|Medium|Low)$")) and
+      (.finding | type == "string") and
+      (.file | type == "string")
+    ) | . + {source: (if .source then .source else $agent end)}]
+  ' 2>/dev/null || echo "[]"
+}
+```
+
+Apply `extract_findings` to each custom agent output (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, adversarial-general). For external toolkit agents that don't emit json-findings, continue using the existing markdown normalization from SEVERITY.md.
+
+Merge all extracted findings plus CVE_JSON and static analyzer JSON (SHELLCHECK_JSON, SEMGREP_JSON, TRUFFLEHOG_JSON, RUFF_JSON, GOLANGCI_JSON) into a unified `ALL_FINDINGS` list.
+
+**Step 2b — Severity normalization:**
+
+Apply the mapping table from `skills/comprehensive-review/SEVERITY.md`:
+- `code-reviewer` uses confidence scores (not labels); `pr-test-analyzer` uses gap scores. See SEVERITY.md for numeric ranges and external-agent confidence mapping.
 - `dependency-check` with unparseable CVSS vectors (v4.0, v2, or missing) maps conservatively to High.
+- For external agents without a confidence field, assign a default confidence per SEVERITY.md (silent-failure-hunter and comment-analyzer → 80; code-reviewer → pass through its own confidence).
 
-Also merge CVE findings from Phase 1b: if `CVE_JSON` is non-empty, add its entries to the normalized findings list before deduplication.
+**Step 2c — Confidence filter:**
 
-**Deduplicate:** same `file:line` from two agents → keep highest severity, note "(also flagged by [agent2])". When a `dependency-check` finding and an LLM agent finding share the same `file:line`, prefer the `dependency-check` entry (it carries the authoritative CVE/GHSA ID) and append "(also flagged by [agent])". Same file without line → deduplicate by file + category (category = the bracketed label at the start of each finding, e.g. `[secrets]`, `[injection]`, `[empty-collection]`, or `dependency-check` for CVE findings; normalize to a lowercased token before comparing).
+When MIN_CONFIDENCE > 0 (default: 75), drop any finding where `confidence < MIN_CONFIDENCE`.
+This step runs **before** suppression so that verify-gated HTTP calls are not made for sub-threshold noise.
+If `--no-suppress` was passed, step 2d is skipped entirely; proceed directly to step 2e.
 
-**Collect as structured data:** `{ severity, agent, file, line, finding, remediation }` per finding. Used for Block B rendering and Phase 4b inline comments.
+**Step 2d — Apply suppression rules (skip if `--no-suppress` was passed):**
+
+For each finding in ALL_FINDINGS, check against SUPPRESSION_RULES:
+1. For each rule, test whether the finding matches. A finding matches when:
+   - If rule has `match.file`: `finding.file` matches the value (substring or glob).
+   - If rule has `match.pattern`: `finding.finding + " " + finding.remediation` matches the pattern (case-insensitive regex).
+   - If rule has both `match.file` and `match.pattern`: both must match.
+2. If a rule matches and has **no** `verify` field: suppress the finding immediately.
+3. If a rule matches and has a `verify` field: call the appropriate registry API to confirm the referenced version exists. Cap total verify calls per run at 20; if the cap is reached, skip remaining verify-gated rules for this run.
+   - `github-release`: `gh api repos/{owner}/{repo}/releases/tags/{tag}` (extract owner/repo/tag from finding text)
+   - `npm`: `curl -sf --max-time 5 "https://registry.npmjs.org/{pkg}/{version}"`
+   - `pypi`: `curl -sf --max-time 5 "https://pypi.org/pypi/{pkg}/{version}/json"`
+   - `go-module`: `curl -sf --max-time 5 "https://proxy.golang.org/{module}/@v/{version}.info"`
+   - `cargo`: `curl -sf --max-time 5 "https://crates.io/api/v1/crates/{crate}/{version}"`
+   - `docker-hub`: `curl -sf --max-time 5 "https://hub.docker.com/v2/repositories/library/{image}/tags/{tag}"`
+   - On 2xx: suppress the finding.
+   - On 404: **keep** the finding — the LLM may have been right.
+   - On any other error (network failure, timeout, non-404 HTTP error): log "WARNING: verify check for rule '<id>' failed with <error>; keeping finding (fail-open)." and keep the finding.
+
+**Step 2e — Proximity deduplication:**
+
+Group findings by file. Within each file, sort by line number. Cluster findings within 3 lines of the **cluster start** (not the previous item — this prevents single-linkage drift):
+- Open a new cluster when line > cluster_start + 3.
+- Within a cluster: keep the highest-severity finding; accumulate a `sources[]` array from all findings in the cluster.
+- When a `dependency-check` finding and an LLM agent finding are in the same cluster, prefer the `dependency-check` entry (it carries the authoritative CVE/GHSA ID).
+- Annotate the kept finding: "(also flagged by: [source2, source3])" if sources has more than one entry.
+- Same file without a line number → deduplicate by file + category (the bracketed label in finding text, lowercased).
+
+**Collect as structured data:** `{ severity, confidence, agent, file, line, finding, remediation, source }` per finding. Used for Block B rendering and Phase 4b inline comments.
 
 ### Phase 3: Assemble the Reports
 
@@ -590,6 +772,10 @@ If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs`
 
 <condensed output from security-reviewer, or omit if skipped or NONE>
 
+### Adversarial Analysis
+
+<condensed output from adversarial-general (Most Critical Gap section), or omit if skipped or NONE>
+
 ### Positive Observations
 
 <aggregated from all agents>
@@ -604,10 +790,10 @@ If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs`
 
 ### Phase 4: PR/MR Operations
 
-**Skip entirely if `--no-post` or `--local` was passed.**
+**Skip entirely unless at least one of `--pr`, `--create-pr`, `--post-summary`, or `--post-findings` was explicitly passed.** (`--no-post`/`--local` is now the default; these flags are explicit aliases for the default behavior.)
 
 Determine PR/MR state:
-- `--pr` mode: PR_NUMBER from arg. POST_SUMMARY = `--post-summary`. POST_FINDINGS = NOT `--no-findings`.
+- `--pr` mode: PR_NUMBER from arg. POST_SUMMARY = `--post-summary`. POST_FINDINGS = `--post-findings` was passed (NOT auto-enabled in `--pr` mode; must be explicit).
 - Own-branch: use **OP: Detect existing PR/MR on current branch**.
   - **No PR/MR exists** — detect via provider-specific signals:
     - GitHub: output contains "no pull requests found"
@@ -625,7 +811,7 @@ Determine PR/MR state:
 
 ### Phase 4b: Post Findings as Inline Review
 
-**Skip if POST_FINDINGS is false or `--no-post`/`--local` was passed.**
+**Skip if POST_FINDINGS is false (i.e., `--post-findings` was not explicitly passed).**
 
 0. **Resolve PROJECT_ID** (GitLab only): `glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" | jq -r '.id'`. If this fails, report "Error: Could not resolve GitLab project ID for '${REPO_SLUG}'. Inline comments will not be posted." and skip Phase 4b (Block B is still displayed in terminal).
 
@@ -745,6 +931,8 @@ Note in terminal: "Review written to <path>"
 8. Critical/High findings → "⚠ Address Critical/High findings before requesting review."
 9. Agent failures → "⚠ Review incomplete — <N> agent(s) failed."
    If CVE_CHECK_FAILED=true → "⚠ CVE check did not run (script not found or execution failed) — dependency vulnerabilities not scanned." Show this even when CVE_JSON is [] so the user knows the empty result means 'check skipped', not 'no vulnerabilities'.
+   If `--no-suppress` was passed → note "Suppression rules disabled (--no-suppress)." in terminal output.
+   If MIN_CONFIDENCE > 0 → note "Confidence filter: ≥ <N> (dropped <M> findings below threshold)."
 10. No findings + no failures → "No significant issues found. Ready for review."
 11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
 

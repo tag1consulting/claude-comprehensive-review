@@ -31,7 +31,7 @@ Flags
   --post-summary     Post summary (Block A) as a comment on an existing PR/MR
   --post-findings    Post findings (Block B) as inline review on an existing own PR/MR
   --no-findings      Suppress posting findings (useful for dry-run with --pr)
-  --no-post / --local  Skip all remote operations and issue-linker, display everything locally
+  --no-post / --local  Explicit alias for the default: skip all remote operations (no-post is the default; posting requires explicit flags)
   --pr <number>      Review an existing PR/MR by number (external review mode;
                      use --pr for all providers, including GitLab MRs)
   --depth <tier>     Agent depth: normal (default) or deep.
@@ -41,6 +41,9 @@ Flags
                      actually reachable in the diff.
   --provider <name>  Override git provider detection (github, gitlab, bitbucket)
   --no-mem           Disable claude-mem integration (auto-detected when available)
+  --no-suppress      Disable all suppression rules (shows every finding; useful for audits)
+  --min-confidence N Filter findings below confidence N (0–100; default 75; 0 disables). Applied
+                     before suppression rules. See SEVERITY.md for the confidence scale.
   --output-file <p>  Write Block A + Block B to a markdown file at path <p> during Phase 5.
                      Use this to avoid re-running the review in a fresh session just to save
                      the output — saves ~$5–15 on large PRs where the post-review context
@@ -49,9 +52,10 @@ Flags
   --help             Show this help
 
 Default behavior
-  No PR exists:      Everything local. Use --create-pr to create one.
-  Existing own PR:   Everything local. Use --post-summary/--post-findings to post.
-  --pr <N>:          Findings posted as inline review. Summary local unless --post-summary.
+  All runs:          Everything local. No remote posting unless explicitly requested.
+  No PR exists:      Use --create-pr to create one.
+  Existing own PR:   Use --post-summary/--post-findings to post.
+  --pr <N>:          Local only. Use --post-findings to post an inline review, --post-summary for a comment.
 
 Agents — full run
   Always:            pr-summarizer, code-reviewer
@@ -90,9 +94,9 @@ Examples
   /comprehensive-review --create-pr             Review and create PR with summary
   /comprehensive-review --quick                 Fast review, skip expensive agents
   /comprehensive-review --post-findings         Post findings on existing own PR
-  /comprehensive-review --pr 42                 Review someone else's PR #42
-  /comprehensive-review --pr 42 --no-findings   Review PR #42 locally only
-  /comprehensive-review --no-post               Skip all remote operations
+  /comprehensive-review --pr 42                        Review someone else's PR #42 locally
+  /comprehensive-review --pr 42 --post-findings        Review PR #42 and post inline findings
+  /comprehensive-review --pr 42 --post-summary --post-findings  Review PR #42 and post both
 
 Provider support
   Detected automatically from git remote URL. Override with --provider.
