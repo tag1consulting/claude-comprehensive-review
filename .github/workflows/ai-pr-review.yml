@@ -29,26 +29,71 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: tag1consulting/ai-pr-review/container-action@main
-        with:
-          image-tag: 'latest'
-          registry-token: ${{ secrets.GHCR_TOKEN }}
-          provider: ${{ vars.AI_REVIEW_PROVIDER || 'anthropic' }}
-          api-key: ${{ secrets.AI_REVIEW_API_KEY }}
-          base-url: ${{ vars.AI_REVIEW_BASE_URL || '' }}
-          model-standard: ${{ vars.AI_REVIEW_MODEL_STANDARD || '' }}
-          model-premium: ${{ vars.AI_REVIEW_MODEL_PREMIUM || '' }}
-          review-mode: >-
+      - name: Mask credentials
+        env:
+          _API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          _GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          _REGISTRY_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          [[ -n "$_API_KEY" ]]        && echo "::add-mask::$_API_KEY"
+          [[ -n "$_GH_TOKEN" ]]       && echo "::add-mask::$_GH_TOKEN"
+          [[ -n "$_REGISTRY_TOKEN" ]] && echo "::add-mask::$_REGISTRY_TOKEN"
+
+      - name: Log in to GHCR
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Run AI review in container
+        env:
+          IMAGE: ghcr.io/tag1consulting/ai-pr-review:latest
+          AI_PROVIDER: ${{ vars.AI_REVIEW_PROVIDER || 'anthropic' }}
+          AI_REVIEW_MODE: >-
             ${{
               (contains(github.event.pull_request.labels.*.name, 'ai-review-full') && 'full') ||
               'quick'
             }}
-          force-full-diff: >-
-            ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') }}
-          pr-number: ${{ github.event.pull_request.number }}
-          base-ref: ${{ github.event.pull_request.base.ref }}
-          head-sha: ${{ github.event.pull_request.head.sha }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_FULL_DIFF: ${{ contains(github.event.pull_request.labels.*.name, 'ai-review-rescan') }}
+          AI_MODEL_STANDARD: ${{ vars.AI_REVIEW_MODEL_STANDARD || '' }}
+          AI_MODEL_PREMIUM: ${{ vars.AI_REVIEW_MODEL_PREMIUM || '' }}
+          OPENAI_BASE_URL: ${{ vars.AI_REVIEW_BASE_URL || '' }}
+          BEDROCK_API_URL: ${{ vars.AI_REVIEW_BASE_URL || '' }}
+          ANTHROPIC_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          BEDROCK_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          docker pull "$IMAGE"
+          SUMMARY_MOUNT=()
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            SUMMARY_MOUNT=(-e GITHUB_STEP_SUMMARY -v "$GITHUB_STEP_SUMMARY:$GITHUB_STEP_SUMMARY")
+          fi
+          docker run --rm \
+            -e AI_PROVIDER \
+            -e AI_REVIEW_MODE \
+            -e FORCE_FULL_DIFF \
+            -e AI_MODEL_STANDARD \
+            -e AI_MODEL_PREMIUM \
+            -e ANTHROPIC_API_KEY \
+            -e OPENAI_API_KEY \
+            -e GOOGLE_API_KEY \
+            -e BEDROCK_API_KEY \
+            -e OPENAI_BASE_URL \
+            -e BEDROCK_API_URL \
+            -e GH_TOKEN \
+            -e GITHUB_REPOSITORY \
+            -e PR_NUMBER \
+            -e BASE_REF \
+            -e HEAD_SHA \
+            -e GITHUB_WORKSPACE=/workspace \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            "${SUMMARY_MOUNT[@]}" \
+            "$IMAGE"
 
   cleanup-rescan-label:
     needs: review
