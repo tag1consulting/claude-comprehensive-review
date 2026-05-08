@@ -218,7 +218,7 @@ done
 # ---------------------------------------------------------------------------
 
 mkdir -p "$CLAUDE_DIR/skills/comprehensive-review/scripts"
-for script in run-cve-check.sh run-shellcheck.sh run-semgrep.sh run-trufflehog.sh run-ruff.sh run-golangci-lint.sh; do
+for script in run-cve-check.sh run-shellcheck.sh run-semgrep.sh run-trufflehog.sh run-ruff.sh run-golangci-lint.sh run-checkov.sh; do
   dest="$CLAUDE_DIR/skills/comprehensive-review/scripts/${script}"
   if [[ -f "$dest" ]]; then
     warn "Script already exists, overwriting: $dest"
