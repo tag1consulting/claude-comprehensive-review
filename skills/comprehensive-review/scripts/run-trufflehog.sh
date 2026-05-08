@@ -135,8 +135,9 @@ if [[ ${#TARGET_FILES[@]} -eq 0 ]]; then
 fi
 
 # Pass all target files to a single trufflehog invocation rather than forking
-# per file. On PRs touching many files this avoids N-1 process startups.
-# Capture exit code to distinguish "no secrets found" from "tool failed".
+# per file. trufflehog filesystem accepts variadic path arguments (verified in
+# ai-pr-review production). On PRs touching many files this avoids N-1 process
+# startups. Capture exit code to distinguish "no secrets" from "tool failed".
 TH_EC=0
 TH_OUTPUT=$(trufflehog filesystem --json --no-update "${TARGET_FILES[@]}" 2>/dev/null) || TH_EC=$?
 if [[ "$TH_EC" -ne 0 ]]; then
