@@ -85,7 +85,15 @@ developers who know the codebase:
 
 Do NOT assess: project convention conformance (invisible to you), architectural fitness (no context), in-depth security vulnerabilities (security-reviewer), test coverage (pr-test-analyzer). Overlap with other agents is expected — deduplication happens downstream.
 
-Do NOT flag dependency versions, GitHub Action versions, or package versions as "nonexistent," "unreleased," "may not exist," or "unverified" based on training-data recall. Your training data has a knowledge cutoff — versions released after it are unknown to you, not nonexistent. Only raise a version-related finding if the diff itself provides concrete evidence of a problem (a syntactically malformed version string, an explicit downgrade, or a known CVE). A renovate/dependabot bump to a higher version number is strong evidence the version exists and was verified by that tool.
+**Do NOT flag** any package, runtime, language, GitHub Action, Docker image, library, or framework version as "unreleased," "invalid," "does not exist," "not a valid version," "pre-release," "future version," "may not exist," "unverified," or any synonym — at any severity or confidence — based on training-data recall. You have a knowledge cutoff; versions released after it are unknown to you, not nonexistent. The diff was written after your cutoff; assume the author had access to release information you do not.
+
+The only circumstances in which you may raise a version-related finding:
+1. The version string is **syntactically malformed** (e.g., `v1.2.3.4.5`, `vNaN`).
+2. The diff **explicitly downgrades** without explanation (e.g., `v5` to `v3`).
+3. A **known CVE** affects that exact version — you must cite the CVE ID.
+4. A dependency or image uses `latest` or **no pin at all** where pinning is expected.
+
+A renovate/dependabot bump to a higher version number is strong positive evidence the version exists. If uncertain whether a version exists, **omit the finding entirely** — do not emit at Low confidence or hedge with "may" or "should verify." Deterministic version verification is handled by the CVE scanner and the verify-gated suppression path.
 
 ## Empty State
 

@@ -33,21 +33,50 @@ if [[ -z "${TRUFFLEHOG_MOCK_FILE:-}" ]] && ! command -v trufflehog >/dev/null 2>
   exit 0
 fi
 
+# Test/fixture file pattern — unverified findings in these paths are demoted
+# to Low because test files routinely contain fake credentials for mocking.
+# Verified secrets are never demoted (a real leaked credential is critical
+# regardless of where it appears).
+_TEST_FILE_PATTERN='(^|/)(tests?|__tests__|spec|fixtures?|testdata|test_data|mocks?|stubs?|fakes?|examples?|samples?)/|_test\.[a-z]+$|\.test\.[a-z]+$|\.spec\.[a-z]+$|\.bats$|^test_[^/]+\.[a-z]+$|(^|/)test_[^/]+\.[a-z]+$'
+
 # jq filter to convert trufflehog NDJSON into findings array
 _th_transform() {
-  jq -Rs '
+  local test_pattern="${_TEST_FILE_PATTERN}"
+  jq -Rs --arg test_pat "$test_pattern" '
     split("\n") | map(select(length > 0)) |
     map(
       (. | fromjson? // null) |
       select(. != null) |
+      (.SourceMetadata.Data.Filesystem.file? // "unknown") as $file |
+      (.Verified) as $verified |
+      (if ($verified | not) and ($file | test($test_pat)) then true else false end) as $is_test_fp |
       {
-        severity: (if .Verified then "Critical" else "High" end),
-        confidence: (if .Verified then 95 else 85 end),
+        severity: (
+          if $verified then "Critical"
+          elif $is_test_fp then "Low"
+          else "High"
+          end
+        ),
+        confidence: (
+          if $verified then 95
+          elif $is_test_fp then 40
+          else 85
+          end
+        ),
         source: "trufflehog",
-        file: (.SourceMetadata.Data.Filesystem.file? // "unknown"),
+        file: $file,
         line: (.SourceMetadata.Data.Filesystem.line? // 0),
-        finding: ("Potential secret detected: \(.DetectorName) (\(if .Verified then "verified" else "unverified" end))"),
-        remediation: "Rotate the credential immediately and remove it from the repository history."
+        finding: (
+          "Potential secret detected: \(.DetectorName) (\(if $verified then "verified" else "unverified" end))"
+          + (if $is_test_fp then " [test file — likely mock data]" else "" end)
+        ),
+        remediation: (
+          if $is_test_fp then
+            "Verify this is intentional test/mock data. If it is a real credential, rotate it immediately."
+          else
+            "Rotate the credential immediately and remove it from the repository history."
+          end
+        )
       }
     )
   '
@@ -105,22 +134,24 @@ if [[ ${#TARGET_FILES[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# Run trufflehog once per file, collect arrays, merge at the end
-FILE_ARRAYS=()
-for file in "${TARGET_FILES[@]}"; do
-  TH_OUTPUT=$(trufflehog filesystem --json --no-update "$file" 2>/dev/null || true)
-  [[ -z "$TH_OUTPUT" ]] && continue
+# Pass all target files to a single trufflehog invocation rather than forking
+# per file. On PRs touching many files this avoids N-1 process startups.
+# Capture exit code to distinguish "no secrets found" from "tool failed".
+TH_EC=0
+TH_OUTPUT=$(trufflehog filesystem --json --no-update "${TARGET_FILES[@]}" 2>/dev/null) || TH_EC=$?
+if [[ "$TH_EC" -ne 0 ]]; then
+  echo "WARNING: trufflehog exited with code ${TH_EC}; trufflehog findings may be incomplete." >&2
+fi
 
-  FILE_FINDINGS=$(echo "$TH_OUTPUT" | _th_transform 2>/dev/null) || {
-    echo "WARNING: trufflehog output for ${file} could not be parsed; skipping." >&2
-    continue
-  }
-  FILE_ARRAYS+=("$FILE_FINDINGS")
-done
-
-if [[ ${#FILE_ARRAYS[@]} -eq 0 ]]; then
+if [[ -z "$TH_OUTPUT" ]]; then
   echo "[]"
   exit 0
 fi
 
-printf '%s\n' "${FILE_ARRAYS[@]}" | jq -s 'add // []'
+FINDINGS=$(echo "$TH_OUTPUT" | _th_transform 2>/dev/null) || {
+  echo "WARNING: trufflehog output could not be parsed; trufflehog findings skipped." >&2
+  echo "[]"
+  exit 0
+}
+
+echo "${FINDINGS:-[]}"

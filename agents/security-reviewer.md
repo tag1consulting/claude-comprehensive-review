@@ -81,7 +81,15 @@ on unchanged lines.
 - Unpinned dependency versions that could pull malicious updates
 - Use of `latest` image tags in container definitions
 - **Do NOT flag** `actions/*@vN` floating major-version tags in GitHub Actions workflows — this is a deliberate policy to receive automatic security patches. Only flag third-party actions using `@latest` or no version pin at all.
-- **Do NOT flag** a dependency or action version as "nonexistent," "unreleased," "may not exist," or "unverified" based on training-data recall. Your training data has a knowledge cutoff — versions released after that cutoff are unknown to you, not nonexistent. Only flag a version when you have concrete evidence of a supply-chain or vulnerability issue (known CVE, malformed string, explicit downgrade). A renovate/dependabot bump to a higher version number is strong evidence the version exists.
+- **Do NOT flag** any package, runtime, language, GitHub Action, Docker image, library, or framework version as "unreleased," "invalid," "does not exist," "not a valid version," "pre-release," "future version," "may not exist," "unverified," or any synonym — at any severity or confidence — based on training-data recall. You have a knowledge cutoff; versions released after it are unknown to you, not nonexistent. The diff was written after your cutoff; assume the author had access to release information you do not.
+
+  The only circumstances in which you may raise a version-related finding:
+  1. The version string is **syntactically malformed** (e.g., `v1.2.3.4.5`, `vNaN`).
+  2. The diff **explicitly downgrades** without explanation (e.g., `v5` to `v3`).
+  3. A **known CVE** affects that exact version — you must cite the CVE ID.
+  4. A dependency or image uses `latest` or **no pin at all** where pinning is expected.
+
+  A renovate/dependabot bump to a higher version number is strong positive evidence the version exists. If uncertain whether a version exists, **omit the finding entirely** — do not emit at Low confidence or hedge with "may" or "should verify." Deterministic version verification is handled by the CVE scanner and the verify-gated suppression path.
 - Known CVEs in direct dependencies are detected deterministically by the `dependency-check` step (Phase 1b); do not re-flag those. Report dependency-related security concerns beyond CVE matches: maintainer changes, typosquat suspicion, overly broad permissions, or new license concerns.
 
 ## Language-Specific Checks
