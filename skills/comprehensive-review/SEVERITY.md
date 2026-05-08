@@ -16,9 +16,10 @@ unified Critical/High/Medium/Low scale.
 | dependency-check (CVSS unparsed / v4 / v2) | High | maps to High (conservative) |
 | shellcheck | error/warning/info | High / Medium / Low |
 | semgrep | ERROR/WARNING/INFO (or rule confidence) | Critical / High / Medium |
-| trufflehog | verified/unverified | Critical / High |
+| trufflehog | verified/unverified/unverified-test | Critical / High / Low |
 | ruff | all findings | Medium |
 | golangci-lint | all findings | Medium |
+| checkov | CKV2_*/CKV_SECRET_* vs others | High / Medium |
 
 ## Confidence Scale (0–100)
 

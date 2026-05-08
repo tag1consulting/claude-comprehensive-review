@@ -589,12 +589,19 @@ if command -v golangci-lint &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.go$'
   (echo "$DIFF_PATHS" | grep -E '\.go$' | bash "$SCRIPTS_DIR/run-golangci-lint.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/golangci.json" &
 fi
 
+# checkov — IaC files (Terraform, k8s YAML, Dockerfiles, CloudFormation, Azure ARM)
+if command -v checkov &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(tf|tfvars|yaml|yml|json)$|Dockerfile' \
+   && [[ -x "$SCRIPTS_DIR/run-checkov.sh" ]]; then
+  (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-checkov.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/checkov.json" &
+fi
+
 wait  # wait for all background analyzer subshells
 SHELLCHECK_JSON=$(cat "$_TMPDIR/shellcheck.json" 2>/dev/null || echo '[]')
 SEMGREP_JSON=$(cat "$_TMPDIR/semgrep.json"    2>/dev/null || echo '[]')
 TRUFFLEHOG_JSON=$(cat "$_TMPDIR/trufflehog.json" 2>/dev/null || echo '[]')
 RUFF_JSON=$(cat "$_TMPDIR/ruff.json"          2>/dev/null || echo '[]')
 GOLANGCI_JSON=$(cat "$_TMPDIR/golangci.json"  2>/dev/null || echo '[]')
+CHECKOV_JSON=$(cat "$_TMPDIR/checkov.json"    2>/dev/null || echo '[]')
 rm -rf "$_TMPDIR"
 ```
 
@@ -665,7 +672,7 @@ extract_findings() {
 
 Apply `extract_findings` to each custom agent output (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, adversarial-general). For external toolkit agents that don't emit json-findings, continue using the existing markdown normalization from SEVERITY.md.
 
-Merge all extracted findings plus CVE_JSON and static analyzer JSON (SHELLCHECK_JSON, SEMGREP_JSON, TRUFFLEHOG_JSON, RUFF_JSON, GOLANGCI_JSON) into a unified `ALL_FINDINGS` list.
+Merge all extracted findings plus CVE_JSON and static analyzer JSON (SHELLCHECK_JSON, SEMGREP_JSON, TRUFFLEHOG_JSON, RUFF_JSON, GOLANGCI_JSON, CHECKOV_JSON) into a unified `ALL_FINDINGS` list.
 
 **Step 2b — Severity normalization:**
 
@@ -695,6 +702,7 @@ For each finding in ALL_FINDINGS, check against SUPPRESSION_RULES:
    - `go-module`: `curl -sf --max-time 5 "https://proxy.golang.org/{module}/@v/{version}.info"`
    - `cargo`: `curl -sf --max-time 5 "https://crates.io/api/v1/crates/{crate}/{version}"`
    - `docker-hub`: `curl -sf --max-time 5 "https://hub.docker.com/v2/repositories/library/{image}/tags/{tag}"`
+   - `ruby-org`: Extract Ruby version X.Y.Z from finding text. Derive MAJOR.MINOR (strip patch). `curl -sfI --max-time 5 "https://cache.ruby-lang.org/pub/ruby/{MAJOR.MINOR}/ruby-{X.Y.Z}.tar.gz"` (HEAD request — do not download the tarball).
    - On 2xx: suppress the finding.
    - On 404: **keep** the finding — the LLM may have been right.
    - On any other error (network failure, timeout, non-404 HTTP error): log "WARNING: verify check for rule '<id>' failed with <error>; keeping finding (fail-open)." and keep the finding.

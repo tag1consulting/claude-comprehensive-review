@@ -269,8 +269,9 @@ In addition to LLM agents, the skill runs deterministic checks when relevant fil
 | **trufflehog** — secret scanning | Any file changed | Yes | `trufflehog` |
 | **ruff** — Python linting | `.py` files changed | Yes | `ruff` |
 | **golangci-lint** — Go static analysis | `.go` files changed | Yes | `golangci-lint` |
+| **checkov** — IaC security scanning | `*.tf`, `*.tfvars`, `Dockerfile`, k8s YAML, CloudFormation, Azure ARM changed | Yes | `checkov` |
 
-No API key required for any check. All static analyzers are **opportunistic** — if the binary is not installed, the check is silently skipped with no error. Install as needed: `brew install shellcheck`, `pip install semgrep ruff`, `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`, [trufflehog releases](https://github.com/trufflesecurity/trufflehog/releases). Findings appear in Block B with the tool name as source (e.g., `[shellcheck]`, `[semgrep]`).
+No API key required for any check. All static analyzers are **opportunistic** — if the binary is not installed, the check is silently skipped with no error. Install as needed: `brew install shellcheck`, `pip install semgrep ruff checkov`, `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`, [trufflehog releases](https://github.com/trufflesecurity/trufflehog/releases). Findings appear in Block B with the tool name as source (e.g., `[shellcheck]`, `[semgrep]`).
 
 ### `--quick` mode
 
@@ -313,6 +314,7 @@ Each suppression rule has:
 | `go-module` | proxy.golang.org |
 | `cargo` | crates.io |
 | `docker-hub` | hub.docker.com |
+| `ruby-org` | cache.ruby-lang.org |
 
 Use `--no-suppress` to disable all suppression rules for a run (useful for audits).
 

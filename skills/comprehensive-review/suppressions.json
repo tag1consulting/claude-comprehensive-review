@@ -53,5 +53,12 @@
     "match": {
       "pattern": "upload-artifact.{0,200}download-artifact|download-artifact.{0,200}upload-artifact"
     }
+  },
+  {
+    "id": "trufflehog-unverified-test-file",
+    "reason": "Unverified secret detections in test/fixture/example files are almost always intentional mock data. The run-trufflehog.sh script already demotes these to Low/confidence-40 and tags them '[test file — likely mock data]', but this rule provides a safety net.",
+    "match": {
+      "pattern": "\\(unverified\\).{0,50}\\[test file"
+    }
   }
 ]
