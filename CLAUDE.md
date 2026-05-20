@@ -50,6 +50,12 @@ The orchestrator uses a tiered approach to minimize token consumption:
 
 The orchestrator also pre-reads CLAUDE.md and the commit log in Phase 0, passing condensed versions to agents so they don't fetch these independently. The orchestrator always specifies both `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool — `model:` prevents subagents from inheriting the orchestrator's model, and `subagent_type:` prevents incorrect plugin-namespace inference.
 
+**PR_NARRATIVE**: Phase 0 builds a `PR_NARRATIVE` block from full commit bodies (`git log --no-merges`) and (in `--pr <N>` mode) the PR description body. This is passed to pr-summarizer, code-reviewer, architecture-reviewer, security-reviewer, adversarial-general, and edge-case-hunter to reduce false positives where agents flag changes the author has already explained. blind-hunter is explicitly excluded to preserve its zero-context constraint.
+
+**Symbol context enrichment (Phase 0c)**: On full runs at TIER=small and TIER=medium, the orchestrator extracts symbol references from the diff, locates their definitions across the repo via Grep (ripgrep-backed), reads ±5 lines of context, and injects a `<symbol-context>` XML block into eligible agents. Agents receiving enrichment: architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, code-reviewer. Excluded: blind-hunter, pr-summarizer, all pr-review-toolkit agents. Disable with `--no-enrich-context`.
+
+**Per-agent conditional gates**: Phase 1 evaluates four gates against the diff before dispatching agents — `GATE_ERROR_PATTERNS`, `GATE_CONTROL_FLOW`, `GATE_SECURITY_PATTERNS`, `GATE_CODE_OR_INFRA`. These are grep-based bash checks that skip agents when the diff content doesn't warrant them (e.g., edge-case-hunter skips if no control flow constructs appear in added lines).
+
 When the diff touches version-pin files (`.nvmrc`, `package.json`, `composer.json`, etc.) or infra/CI configs (Dockerfiles, `.github/workflows/`, etc.), the orchestrator builds a **RELATED_FILES** block — a list of adjacent files outside the diff that may have drifted (e.g., a Dockerfile still pinned to Node 22 when `.nvmrc` now requires 24). This is passed to architecture-reviewer and security-reviewer as an explicit `RELATED_FILES:` directive. CVE script (`run-cve-check.sh`) path is resolved via `$CLAUDE_PLUGIN_ROOT` first (plugin install), then `$CLAUDE_DIR`, then `$HOME/.claude`, then a known marketplace path — first executable match wins.
 
 ### Agent scope boundaries
@@ -170,12 +176,22 @@ skills/comprehensive-review/suppressions.json                ← global suppress
 skills/comprehensive-review/language-profiles/go.md          ← Go-specific review context (injected per detected language)
 skills/comprehensive-review/language-profiles/python.md      ← Python-specific review context
 skills/comprehensive-review/language-profiles/typescript.md  ← TypeScript/JavaScript-specific review context
+skills/comprehensive-review/language-profiles/javascript.md  ← JavaScript-specific review context
 skills/comprehensive-review/language-profiles/php.md         ← PHP-specific review context (includes Drupal patterns)
 skills/comprehensive-review/language-profiles/ruby.md        ← Ruby-specific review context
 skills/comprehensive-review/language-profiles/rust.md        ← Rust-specific review context
 skills/comprehensive-review/language-profiles/java.md        ← Java-specific review context
 skills/comprehensive-review/language-profiles/c++.md         ← C++-specific review context
 skills/comprehensive-review/language-profiles/shell.md       ← Shell/Bash-specific review context
+skills/comprehensive-review/language-profiles/csharp.md      ← C#-specific review context
+skills/comprehensive-review/language-profiles/kotlin.md      ← Kotlin-specific review context
+skills/comprehensive-review/language-profiles/swift.md       ← Swift-specific review context
+skills/comprehensive-review/language-profiles/scala.md       ← Scala-specific review context
+skills/comprehensive-review/language-profiles/lua.md         ← Lua-specific review context
+skills/comprehensive-review/language-profiles/perl.md        ← Perl-specific review context
+skills/comprehensive-review/language-profiles/sql.md         ← SQL-specific review context
+skills/comprehensive-review/language-profiles/terraform.md   ← Terraform-specific review context
+skills/comprehensive-review/language-profiles/yaml.md        ← YAML-specific review context
 skills/comprehensive-review/scripts/run-cve-check.sh         ← deterministic CVE check via OSV.dev (Phase 1b)
 skills/comprehensive-review/scripts/run-shellcheck.sh        ← ShellCheck static analysis (optional; Phase 1b)
 skills/comprehensive-review/scripts/run-semgrep.sh           ← Semgrep SAST analysis (optional; Phase 1b)
