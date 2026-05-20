@@ -41,11 +41,11 @@ Flags
                      actually reachable in the diff.
   --provider <name>  Override git provider detection (github, gitlab, bitbucket)
   --no-enrich-context  Disable symbol context enrichment (Grep-based cross-file definition
-                     lookup). Context enrichment is on by default for full runs at
-                     TIER=small and TIER=medium — it adds ~1-3K tokens per eligible agent
-                     but reduces false positives by giving agents cross-file definitions.
-                     Disable if you want to reduce token cost or the Grep calls on large
-                     repos become slow.
+                     lookup). Context enrichment is on by default for all full runs except
+                     TIER=tiny (<50 lines, ≤3 files) — it adds ~1-3K tokens per eligible
+                     agent but reduces false positives by giving agents cross-file
+                     definitions. Disable if you want to reduce token cost or the Grep
+                     calls on large repos become slow.
   --no-mem           Disable claude-mem integration (auto-detected when available)
   --no-suppress      Disable all suppression rules (shows every finding; useful for audits)
   --min-confidence N Filter findings below confidence N (0–100; default 75; 0 disables). Applied

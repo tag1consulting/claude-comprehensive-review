@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace.
+This repo distributes a Claude Code skill (`/comprehensive-review`) and seven custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace.
 
 ## Installation
 
@@ -56,7 +56,7 @@ The orchestrator also pre-reads CLAUDE.md and the commit log in Phase 0, passing
 
 **PR_NARRATIVE**: Phase 0 builds a `PR_NARRATIVE` block from full commit bodies (`git log --no-merges`) and (in `--pr <N>` mode) the PR description body. This is passed to pr-summarizer, code-reviewer, architecture-reviewer, security-reviewer, adversarial-general, and edge-case-hunter to reduce false positives where agents flag changes the author has already explained. blind-hunter is explicitly excluded to preserve its zero-context constraint.
 
-**Symbol context enrichment (Phase 0c)**: On full runs at TIER=small and TIER=medium, the orchestrator extracts symbol references from the diff, locates their definitions across the repo via Grep (ripgrep-backed), reads ±5 lines of context, and injects a `<symbol-context>` XML block into eligible agents. Agents receiving enrichment: architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, code-reviewer. Excluded: blind-hunter, pr-summarizer, all pr-review-toolkit agents. Disable with `--no-enrich-context`.
+**Symbol context enrichment (Phase 0c)**: On all full runs except TIER=tiny (<50 lines, ≤3 files), the orchestrator extracts symbol references from the diff, locates their definitions across the repo via Grep (ripgrep-backed), reads ±5 lines of context, and injects a `<symbol-context>` XML block into eligible agents. Agents receiving enrichment: architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, code-reviewer. Excluded: blind-hunter, pr-summarizer, all pr-review-toolkit agents. Disable with `--no-enrich-context`.
 
 **Per-agent conditional gates**: Phase 1 evaluates four gates against the diff before dispatching agents — `GATE_ERROR_PATTERNS`, `GATE_CONTROL_FLOW`, `GATE_SECURITY_PATTERNS`, `GATE_CODE_OR_INFRA`. These are grep-based bash checks that skip agents when the diff content doesn't warrant them (e.g., edge-case-hunter skips if no control flow constructs appear in added lines).
 

@@ -154,7 +154,7 @@ Run from any git repository, on the branch you want to review:
 | `--no-post` / `--local` | Explicit alias for the default: display everything locally, skip all remote operations (this is the default — posting requires explicit flags) |
 | `--pr <number>` | Review an existing PR/MR by number (external review mode) |
 | `--provider <name>` | Override auto-detected git provider (`github`, `gitlab`, `bitbucket`) |
-| `--no-enrich-context` | Disable symbol context enrichment (Grep-based cross-file definition lookup). Context enrichment is on by default for full runs at TIER=small and TIER=medium — it adds ~1–3K tokens per eligible agent but reduces false positives. |
+| `--no-enrich-context` | Disable symbol context enrichment (Grep-based cross-file definition lookup). Context enrichment is on by default for all full runs except TIER=tiny (<50 lines, ≤3 files) — it adds ~1–3K tokens per eligible agent but reduces false positives. |
 | `--no-mem` | Disable claude-mem integration (auto-detected when available) |
 | `--no-suppress` | Disable all suppression rules (useful for debugging / audit runs where you want to see every finding) |
 | `--min-confidence <N>` | Filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applied before suppression rules. |
@@ -278,7 +278,7 @@ To add a language profile, create `skills/comprehensive-review/language-profiles
 
 ## Symbol context enrichment
 
-On full runs at TIER=small and TIER=medium, the skill automatically extracts symbol references from the diff and looks up their definitions across the repo using Claude Code's `Grep` tool (backed by ripgrep). The results are injected as a `<symbol-context>` block into eligible agents, giving them cross-file definition context without reading the entire codebase.
+On all full runs except TIER=tiny (<50 lines, ≤3 files), the skill automatically extracts symbol references from the diff and looks up their definitions across the repo using Claude Code's `Grep` tool (backed by ripgrep). The results are injected as a `<symbol-context>` block into eligible agents, giving them cross-file definition context without reading the entire codebase.
 
 This is the Claude Code equivalent of ai-pr-review's Epic 3-A (treesitter + ripgrep context enrichment) — implemented using Claude Code's native tools rather than Python + optional dependencies.
 
@@ -395,6 +395,7 @@ implementation detail of Claude Code and may change between versions).
 ~/.claude/agents/architecture-reviewer.md
 ~/.claude/agents/blind-hunter.md
 ~/.claude/agents/edge-case-hunter.md
+~/.claude/agents/adversarial-general.md
 ```
 
 The `pr-review-toolkit` plugin installs its agents to `~/.claude/plugins/` automatically.

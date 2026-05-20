@@ -24,7 +24,7 @@ Supported flags:
 - `--pr <number>` — review an existing PR/MR by number (external review mode)
 - `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
 - `--depth <normal|deep>` — agent-depth promotion: `deep` promotes blind-hunter and edge-case-hunter to the `opus` alias (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
-- `--no-enrich-context` — disable symbol context enrichment (Grep-based cross-file definition lookup); by default context enrichment is enabled on TIER=small and TIER=medium full runs
+- `--no-enrich-context` — disable symbol context enrichment (Grep-based cross-file definition lookup); by default context enrichment is enabled on all full runs except TIER=tiny (<50 lines, ≤3 files)
 - `--no-mem` — disable claude-mem integration even if claude-mem is detected
 - `--no-suppress` — disable suppression rules (useful for debugging / audit runs where you want to see every finding)
 - `--min-confidence <N>` — filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applies to findings from custom agents that emit a confidence score. Applied before suppression rules. See `skills/comprehensive-review/SEVERITY.md` for how external agent scores are mapped.
@@ -366,18 +366,11 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    ```bash
    DIFF_FILE=$(mktemp /tmp/cr-diff-XXXXXXXX.txt)
    git diff <base>...HEAD > "$DIFF_FILE"   # in --pr mode: git -C "$WORKTREE_PATH" diff ...
-   # Strip merge-commit noise: if the diff contains merge commits from base branch, re-compute using
-   # the feature-only patch set (equivalent to ai-pr-review's ignore-merge-commits):
-   CONTRIBUTING_COMMITS=$(git log --no-merges --format="%H" <base>..HEAD 2>/dev/null)
-   if [[ -n "$CONTRIBUTING_COMMITS" ]]; then
-     # Verify the aggregate diff matches what we expect (use as-is; --no-merges on commit log is sufficient)
-     : # DIFF_FILE already contains the correct diff via git diff <base>...HEAD
-   fi
    ```
    Track DIFF_FILE for Phase 5 cleanup.
-   **Note:** `git diff <base>...HEAD` (three dots) already excludes merge commits from the diff content by using
-   the merge base as the starting point. The `--no-merges` flag above is applied to the **commit log** only,
-   not the diff itself. This matches ai-pr-review's behavior.
+   **Note:** `git diff <base>...HEAD` (three-dot syntax) computes the diff from the merge base, which
+   already excludes merge commits from the diff content — only the feature branch's own changes appear.
+   The commit log uses `--no-merges` (step 6a) for the same reason. No additional stripping is needed.
 
    Then compute:
    - `LINES_CHANGED` — total added+removed lines from the manifest stat (lockfiles already excluded)
