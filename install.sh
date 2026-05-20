@@ -294,12 +294,6 @@ info "Installed manifest → $PLUGIN_DIR/.claude-plugin/plugin.json"
 
 install_file "skills/comprehensive-review/SKILL.md" \
   "$PLUGIN_DIR/skills/comprehensive-review/SKILL.md"
-# Claude Code discovers skills by scanning commands/ — install the entry point there too.
-# Support files (HELP.md, language-profiles, scripts, etc.) are still resolved via
-# $CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/ at runtime.
-mkdir -p "$PLUGIN_DIR/commands"
-install_file "skills/comprehensive-review/SKILL.md" \
-  "$PLUGIN_DIR/commands/comprehensive-review.md"
 install_file "skills/comprehensive-review/HELP.md" \
   "$PLUGIN_DIR/skills/comprehensive-review/HELP.md"
 install_file "skills/comprehensive-review/PROVIDERS.md" \
