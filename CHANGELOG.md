@@ -55,9 +55,12 @@ but had no corresponding rule.
 
 ---
 
-## [1.6.1] - TBD
+## [1.6.1] - 2026-05-20
 
-Patch release targeting issue #63. See that issue for details.
+### Fixed
+- **Agent namespace prefix** — all owned agents now use `comprehensive-review:` prefix in `subagent_type` values (e.g., `comprehensive-review:security-reviewer`) to satisfy Claude Code's plugin install path resolution. Fixes #63 where agents dispatched in plugin-install mode were resolving to the wrong (or missing) agent file.
+- **SKILL.md fallback paths** — replaced hardcoded `--local` install paths with glob patterns that match any plugin install version, fixing agent resolution for marketplace installs and future version bumps.
+- **`install.sh` bootstrap** — `installed_plugins.json` is now auto-initialized with the correct v2 seed format if absent, eliminating the chicken-and-egg failure on first-time local installs.
 
 ---
 
