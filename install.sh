@@ -114,6 +114,11 @@ if [[ ! -d "$CLAUDE_DIR" ]]; then
   exit 1
 fi
 
+if [[ -e "$PLUGINS_DIR" && ! -d "$PLUGINS_DIR" ]]; then
+  error "$PLUGINS_DIR exists but is not a directory."
+  exit 1
+fi
+
 if [[ ! -d "$PLUGINS_DIR" ]]; then
   error "Claude plugins directory not found at $PLUGINS_DIR."
   error "Run Claude Code at least once, then install any plugin from the marketplace before using this script."
@@ -181,8 +186,9 @@ fi
 # ---------------------------------------------------------------------------
 
 if [[ "$LOCAL" == true ]]; then
-  # Read version from local plugin.json
-  PLUGIN_VERSION=$(jq -r '.version' "$SCRIPT_DIR/.claude-plugin/plugin.json" 2>/dev/null || echo "local")
+  # Use a fixed slug so re-runs after a version bump always install to the
+  # same path; avoids accumulating orphaned plugin cache directories.
+  PLUGIN_VERSION="local"
 elif [[ "$REF" =~ ^v[0-9] ]]; then
   PLUGIN_VERSION="${REF#v}"  # strip leading 'v'
 else
@@ -316,9 +322,10 @@ UPDATED=$(jq \
     "installedAt": $now,
     "lastUpdated": $now
   }]' \
-  "$INSTALLED_PLUGINS_FILE")
+  "$INSTALLED_PLUGINS_FILE") || { error "Failed to parse installed_plugins.json (jq error)"; exit 1; }
 
-echo "$UPDATED" > "$INSTALLED_PLUGINS_FILE"
+_tmp_plugins=$(mktemp "${INSTALLED_PLUGINS_FILE}.XXXXXX")
+echo "$UPDATED" > "$_tmp_plugins" && mv "$_tmp_plugins" "$INSTALLED_PLUGINS_FILE"
 info "Registered plugin → $INSTALLED_PLUGINS_FILE (key: $PLUGIN_KEY)"
 
 # ---------------------------------------------------------------------------
