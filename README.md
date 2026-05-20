@@ -84,7 +84,7 @@ Then inside Claude Code, install the plugin and its dependency:
 /plugins install pr-review-toolkit@claude-plugins-official
 ```
 
-### Option 2: Install script (legacy)
+### Option 2: Install script
 
 ```bash
 git clone https://github.com/tag1consulting/claude-comprehensive-review.git
@@ -92,7 +92,7 @@ cd claude-comprehensive-review
 ./install.sh
 ```
 
-The script automatically installs the latest release, fetching files directly from GitHub. The `pr-review-toolkit` plugin is installed automatically as well.
+The script installs comprehensive-review as a local Claude Code plugin under `~/.claude/plugins/cache/tag1consulting-local/`. Agents are registered under the `comprehensive-review:` namespace, matching the marketplace install. The `pr-review-toolkit` plugin is installed automatically as well. Restart Claude Code after running.
 
 **Install a specific version:**
 
@@ -114,34 +114,43 @@ The script automatically installs the latest release, fetching files directly fr
 
 ### Option 3: Manual installation
 
-Copy files to your Claude config directory (default: `~/.claude`):
+> **Note:** As of v1.6.1, agents must be installed under the `comprehensive-review:` plugin namespace. The install script (Option 2) handles this automatically. For manual installs, you must lay down the full plugin tree shown below, then update `~/.claude/plugins/installed_plugins.json` to register it — or use the install script instead.
 
 ```bash
+PLUGIN_DIR=~/.claude/plugins/cache/tag1consulting-local/comprehensive-review/<version>
+
+# Plugin manifest
+mkdir -p "$PLUGIN_DIR/.claude-plugin"
+cp .claude-plugin/plugin.json "$PLUGIN_DIR/.claude-plugin/"
+
 # Skill
-mkdir -p ~/.claude/skills/comprehensive-review
-cp skills/comprehensive-review/SKILL.md ~/.claude/skills/comprehensive-review/
-cp skills/comprehensive-review/HELP.md ~/.claude/skills/comprehensive-review/
-cp skills/comprehensive-review/PROVIDERS.md ~/.claude/skills/comprehensive-review/
-cp skills/comprehensive-review/SEVERITY.md ~/.claude/skills/comprehensive-review/
+mkdir -p "$PLUGIN_DIR/skills/comprehensive-review"
+cp skills/comprehensive-review/SKILL.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/HELP.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/PROVIDERS.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/SEVERITY.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/suppressions.json "$PLUGIN_DIR/skills/comprehensive-review/"
+cp -r skills/comprehensive-review/language-profiles "$PLUGIN_DIR/skills/comprehensive-review/"
 
 # Agents
-mkdir -p ~/.claude/agents
-cp agents/pr-summarizer.md ~/.claude/agents/
-cp agents/issue-linker.md ~/.claude/agents/
-cp agents/security-reviewer.md ~/.claude/agents/
-cp agents/architecture-reviewer.md ~/.claude/agents/
-cp agents/blind-hunter.md ~/.claude/agents/
-cp agents/edge-case-hunter.md ~/.claude/agents/
+mkdir -p "$PLUGIN_DIR/agents"
+cp agents/pr-summarizer.md "$PLUGIN_DIR/agents/"
+cp agents/issue-linker.md "$PLUGIN_DIR/agents/"
+cp agents/security-reviewer.md "$PLUGIN_DIR/agents/"
+cp agents/architecture-reviewer.md "$PLUGIN_DIR/agents/"
+cp agents/blind-hunter.md "$PLUGIN_DIR/agents/"
+cp agents/edge-case-hunter.md "$PLUGIN_DIR/agents/"
+cp agents/adversarial-general.md "$PLUGIN_DIR/agents/"
 
 # Scripts
-mkdir -p ~/.claude/skills/comprehensive-review/scripts
+mkdir -p "$PLUGIN_DIR/skills/comprehensive-review/scripts"
 for s in skills/comprehensive-review/scripts/*.sh; do
-  cp "$s" ~/.claude/skills/comprehensive-review/scripts/
-  chmod +x ~/.claude/skills/comprehensive-review/scripts/"$(basename "$s")"
+  cp "$s" "$PLUGIN_DIR/skills/comprehensive-review/scripts/"
+  chmod +x "$PLUGIN_DIR/skills/comprehensive-review/scripts/$(basename "$s")"
 done
 ```
 
-Then install the dependency plugin inside Claude Code:
+Then register the plugin in `~/.claude/plugins/installed_plugins.json` (add or update the `comprehensive-review@tag1consulting` key) and install the dependency plugin inside Claude Code:
 
 ```
 /plugins install pr-review-toolkit@claude-plugins-official
@@ -482,9 +491,9 @@ minimum-findings mandate, and integrate tightly with our manifest and context-pa
 /plugins update comprehensive-review@tag1consulting
 ```
 
-**Legacy install:**
+**Install script:**
 
-Pull the latest version and re-run `./install.sh`. Existing agent files will be overwritten.
+Pull the latest version and re-run `./install.sh`. Existing files will be overwritten.
 
 ## Uninstalling
 
@@ -494,15 +503,10 @@ Pull the latest version and re-run `./install.sh`. Existing agent files will be 
 /plugins uninstall comprehensive-review@tag1consulting
 ```
 
-**Legacy install:**
+**Install script:**
 
 ```bash
-rm -rf ~/.claude/skills/comprehensive-review
-rm ~/.claude/agents/pr-summarizer.md
-rm ~/.claude/agents/issue-linker.md
-rm ~/.claude/agents/security-reviewer.md
-rm ~/.claude/agents/architecture-reviewer.md
-rm ~/.claude/agents/blind-hunter.md
-rm ~/.claude/agents/edge-case-hunter.md
-rm ~/.claude/agents/adversarial-general.md
+rm -rf ~/.claude/plugins/cache/tag1consulting-local/comprehensive-review
 ```
+
+Then remove the `comprehensive-review@tag1consulting` entry from `~/.claude/plugins/installed_plugins.json`.

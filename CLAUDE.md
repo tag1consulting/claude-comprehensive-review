@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace or copied into `~/.claude/` by a legacy install script.
+This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace or installed locally via `install.sh`.
 
 ## Installation (for testing changes locally)
 
@@ -12,7 +12,7 @@ This repo distributes a Claude Code skill (`/comprehensive-review`) and six cust
 ./install.sh --local
 ```
 
-This copies files from the local working tree into `~/.claude/` without fetching from GitHub. Changes take effect immediately in the next Claude Code session. This is the recommended method for contributors testing local changes. For end-user installation, use `/plugins install comprehensive-review@tag1consulting` inside Claude Code.
+This installs files from the local working tree as a local Claude Code plugin under `~/.claude/plugins/cache/tag1consulting-local/comprehensive-review/<version>/`. Agents are registered under the `comprehensive-review:` namespace, matching the marketplace install exactly. Changes take effect after restarting Claude Code. This is the recommended method for contributors testing local changes. For end-user installation, use `/plugins install comprehensive-review@tag1consulting` inside Claude Code.
 
 ## Architecture
 
@@ -148,7 +148,7 @@ Key provider differences:
 
 ## Distribution
 
-This project is distributed as a Claude Code plugin via the `tag1consulting` marketplace (hosted at `tag1consulting/claude-plugins` on GitHub). The `install.sh` script is maintained as a legacy fallback.
+This project is distributed as a Claude Code plugin via the `tag1consulting` marketplace (hosted at `tag1consulting/claude-plugins` on GitHub). The `install.sh` script provides a local plugin install for development and testing.
 
 ### Version management
 
@@ -190,7 +190,7 @@ agents/architecture-reviewer.md                              ← architectural a
 agents/blind-hunter.md                                       ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
 agents/edge-case-hunter.md                                   ← boundary-condition path tracing (adapted from BMAD-METHOD)
 agents/adversarial-general.md                                ← holistic completeness/operational review (adapted from BMAD-METHOD)
-install.sh                                                   ← legacy file-copy installer (recommends plugin install)
+install.sh                                                   ← local plugin installer (for development; use /plugins install for end users)
 ```
 
 ## Editing guidelines
