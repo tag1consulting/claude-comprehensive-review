@@ -160,6 +160,12 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 
      The LANGUAGE_PROFILES loader lowercases these names to find the matching `<lang>.md` profile file.
    - Also collect `MANIFEST_FILES` — the subset of changed files named `go.mod`, `package.json`, `requirements*.txt` (any requirements file), or `composer.json`. Use `git diff --name-only <base>...HEAD` (no exclusions) and filter by basename. Store as a newline-separated list for Phase 1b.
+   - **Also assign `DIFF_PATHS`** unconditionally here — it is used by RELATED_FILES, gate evaluation, and static analyzer dispatch later:
+     ```bash
+     DIFF_PATHS=$(git diff --name-only <base>...HEAD 2>/dev/null) \
+       || { echo "WARNING: git diff --name-only failed; DIFF_PATHS will be empty." >&2; DIFF_PATHS=""; }
+     ```
+     In `--pr` mode prefix with `git -C "$WORKTREE_PATH"`.
    - Format:
      ```
      BASE: <base>  |  LANGUAGES: Go, TypeScript  |  FILES: <N>  |  LINES: +<added>/-<removed>
@@ -211,8 +217,7 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    ```bash
    RELATED_FILES=""
    declare -a POINTER_GLOBS=()
-   DIFF_PATHS=$(git diff --name-only <base>...HEAD 2>/dev/null) \
-     || { echo "WARNING: git diff --name-only failed; RELATED_FILES will be empty." >&2; DIFF_PATHS=""; }
+   # DIFF_PATHS already assigned unconditionally in step 4; use it directly here.
 
    # Language/runtime version pins → infra that consumes them
    if echo "$DIFF_PATHS" | grep -qE '(^|/)(\.nvmrc|package\.json|\.node-version)$'; then
@@ -720,7 +725,7 @@ if [[ -n "$CVE_SCRIPT" ]]; then
     CVE_CHECK_FAILED=true
   }
 else
-  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts, \$CLAUDE_DIR/skills/comprehensive-review/scripts, ~/.claude/skills/comprehensive-review/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting' or './install.sh'." >&2
+  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts, \$CLAUDE_DIR/skills/comprehensive-review/scripts, ~/.claude/skills/comprehensive-review/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting'." >&2
   CVE_CHECK_FAILED=true
 fi
 ```

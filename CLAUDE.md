@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace and fetched from GitHub releases by `install.sh`.
+This repo distributes a Claude Code skill (`/comprehensive-review`) and six custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. There is no build system, test suite, or compiled output — the deliverables are markdown files distributed via the `tag1consulting` plugin marketplace.
 
 ## Installation
 
@@ -14,15 +14,9 @@ Everyone — end users and contributors alike — installs the plugin the same w
 /plugins install comprehensive-review@tag1consulting
 ```
 
-Or, for scripted setups (CI, fresh-machine provisioning, pinning to a tag), the release-fetcher script:
+There is no install script. The previous `install.sh` was removed because it introduced jq/curl prerequisites and error-handling complexity while providing no meaningful benefit over the plugin marketplace install, which already handles the same cache path, pr-review-toolkit dependency, and settings registration.
 
-```bash
-./install.sh                       # latest release
-./install.sh --version v1.7.0      # specific tag
-./install.sh --version main        # current main branch
-```
-
-There is no longer a "local install" path that copies files from the working tree. Doing so previously caused plugin-cache shadowing where the `tag1consulting-local` namespace conflicted with the marketplace `tag1consulting` namespace, producing wrong-version metadata in the `/plugins` UI. Contributors testing changes should push their branch and either (a) tag a pre-release (`v1.7.0-rc1`) and run `./install.sh --version v1.7.0-rc1`, or (b) merge to `main` and run `./install.sh --version main`. This keeps the contributor install path identical to the end-user path.
+Contributors testing changes should push their branch and run `/plugins install comprehensive-review@tag1consulting` after tagging a pre-release or merging to `main`.
 
 ## Architecture
 
@@ -164,7 +158,7 @@ Key provider differences:
 
 ## Distribution
 
-This project is distributed as a Claude Code plugin via the `tag1consulting` marketplace (hosted at `tag1consulting/claude-plugins` on GitHub). The `install.sh` script fetches a published release (tag or `main`) from GitHub and installs it under the same `cache/tag1consulting/` namespace as the marketplace install — the two paths are interchangeable.
+This project is distributed as a Claude Code plugin via the `tag1consulting` marketplace (hosted at `tag1consulting/claude-plugins` on GitHub).
 
 ### Version management
 
@@ -216,7 +210,6 @@ agents/architecture-reviewer.md                              ← architectural a
 agents/blind-hunter.md                                       ← context-free "fresh eyes" review (adapted from BMAD-METHOD)
 agents/edge-case-hunter.md                                   ← boundary-condition path tracing (adapted from BMAD-METHOD)
 agents/adversarial-general.md                                ← holistic completeness/operational review (adapted from BMAD-METHOD)
-install.sh                                                   ← release-fetcher installer (downloads a tag or main from GitHub; use /plugins install for most users)
 ```
 
 ## Editing guidelines

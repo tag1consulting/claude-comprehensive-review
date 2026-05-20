@@ -54,18 +54,15 @@ but had no corresponding rule.
 - `--no-enrich-context` flag added to HELP.md
 
 ### Removed
-- **`install.sh --local`** — the local working-tree install path is gone. It caused
-  plugin-cache shadowing where the `tag1consulting-local` namespace conflicted with the
-  marketplace `tag1consulting` namespace, producing wrong-version metadata in the `/plugins`
-  UI (`/plugins` would show v1.6.1 while the cache held v1.7.0 from `--local`, or vice versa).
-  `install.sh` is now a release-fetcher only: it downloads a published tag or `main` from
-  GitHub and installs under the same `cache/tag1consulting/` namespace as the marketplace
-  install. Contributors should push their branch and either tag a pre-release
-  (`v1.7.0-rc1`) or merge to `main` and run `./install.sh --version main`. This keeps the
-  contributor install path identical to the end-user path.
+- **`install.sh`** — removed entirely. The script accumulated five fix commits in v1.6.x trying
+  to resolve plugin-cache namespace shadowing between `tag1consulting-local/` (local install) and
+  `tag1consulting/` (marketplace install). The root cause was having two install paths at all.
+  The marketplace install (`/plugins install comprehensive-review@tag1consulting`) handles
+  the same cache path, pr-review-toolkit dependency, and settings registration — with no
+  jq/curl prerequisites or shell error-handling complexity. End users and contributors now
+  use the same single install path.
 - SKILL.md `tag1consulting-local` fallback paths for `language-profiles/`, `suppressions.json`,
-  and `scripts/` repointed to `tag1consulting/` (no behavioral change for marketplace installs;
-  the fallback now matches the install.sh path too).
+  and `scripts/` repointed to `tag1consulting/` (no behavioral change for marketplace installs).
 
 ---
 
@@ -74,7 +71,7 @@ but had no corresponding rule.
 ### Fixed
 - **Agent namespace prefix** — all owned agents now use `comprehensive-review:` prefix in `subagent_type` values (e.g., `comprehensive-review:security-reviewer`) to satisfy Claude Code's plugin install path resolution. Fixes #63 where agents dispatched in plugin-install mode were resolving to the wrong (or missing) agent file.
 - **SKILL.md fallback paths** — replaced hardcoded `--local` install paths with glob patterns that match any plugin install version, fixing agent resolution for marketplace installs and future version bumps.
-- **`install.sh` bootstrap** — `installed_plugins.json` is now auto-initialized with the correct v2 seed format if absent, eliminating the chicken-and-egg failure on first-time local installs.
+- **`install.sh` bootstrap** — `installed_plugins.json` is now auto-initialized with the correct v2 seed format if absent, eliminating the chicken-and-egg failure on first-time installs. (Note: `install.sh` was subsequently removed in v1.7.0; the `/plugins install` path handles this automatically.)
 
 ---
 
