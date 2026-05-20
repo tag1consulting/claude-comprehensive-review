@@ -128,9 +128,8 @@ fi
 INSTALLED_PLUGINS_FILE="$PLUGINS_DIR/installed_plugins.json"
 
 if [[ ! -f "$INSTALLED_PLUGINS_FILE" ]]; then
-  error "installed_plugins.json not found at $INSTALLED_PLUGINS_FILE."
-  error "Run Claude Code at least once and install any marketplace plugin before using this script."
-  exit 1
+  echo '{"plugins":{}}' > "$INSTALLED_PLUGINS_FILE"
+  info "Created $INSTALLED_PLUGINS_FILE (first plugin registration)"
 fi
 
 # ---------------------------------------------------------------------------
