@@ -177,9 +177,9 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    ```bash
    LANGUAGE_PROFILES=""
    PROFILE_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/language-profiles"
-   # Fallback for install.sh installs (any version slug under tag1consulting-local)
+   # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting)
    if [[ ! -d "$PROFILE_DIR" ]]; then
-     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/language-profiles 2>/dev/null | head -1)
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/language-profiles 2>/dev/null | head -1)
      [[ -n "$_cr_fallback" ]] && PROFILE_DIR="$_cr_fallback"
    fi
    [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/skills/comprehensive-review/language-profiles"
@@ -277,9 +277,9 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    SUPPRESSION_RULES="[]"
    # Global rules (shipped with the skill)
    GLOBAL_SUPP="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/suppressions.json"
-   # Fallback for install.sh installs (any version slug under tag1consulting-local)
+   # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting)
    if [[ ! -f "$GLOBAL_SUPP" ]]; then
-     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/suppressions.json 2>/dev/null | head -1)
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/suppressions.json 2>/dev/null | head -1)
      [[ -n "$_cr_fallback" ]] && GLOBAL_SUPP="$_cr_fallback"
    fi
    [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="$HOME/.claude/skills/comprehensive-review/suppressions.json"
@@ -720,7 +720,7 @@ if [[ -n "$CVE_SCRIPT" ]]; then
     CVE_CHECK_FAILED=true
   }
 else
-  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts, \$CLAUDE_DIR/skills/comprehensive-review/scripts, ~/.claude/skills/comprehensive-review/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting' or './install.sh --local'." >&2
+  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts, \$CLAUDE_DIR/skills/comprehensive-review/scripts, ~/.claude/skills/comprehensive-review/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting' or './install.sh'." >&2
   CVE_CHECK_FAILED=true
 fi
 ```
@@ -736,9 +736,9 @@ Path resolution order: `$CLAUDE_PLUGIN_ROOT` (set by the plugin harness when the
 Detect script root (same priority chain as CVE script):
 ```bash
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts"
-# Fallback for install.sh installs (any version slug under tag1consulting-local)
+# Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting)
 if [[ ! -d "$SCRIPTS_DIR" ]]; then
-  _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/scripts 2>/dev/null | head -1)
+  _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/scripts 2>/dev/null | head -1)
   [[ -n "$_cr_fallback" ]] && SCRIPTS_DIR="$_cr_fallback"
 fi
 [[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/skills/comprehensive-review/scripts"

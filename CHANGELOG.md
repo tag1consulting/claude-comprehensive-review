@@ -53,6 +53,20 @@ but had no corresponding rule.
 - agent directive table updated with `PR_NARRATIVE` and `SYMBOL_CONTEXT` directives
 - `--no-enrich-context` flag added to HELP.md
 
+### Removed
+- **`install.sh --local`** — the local working-tree install path is gone. It caused
+  plugin-cache shadowing where the `tag1consulting-local` namespace conflicted with the
+  marketplace `tag1consulting` namespace, producing wrong-version metadata in the `/plugins`
+  UI (`/plugins` would show v1.6.1 while the cache held v1.7.0 from `--local`, or vice versa).
+  `install.sh` is now a release-fetcher only: it downloads a published tag or `main` from
+  GitHub and installs under the same `cache/tag1consulting/` namespace as the marketplace
+  install. Contributors should push their branch and either tag a pre-release
+  (`v1.7.0-rc1`) or merge to `main` and run `./install.sh --version main`. This keeps the
+  contributor install path identical to the end-user path.
+- SKILL.md `tag1consulting-local` fallback paths for `language-profiles/`, `suppressions.json`,
+  and `scripts/` repointed to `tag1consulting/` (no behavioral change for marketplace installs;
+  the fallback now matches the install.sh path too).
+
 ---
 
 ## [1.6.1] - 2026-05-20

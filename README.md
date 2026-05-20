@@ -86,13 +86,15 @@ Then inside Claude Code, install the plugin and its dependency:
 
 ### Option 2: Install script
 
+For CI provisioning, scripted setups, or pinning to a specific tag:
+
 ```bash
 git clone https://github.com/tag1consulting/claude-comprehensive-review.git
 cd claude-comprehensive-review
 ./install.sh
 ```
 
-The script installs comprehensive-review as a local Claude Code plugin under `~/.claude/plugins/cache/tag1consulting-local/`. Agents are registered under the `comprehensive-review:` namespace, matching the marketplace install. The `pr-review-toolkit` plugin is installed automatically as well. Restart Claude Code after running.
+The script fetches the latest release from GitHub and installs it under `~/.claude/plugins/cache/tag1consulting/comprehensive-review/<version>/` — the same path as the marketplace install. The `pr-review-toolkit` plugin is installed automatically as well. Restart Claude Code after running.
 
 **Install a specific version:**
 
@@ -106,18 +108,14 @@ The script installs comprehensive-review as a local Claude Code plugin under `~/
 ./install.sh --version main
 ```
 
-**Install from local files** (for contributors testing changes):
-
-```bash
-./install.sh --local
-```
+> **For contributors:** Installing directly from a local working tree is no longer supported (it caused shadowing-cache issues that masked the real release behavior). Push your branch, then have it reviewed via the standard PR flow. To dogfood a development version, merge to `main` and run `./install.sh --version main`, or tag a pre-release (e.g. `v1.7.0-rc1`) and run `./install.sh --version v1.7.0-rc1`.
 
 ### Option 3: Manual installation
 
 > **Note:** As of v1.6.1, agents must be installed under the `comprehensive-review:` plugin namespace. The install script (Option 2) handles this automatically. For manual installs, you must lay down the full plugin tree shown below, then update `~/.claude/plugins/installed_plugins.json` to register it — or use the install script instead.
 
 ```bash
-PLUGIN_DIR=~/.claude/plugins/cache/tag1consulting-local/comprehensive-review/<version>
+PLUGIN_DIR=~/.claude/plugins/cache/tag1consulting/comprehensive-review/<version>
 
 # Plugin manifest
 mkdir -p "$PLUGIN_DIR/.claude-plugin"
@@ -518,7 +516,7 @@ Pull the latest version and re-run `./install.sh`. Existing files will be overwr
 **Install script:**
 
 ```bash
-rm -rf ~/.claude/plugins/cache/tag1consulting-local/comprehensive-review
+rm -rf ~/.claude/plugins/cache/tag1consulting/comprehensive-review
 ```
 
-Then remove the `comprehensive-review@tag1consulting` entry from `~/.claude/plugins/installed_plugins.json`.
+Then remove the `comprehensive-review@tag1consulting` entry from `~/.claude/plugins/installed_plugins.json` and from `enabledPlugins` in `~/.claude/settings.json`.

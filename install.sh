@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
-# install.sh — installs comprehensive-review as a local plugin
-# into the Claude Code plugin cache directory.
+# install.sh — installs comprehensive-review as a Claude Code plugin from a
+# published release on GitHub.
 #
-# Usage: install.sh [--version <tag|main>] [--local]
+# Usage: install.sh [--version <tag|main>]
 #
 #   (no flags)          Install the latest release from GitHub
 #   --version <tag>     Install a specific release (e.g. v1.0.0)
 #   --version main      Install the development version from the main branch
-#   --local             Install from local files (for development / dogfood)
 #
-# For end users, the recommended install method is:
+# For most users, the recommended install method is from inside Claude Code:
 #   /plugins install comprehensive-review@tag1consulting
 #
-# This script installs comprehensive-review as a local plugin so that agents
-# are registered under the same comprehensive-review: namespace as a marketplace
-# install. This is the supported path for local development and testing.
+# This script exists for cases where the marketplace install isn't convenient
+# (CI provisioning, scripted setups, pinning to a specific tag). It installs
+# under the same cache/tag1consulting/ namespace as the marketplace install,
+# so the two are interchangeable.
 
 set -euo pipefail
 
 REPO="tag1consulting/claude-comprehensive-review"
 CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 PLUGINS_DIR="$CLAUDE_DIR/plugins"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -38,7 +37,6 @@ error() { echo -e "${RED}[error]${NC}  $*" >&2; }
 # ---------------------------------------------------------------------------
 
 VERSION=""
-LOCAL=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,23 +48,18 @@ while [[ $# -gt 0 ]]; do
       VERSION="$2"
       shift 2
       ;;
-    --local)
-      LOCAL=true
-      shift
-      ;;
     --help|-h)
-      echo "Usage: install.sh [--version <tag|main>] [--local]"
+      echo "Usage: install.sh [--version <tag|main>]"
       echo ""
       echo "  (no flags)          Install the latest release from GitHub"
       echo "  --version <tag>     Install a specific release (e.g. v1.0.0)"
       echo "  --version main      Install the development version from main branch"
-      echo "  --local             Install from local files (for development)"
       echo ""
-      echo "This script installs comprehensive-review as a local Claude Code plugin"
-      echo "under ~/.claude/plugins/cache/tag1consulting-local/. Agents are registered"
-      echo "under the comprehensive-review: namespace, matching the marketplace install."
+      echo "Installs comprehensive-review as a Claude Code plugin under"
+      echo "~/.claude/plugins/cache/tag1consulting/. Agents are registered under"
+      echo "the comprehensive-review: namespace, matching the marketplace install."
       echo ""
-      echo "For end users, prefer the marketplace install inside Claude Code:"
+      echo "For most users, prefer the marketplace install inside Claude Code:"
       echo "  /plugins install comprehensive-review@tag1consulting"
       exit 0
       ;;
@@ -103,7 +96,7 @@ if ! command -v git &>/dev/null; then
   exit 1
 fi
 
-if [[ "$LOCAL" == false ]] && ! command -v curl &>/dev/null; then
+if ! command -v curl &>/dev/null; then
   error "curl not found. Required to download files from GitHub."
   exit 1
 fi
@@ -138,9 +131,7 @@ fi
 
 REF=""
 
-if [[ "$LOCAL" == true ]]; then
-  info "Installing from local files"
-elif [[ "$VERSION" == "main" ]]; then
+if [[ "$VERSION" == "main" ]]; then
   REF="main"
   info "Installing development version from main branch"
 elif [[ -n "$VERSION" ]]; then
@@ -181,57 +172,47 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Determine plugin version string
+# Determine plugin version string and install path
 # ---------------------------------------------------------------------------
 
-if [[ "$LOCAL" == true ]]; then
-  # Use a fixed slug so re-runs after a version bump always install to the
-  # same path; avoids accumulating orphaned plugin cache directories.
-  PLUGIN_VERSION="local"
-elif [[ "$REF" =~ ^v[0-9] ]]; then
+if [[ "$REF" =~ ^v[0-9] ]]; then
   PLUGIN_VERSION="${REF#v}"  # strip leading 'v'
 else
   PLUGIN_VERSION="$REF"
 fi
 
-# Plugin install path: use tag1consulting-local owner to avoid collision with marketplace install
-PLUGIN_OWNER="tag1consulting-local"
+PLUGIN_OWNER="tag1consulting"
 PLUGIN_NAME="comprehensive-review"
 PLUGIN_KEY="comprehensive-review@tag1consulting"
 PLUGIN_DIR="$PLUGINS_DIR/cache/$PLUGIN_OWNER/$PLUGIN_NAME/$PLUGIN_VERSION"
 info "Plugin install path: $PLUGIN_DIR"
 
 # ---------------------------------------------------------------------------
-# Remove stale versioned cache directories (local install only)
+# Remove stale versioned cache directories
 # ---------------------------------------------------------------------------
-# When --local is used, PLUGIN_VERSION is always "local". Any other sibling
-# directories (e.g. "1.6.1" left by an older install run) cause the /plugins
-# UI to display the wrong version. Clean them up on each local install.
-#
-# We also wipe the marketplace-namespace cache ($MARKETPLACE_OWNER) because
-# PLUGIN_KEY ends in "@tag1consulting" — the /plugins UI resolves the version
-# by reading plugin.json from cache/tag1consulting/.../ (matching the key's
-# namespace), NOT from the registry's installPath. A leftover marketplace
-# install at that path shadows the --local install's version metadata.
+# Old install runs leave sibling directories (e.g. "1.6.1" from a prior
+# install) under the same owner/name path. These cause the /plugins UI to
+# load metadata from the wrong directory. Clean them up before installing.
 
-if [[ "$LOCAL" == true ]]; then
-  PLUGIN_PARENT="$PLUGINS_DIR/cache/$PLUGIN_OWNER/$PLUGIN_NAME"
+PLUGIN_PARENT="$PLUGINS_DIR/cache/$PLUGIN_OWNER/$PLUGIN_NAME"
+if [[ -d "$PLUGIN_PARENT" ]]; then
   for stale_dir in "$PLUGIN_PARENT"/*/; do
+    [[ -d "$stale_dir" ]] || continue
     stale_ver=$(basename "$stale_dir")
-    if [[ "$stale_ver" != "local" && -d "$stale_dir" ]]; then
+    if [[ "$stale_ver" != "$PLUGIN_VERSION" ]]; then
       rm -rf "$stale_dir"
       info "Removed stale plugin cache → $stale_dir"
     fi
   done
+fi
 
-  MARKETPLACE_OWNER="tag1consulting"
-  MARKETPLACE_CACHE="$PLUGINS_DIR/cache/$MARKETPLACE_OWNER/$PLUGIN_NAME"
-  if [[ -d "$MARKETPLACE_CACHE" ]]; then
-    rm -rf "$MARKETPLACE_CACHE"
-    info "Removed shadowing marketplace cache → $MARKETPLACE_CACHE"
-    # Remove the empty owner directory if no other plugins live there.
-    rmdir "$PLUGINS_DIR/cache/$MARKETPLACE_OWNER" 2>/dev/null || true
-  fi
+# Remove the legacy tag1consulting-local namespace if present. Earlier
+# versions of this script installed there; the directory now only causes
+# confusion in /plugins listings.
+LEGACY_LOCAL_OWNER="$PLUGINS_DIR/cache/tag1consulting-local"
+if [[ -d "$LEGACY_LOCAL_OWNER" ]]; then
+  rm -rf "$LEGACY_LOCAL_OWNER"
+  info "Removed legacy local-namespace cache → $LEGACY_LOCAL_OWNER"
 fi
 
 # ---------------------------------------------------------------------------
@@ -258,27 +239,23 @@ for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer 
 done
 
 # ---------------------------------------------------------------------------
-# Helper: install one file from GitHub or local
+# Helper: download one file from GitHub
 # ---------------------------------------------------------------------------
 
 install_file() {
   local rel_path="$1"
   local dest="$2"
   mkdir -p "$(dirname "$dest")"
-  if [[ "$LOCAL" == true ]]; then
-    cp "$SCRIPT_DIR/$rel_path" "$dest"
-  else
-    local url="https://raw.githubusercontent.com/${REPO}/${REF}/${rel_path}"
-    local tmp
-    tmp=$(mktemp "${dest}.XXXXXX")
-    if ! curl -fsSL "$url" -o "$tmp"; then
-      rm -f "$tmp"
-      error "Failed to download: $url"
-      error "Check that the version '${REF}' exists: https://github.com/${REPO}/releases"
-      exit 1
-    fi
-    mv "$tmp" "$dest"
+  local url="https://raw.githubusercontent.com/${REPO}/${REF}/${rel_path}"
+  local tmp
+  tmp=$(mktemp "${dest}.XXXXXX")
+  if ! curl -fsSL "$url" -o "$tmp"; then
+    rm -f "$tmp"
+    error "Failed to download: $url"
+    error "Check that the version '${REF}' exists: https://github.com/${REPO}/releases"
+    exit 1
   fi
+  mv "$tmp" "$dest"
 }
 
 # ---------------------------------------------------------------------------
@@ -305,25 +282,16 @@ install_file "skills/comprehensive-review/suppressions.json" \
 
 # Install language profiles
 mkdir -p "$PLUGIN_DIR/skills/comprehensive-review/language-profiles"
-if [[ "$LOCAL" == true ]]; then
-  for profile_path in "$SCRIPT_DIR/skills/comprehensive-review/language-profiles/"*.md; do
-    profile="$(basename "$profile_path")"
-    install_file "skills/comprehensive-review/language-profiles/${profile}" \
-      "$PLUGIN_DIR/skills/comprehensive-review/language-profiles/${profile}"
-  done
-else
-  # Fetch the list of profiles from the GitHub tree
-  PROFILES=$(curl -fsSL "https://api.github.com/repos/${REPO}/contents/skills/comprehensive-review/language-profiles?ref=${REF}" 2>/dev/null \
-    | jq -r '.[] | select(.name | endswith(".md")) | .name' 2>/dev/null || echo "")
-  if [[ -z "$PROFILES" ]]; then
-    # Fallback: hardcoded baseline list
-    PROFILES="go.md python.md typescript.md javascript.md php.md ruby.md rust.md java.md c++.md shell.md csharp.md kotlin.md swift.md scala.md lua.md perl.md sql.md terraform.md yaml.md"
-  fi
-  for profile in $PROFILES; do
-    install_file "skills/comprehensive-review/language-profiles/${profile}" \
-      "$PLUGIN_DIR/skills/comprehensive-review/language-profiles/${profile}"
-  done
+PROFILES=$(curl -fsSL "https://api.github.com/repos/${REPO}/contents/skills/comprehensive-review/language-profiles?ref=${REF}" 2>/dev/null \
+  | jq -r '.[] | select(.name | endswith(".md")) | .name' 2>/dev/null || echo "")
+if [[ -z "$PROFILES" ]]; then
+  # Fallback: hardcoded baseline list
+  PROFILES="go.md python.md typescript.md javascript.md php.md ruby.md rust.md java.md c++.md shell.md csharp.md kotlin.md swift.md scala.md lua.md perl.md sql.md terraform.md yaml.md"
 fi
+for profile in $PROFILES; do
+  install_file "skills/comprehensive-review/language-profiles/${profile}" \
+    "$PLUGIN_DIR/skills/comprehensive-review/language-profiles/${profile}"
+done
 
 info "Installed skill  → $PLUGIN_DIR/skills/comprehensive-review/"
 
@@ -408,42 +376,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Re-wipe shadowing marketplace cache (local install only)
-# ---------------------------------------------------------------------------
-# The `claude --print /plugins install ...` call above triggers a marketplace
-# sync that re-clones any plugin listed in the tag1consulting marketplace —
-# including this one — into cache/tag1consulting/. That cache then shadows
-# the --local install's version metadata in the /plugins UI. Wipe it again
-# after the pr-review-toolkit install so the local version is the only one
-# visible.
-
-if [[ "$LOCAL" == true ]]; then
-  MARKETPLACE_CACHE="$PLUGINS_DIR/cache/tag1consulting/$PLUGIN_NAME"
-  if [[ -d "$MARKETPLACE_CACHE" ]]; then
-    rm -rf "$MARKETPLACE_CACHE"
-    info "Re-removed shadowing marketplace cache → $MARKETPLACE_CACHE"
-    rmdir "$PLUGINS_DIR/cache/tag1consulting" 2>/dev/null || true
-  fi
-fi
-
-# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 
 echo ""
 info "Installation complete."
-if [[ "$LOCAL" == true ]]; then
-  info "Installed local version ${BOLD}${PLUGIN_VERSION}${NC} as plugin."
-else
-  info "Installed: ${BOLD}${REF}${NC}"
-fi
+info "Installed: ${BOLD}${REF}${NC}"
 echo ""
 echo "  Restart Claude Code to activate the plugin, then:"
-echo "    /comprehensive-review               # full review, everything local"
+echo "    /comprehensive-review               # full review"
 echo "    /comprehensive-review --quick       # skip expensive agents, ~75% cheaper"
-echo "    /comprehensive-review --local       # review only, no GitHub operations"
+echo "    /comprehensive-review --no-post     # review only, no remote operations"
 echo "    /comprehensive-review --help        # show all flags"
 echo ""
-warn "NOTE: For end users, the recommended install is inside Claude Code:"
+warn "NOTE: For most users, the recommended install is inside Claude Code:"
 warn "  /plugins install comprehensive-review@tag1consulting"
 echo ""
