@@ -128,7 +128,7 @@ fi
 INSTALLED_PLUGINS_FILE="$PLUGINS_DIR/installed_plugins.json"
 
 if [[ ! -f "$INSTALLED_PLUGINS_FILE" ]]; then
-  echo '{"plugins":{}}' > "$INSTALLED_PLUGINS_FILE"
+  echo '{"version":2,"plugins":{}}' > "$INSTALLED_PLUGINS_FILE"
   info "Created $INSTALLED_PLUGINS_FILE (first plugin registration)"
 fi
 
