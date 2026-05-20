@@ -84,40 +84,12 @@ Then inside Claude Code, install the plugin and its dependency:
 /plugins install pr-review-toolkit@claude-plugins-official
 ```
 
-### Option 2: Install script
+### Option 2: Manual installation
+
+> **Note:** As of v1.6.1, agents must be installed under the `comprehensive-review:` plugin namespace. For manual installs, lay down the full plugin tree shown below, then update `~/.claude/plugins/installed_plugins.json` to register it.
 
 ```bash
-git clone https://github.com/tag1consulting/claude-comprehensive-review.git
-cd claude-comprehensive-review
-./install.sh
-```
-
-The script installs comprehensive-review as a local Claude Code plugin under `~/.claude/plugins/cache/tag1consulting-local/`. Agents are registered under the `comprehensive-review:` namespace, matching the marketplace install. The `pr-review-toolkit` plugin is installed automatically as well. Restart Claude Code after running.
-
-**Install a specific version:**
-
-```bash
-./install.sh --version v1.2.0
-```
-
-**Install the development version from `main`:**
-
-```bash
-./install.sh --version main
-```
-
-**Install from local files** (for contributors testing changes):
-
-```bash
-./install.sh --local
-```
-
-### Option 3: Manual installation
-
-> **Note:** As of v1.6.1, agents must be installed under the `comprehensive-review:` plugin namespace. The install script (Option 2) handles this automatically. For manual installs, you must lay down the full plugin tree shown below, then update `~/.claude/plugins/installed_plugins.json` to register it — or use the install script instead.
-
-```bash
-PLUGIN_DIR=~/.claude/plugins/cache/tag1consulting-local/comprehensive-review/<version>
+PLUGIN_DIR=~/.claude/plugins/cache/tag1consulting/comprehensive-review/<version>
 
 # Plugin manifest
 mkdir -p "$PLUGIN_DIR/.claude-plugin"
@@ -182,6 +154,7 @@ Run from any git repository, on the branch you want to review:
 | `--no-post` / `--local` | Explicit alias for the default: display everything locally, skip all remote operations (this is the default — posting requires explicit flags) |
 | `--pr <number>` | Review an existing PR/MR by number (external review mode) |
 | `--provider <name>` | Override auto-detected git provider (`github`, `gitlab`, `bitbucket`) |
+| `--no-enrich-context` | Disable symbol context enrichment (Grep-based cross-file definition lookup). Context enrichment is on by default for full runs at TIER=small and TIER=medium — it adds ~1–3K tokens per eligible agent but reduces false positives. |
 | `--no-mem` | Disable claude-mem integration (auto-detected when available) |
 | `--no-suppress` | Disable all suppression rules (useful for debugging / audit runs where you want to see every finding) |
 | `--min-confidence <N>` | Filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applied before suppression rules. |
@@ -292,7 +265,7 @@ Still runs: pr-summarizer (no diagrams), code-reviewer, triggered silent-failure
 
 ## Language profiles
 
-The skill ships per-language context profiles for Go, Python, TypeScript, PHP, Ruby, Rust, Java, C++, and Shell. When a language is detected in the diff, the corresponding profile is automatically injected into the relevant agents' task descriptions. Profiles contain:
+The skill ships per-language context profiles for 19 languages: Go, Python, TypeScript, JavaScript, PHP, Ruby, Rust, Java, C++, Shell, C#, Kotlin, Swift, Scala, Lua, Perl, SQL, Terraform, and YAML. When a language is detected in the diff, the corresponding profile is automatically injected into the relevant agents' task descriptions. Profiles contain:
 
 - **Do-NOT-Flag idioms** — language patterns that look like bugs but are idiomatic (e.g., Go's blank identifier, Python's `pass`, etc.)
 - **Common bugs** — patterns the LLM should actively look for
@@ -302,6 +275,17 @@ The skill ships per-language context profiles for Go, Python, TypeScript, PHP, R
 **blind-hunter does not receive language profiles** — its zero-context constraint is preserved.
 
 To add a language profile, create `skills/comprehensive-review/language-profiles/<lang>.md` and add the language extension to the detection block in SKILL.md Phase 0.
+
+## Symbol context enrichment
+
+On full runs at TIER=small and TIER=medium, the skill automatically extracts symbol references from the diff and looks up their definitions across the repo using Claude Code's `Grep` tool (backed by ripgrep). The results are injected as a `<symbol-context>` block into eligible agents, giving them cross-file definition context without reading the entire codebase.
+
+This is the Claude Code equivalent of ai-pr-review's Epic 3-A (treesitter + ripgrep context enrichment) — implemented using Claude Code's native tools rather than Python + optional dependencies.
+
+**Cost note:** enrichment adds ~1–3K tokens per eligible agent (roughly 8–16K tokens total on a full run). Use `--no-enrich-context` to disable if you want to reduce token cost or if Grep calls become slow on very large repos.
+
+Agents that receive symbol context: architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, code-reviewer.
+Agents excluded: blind-hunter (zero-context constraint), pr-summarizer (does not need definitions), all pr-review-toolkit agents (externally managed).
 
 ## Suppressions
 
@@ -485,28 +469,14 @@ minimum-findings mandate, and integrate tightly with our manifest and context-pa
 
 ## Updating
 
-**Plugin install:**
-
 ```
 /plugins update comprehensive-review@tag1consulting
 ```
 
-**Install script:**
-
-Pull the latest version and re-run `./install.sh`. Existing files will be overwritten.
-
 ## Uninstalling
-
-**Plugin install:**
 
 ```
 /plugins uninstall comprehensive-review@tag1consulting
 ```
 
-**Install script:**
-
-```bash
-rm -rf ~/.claude/plugins/cache/tag1consulting-local/comprehensive-review
-```
-
-Then remove the `comprehensive-review@tag1consulting` entry from `~/.claude/plugins/installed_plugins.json`.
+For manual installs, remove `~/.claude/plugins/cache/tag1consulting/comprehensive-review`, then remove the `comprehensive-review@tag1consulting` entry from `~/.claude/plugins/installed_plugins.json` and `enabledPlugins` in `~/.claude/settings.json`.

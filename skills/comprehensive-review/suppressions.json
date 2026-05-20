@@ -48,6 +48,14 @@
     }
   },
   {
+    "id": "version-post-knowledge-cutoff-ruby",
+    "reason": "LLMs flag Ruby gem versions released after their training cutoff as 'nonexistent'. The verify field causes the skill to confirm existence on cache.ruby-lang.org before suppressing.",
+    "verify": "ruby-org",
+    "match": {
+      "pattern": "(does not exist|unreleased|not (a |an )?(valid |published |released )?version|no such version).{0,200}gem [\"'][a-zA-Z0-9_-]+[\"'], [\"'][0-9]|gem [\"'][a-zA-Z0-9_-]+[\"'], [\"'][0-9].{0,200}(does not exist|unreleased|not (a |an )?(valid |published |released )?version|no such version)"
+    }
+  },
+  {
     "id": "upload-download-artifact-version-mismatch-false-positive",
     "reason": "actions/upload-artifact and actions/download-artifact have intentionally offset major version numbers — they are separate packages released independently. Flagging mismatched major versions as incompatibility is a false positive for this specific action pair.",
     "match": {
