@@ -207,6 +207,12 @@ info "Plugin install path: $PLUGIN_DIR"
 # When --local is used, PLUGIN_VERSION is always "local". Any other sibling
 # directories (e.g. "1.6.1" left by an older install run) cause the /plugins
 # UI to display the wrong version. Clean them up on each local install.
+#
+# We also wipe the marketplace-namespace cache ($MARKETPLACE_OWNER) because
+# PLUGIN_KEY ends in "@tag1consulting" — the /plugins UI resolves the version
+# by reading plugin.json from cache/tag1consulting/.../ (matching the key's
+# namespace), NOT from the registry's installPath. A leftover marketplace
+# install at that path shadows the --local install's version metadata.
 
 if [[ "$LOCAL" == true ]]; then
   PLUGIN_PARENT="$PLUGINS_DIR/cache/$PLUGIN_OWNER/$PLUGIN_NAME"
@@ -217,6 +223,15 @@ if [[ "$LOCAL" == true ]]; then
       info "Removed stale plugin cache → $stale_dir"
     fi
   done
+
+  MARKETPLACE_OWNER="tag1consulting"
+  MARKETPLACE_CACHE="$PLUGINS_DIR/cache/$MARKETPLACE_OWNER/$PLUGIN_NAME"
+  if [[ -d "$MARKETPLACE_CACHE" ]]; then
+    rm -rf "$MARKETPLACE_CACHE"
+    info "Removed shadowing marketplace cache → $MARKETPLACE_CACHE"
+    # Remove the empty owner directory if no other plugins live there.
+    rmdir "$PLUGINS_DIR/cache/$MARKETPLACE_OWNER" 2>/dev/null || true
+  fi
 fi
 
 # ---------------------------------------------------------------------------
