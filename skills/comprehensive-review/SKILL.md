@@ -171,8 +171,11 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    ```bash
    LANGUAGE_PROFILES=""
    PROFILE_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/language-profiles"
-   # Fallback for local installs (install.sh --local uses a fixed "local" version slug)
-   [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/local/skills/comprehensive-review/language-profiles"
+   # Fallback for install.sh installs (any version slug under tag1consulting-local)
+   if [[ ! -d "$PROFILE_DIR" ]]; then
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/language-profiles 2>/dev/null | head -1)
+     [[ -n "$_cr_fallback" ]] && PROFILE_DIR="$_cr_fallback"
+   fi
    [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/skills/comprehensive-review/language-profiles"
    if [[ -d "$PROFILE_DIR" ]]; then
      for lang in $(echo "$LANGUAGES" | tr ',' '\n' | tr -d ' ' | tr '[:upper:]' '[:lower:]'); do
@@ -268,7 +271,11 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    SUPPRESSION_RULES="[]"
    # Global rules (shipped with the skill)
    GLOBAL_SUPP="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/suppressions.json"
-   [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/local/skills/comprehensive-review/suppressions.json"
+   # Fallback for install.sh installs (any version slug under tag1consulting-local)
+   if [[ ! -f "$GLOBAL_SUPP" ]]; then
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/suppressions.json 2>/dev/null | head -1)
+     [[ -n "$_cr_fallback" ]] && GLOBAL_SUPP="$_cr_fallback"
+   fi
    [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="$HOME/.claude/skills/comprehensive-review/suppressions.json"
    # Local override (repo-specific rules)
    LOCAL_SUPP=".claude/comprehensive-review/suppressions.json"
@@ -553,7 +560,11 @@ Path resolution order: `$CLAUDE_PLUGIN_ROOT` (set by the plugin harness when the
 Detect script root (same priority chain as CVE script):
 ```bash
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts"
-[[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/local/skills/comprehensive-review/scripts"
+# Fallback for install.sh installs (any version slug under tag1consulting-local)
+if [[ ! -d "$SCRIPTS_DIR" ]]; then
+  _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/scripts 2>/dev/null | head -1)
+  [[ -n "$_cr_fallback" ]] && SCRIPTS_DIR="$_cr_fallback"
+fi
 [[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/skills/comprehensive-review/scripts"
 ```
 
