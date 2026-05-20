@@ -408,6 +408,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Re-wipe shadowing marketplace cache (local install only)
+# ---------------------------------------------------------------------------
+# The `claude --print /plugins install ...` call above triggers a marketplace
+# sync that re-clones any plugin listed in the tag1consulting marketplace —
+# including this one — into cache/tag1consulting/. That cache then shadows
+# the --local install's version metadata in the /plugins UI. Wipe it again
+# after the pr-review-toolkit install so the local version is the only one
+# visible.
+
+if [[ "$LOCAL" == true ]]; then
+  MARKETPLACE_CACHE="$PLUGINS_DIR/cache/tag1consulting/$PLUGIN_NAME"
+  if [[ -d "$MARKETPLACE_CACHE" ]]; then
+    rm -rf "$MARKETPLACE_CACHE"
+    info "Re-removed shadowing marketplace cache → $MARKETPLACE_CACHE"
+    rmdir "$PLUGINS_DIR/cache/tag1consulting" 2>/dev/null || true
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 
