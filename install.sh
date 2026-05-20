@@ -202,6 +202,24 @@ PLUGIN_DIR="$PLUGINS_DIR/cache/$PLUGIN_OWNER/$PLUGIN_NAME/$PLUGIN_VERSION"
 info "Plugin install path: $PLUGIN_DIR"
 
 # ---------------------------------------------------------------------------
+# Remove stale versioned cache directories (local install only)
+# ---------------------------------------------------------------------------
+# When --local is used, PLUGIN_VERSION is always "local". Any other sibling
+# directories (e.g. "1.6.1" left by an older install run) cause the /plugins
+# UI to display the wrong version. Clean them up on each local install.
+
+if [[ "$LOCAL" == true ]]; then
+  PLUGIN_PARENT="$PLUGINS_DIR/cache/$PLUGIN_OWNER/$PLUGIN_NAME"
+  for stale_dir in "$PLUGIN_PARENT"/*/; do
+    stale_ver=$(basename "$stale_dir")
+    if [[ "$stale_ver" != "local" && -d "$stale_dir" ]]; then
+      rm -rf "$stale_dir"
+      info "Removed stale plugin cache → $stale_dir"
+    fi
+  done
+fi
+
+# ---------------------------------------------------------------------------
 # Remove legacy flat-path install (pre-v1.6.1)
 # ---------------------------------------------------------------------------
 # Prior versions of install.sh copied agents flat into ~/.claude/agents/ and
