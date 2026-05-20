@@ -261,6 +261,12 @@ info "Installed manifest → $PLUGIN_DIR/.claude-plugin/plugin.json"
 
 install_file "skills/comprehensive-review/SKILL.md" \
   "$PLUGIN_DIR/skills/comprehensive-review/SKILL.md"
+# Claude Code discovers skills by scanning commands/ — install the entry point there too.
+# Support files (HELP.md, language-profiles, scripts, etc.) are still resolved via
+# $CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/ at runtime.
+mkdir -p "$PLUGIN_DIR/commands"
+install_file "skills/comprehensive-review/SKILL.md" \
+  "$PLUGIN_DIR/commands/comprehensive-review.md"
 install_file "skills/comprehensive-review/HELP.md" \
   "$PLUGIN_DIR/skills/comprehensive-review/HELP.md"
 install_file "skills/comprehensive-review/PROVIDERS.md" \
@@ -272,10 +278,25 @@ install_file "skills/comprehensive-review/suppressions.json" \
 
 # Install language profiles
 mkdir -p "$PLUGIN_DIR/skills/comprehensive-review/language-profiles"
-for profile in go.md python.md typescript.md php.md ruby.md rust.md java.md c++.md shell.md; do
-  install_file "skills/comprehensive-review/language-profiles/${profile}" \
-    "$PLUGIN_DIR/skills/comprehensive-review/language-profiles/${profile}"
-done
+if [[ "$LOCAL" == true ]]; then
+  for profile_path in "$SCRIPT_DIR/skills/comprehensive-review/language-profiles/"*.md; do
+    profile="$(basename "$profile_path")"
+    install_file "skills/comprehensive-review/language-profiles/${profile}" \
+      "$PLUGIN_DIR/skills/comprehensive-review/language-profiles/${profile}"
+  done
+else
+  # Fetch the list of profiles from the GitHub tree
+  PROFILES=$(curl -fsSL "https://api.github.com/repos/${REPO}/contents/skills/comprehensive-review/language-profiles?ref=${REF}" 2>/dev/null \
+    | jq -r '.[] | select(.name | endswith(".md")) | .name' 2>/dev/null || echo "")
+  if [[ -z "$PROFILES" ]]; then
+    # Fallback: hardcoded baseline list
+    PROFILES="go.md python.md typescript.md javascript.md php.md ruby.md rust.md java.md c++.md shell.md csharp.md kotlin.md swift.md scala.md lua.md perl.md sql.md terraform.md yaml.md"
+  fi
+  for profile in $PROFILES; do
+    install_file "skills/comprehensive-review/language-profiles/${profile}" \
+      "$PLUGIN_DIR/skills/comprehensive-review/language-profiles/${profile}"
+  done
+fi
 
 info "Installed skill  → $PLUGIN_DIR/skills/comprehensive-review/"
 
@@ -326,6 +347,26 @@ UPDATED=$(jq \
 _tmp_plugins=$(mktemp "${INSTALLED_PLUGINS_FILE}.XXXXXX")
 echo "$UPDATED" > "$_tmp_plugins" && mv "$_tmp_plugins" "$INSTALLED_PLUGINS_FILE"
 info "Registered plugin → $INSTALLED_PLUGINS_FILE (key: $PLUGIN_KEY)"
+
+# ---------------------------------------------------------------------------
+# Enable plugin in settings.json
+# ---------------------------------------------------------------------------
+# Claude Code will not load a plugin unless it appears in enabledPlugins.
+# installed_plugins.json is a registry; settings.json is the on/off switch.
+
+SETTINGS_FILE="$CLAUDE_DIR/settings.json"
+if [[ -f "$SETTINGS_FILE" ]]; then
+  SETTINGS_UPDATED=$(jq --arg key "$PLUGIN_KEY" '.enabledPlugins[$key] = true' "$SETTINGS_FILE") \
+    || { warn "Could not update enabledPlugins in settings.json (jq error) — enable the plugin manually inside Claude Code."; }
+  if [[ -n "$SETTINGS_UPDATED" ]]; then
+    _tmp_settings=$(mktemp "${SETTINGS_FILE}.XXXXXX")
+    echo "$SETTINGS_UPDATED" > "$_tmp_settings" && mv "$_tmp_settings" "$SETTINGS_FILE"
+    info "Enabled plugin   → $SETTINGS_FILE (key: $PLUGIN_KEY)"
+  fi
+else
+  warn "settings.json not found at $SETTINGS_FILE — plugin registered but may not be enabled."
+  warn "Enable manually inside Claude Code: /plugins enable comprehensive-review@tag1consulting"
+fi
 
 # ---------------------------------------------------------------------------
 # Install pr-review-toolkit plugin

@@ -1,27 +1,7 @@
 ---
-name: comprehensive-review
-description: >
-  Run a comprehensive CodeRabbit-style PR/MR review using specialized agents.
-  Supports GitHub (including Enterprise), GitLab, and Bitbucket repositories.
-  Produces a structured PR/MR summary and a findings report. Supports reviewing
-  your own branch (pre-PR/MR) or an existing PR/MR by number (--pr <N>).
-
-  Default behavior (all runs):
-    No posting unless explicitly requested. Use --post-summary/--post-findings to post.
-    No PR exists:      Use --create-pr to create one.
-    Existing own PR:   Use --post-summary/--post-findings to post.
-    --pr <N>:          Local only. Use --post-findings to post inline, --post-summary for a comment.
-
-  Use before opening a pull request or to review an existing PR.
-  Available globally for all projects.
-allowed-tools:
-  - Bash
-  - Read
-  - Grep
-  - Glob
-  - Agent
-  - mcp__plugin_claude-mem_mcp-search__search
-  - mcp__plugin_claude-mem_mcp-search__get_observations
+description: "Run a comprehensive CodeRabbit-style PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR."
+argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--create-pr] [--depth deep] [--diagrams]"
+allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
 ---
 
 # Comprehensive PR Review
