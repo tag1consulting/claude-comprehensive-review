@@ -120,6 +120,14 @@ if [[ ! -d "$PLUGINS_DIR" ]]; then
   exit 1
 fi
 
+INSTALLED_PLUGINS_FILE="$PLUGINS_DIR/installed_plugins.json"
+
+if [[ ! -f "$INSTALLED_PLUGINS_FILE" ]]; then
+  error "installed_plugins.json not found at $INSTALLED_PLUGINS_FILE."
+  error "Run Claude Code at least once and install any marketplace plugin before using this script."
+  exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Resolve the ref (tag or branch) to install from
 # ---------------------------------------------------------------------------
@@ -186,8 +194,6 @@ PLUGIN_OWNER="tag1consulting-local"
 PLUGIN_NAME="comprehensive-review"
 PLUGIN_KEY="comprehensive-review@tag1consulting"
 PLUGIN_DIR="$PLUGINS_DIR/cache/$PLUGIN_OWNER/$PLUGIN_NAME/$PLUGIN_VERSION"
-INSTALLED_PLUGINS_FILE="$PLUGINS_DIR/installed_plugins.json"
-
 info "Plugin install path: $PLUGIN_DIR"
 
 # ---------------------------------------------------------------------------
@@ -295,12 +301,6 @@ done
 # ---------------------------------------------------------------------------
 
 NOW=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-
-if [[ ! -f "$INSTALLED_PLUGINS_FILE" ]]; then
-  error "installed_plugins.json not found at $INSTALLED_PLUGINS_FILE."
-  error "Run Claude Code at least once and install any marketplace plugin before using this script."
-  exit 1
-fi
 
 # Upsert: set the plugin entry to a single-element array with this install.
 # Uses jq to idempotently replace any existing entry for PLUGIN_KEY.
