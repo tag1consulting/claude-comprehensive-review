@@ -191,6 +191,29 @@ INSTALLED_PLUGINS_FILE="$PLUGINS_DIR/installed_plugins.json"
 info "Plugin install path: $PLUGIN_DIR"
 
 # ---------------------------------------------------------------------------
+# Remove legacy flat-path install (pre-v1.6.1)
+# ---------------------------------------------------------------------------
+# Prior versions of install.sh copied agents flat into ~/.claude/agents/ and
+# the skill into ~/.claude/skills/comprehensive-review/. These bare-name agent
+# files conflict with the plugin-namespaced registration and must be removed.
+
+LEGACY_SKILL_DIR="$CLAUDE_DIR/skills/comprehensive-review"
+LEGACY_AGENTS_DIR="$CLAUDE_DIR/agents"
+
+if [[ -f "$LEGACY_SKILL_DIR/SKILL.md" ]]; then
+  rm -rf "$LEGACY_SKILL_DIR"
+  info "Removed legacy skill directory → $LEGACY_SKILL_DIR"
+fi
+
+for agent in pr-summarizer issue-linker security-reviewer architecture-reviewer blind-hunter edge-case-hunter adversarial-general; do
+  legacy_agent="$LEGACY_AGENTS_DIR/${agent}.md"
+  if [[ -f "$legacy_agent" ]]; then
+    rm -f "$legacy_agent"
+    info "Removed legacy agent file  → $legacy_agent"
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Helper: install one file from GitHub or local
 # ---------------------------------------------------------------------------
 
