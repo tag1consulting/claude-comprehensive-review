@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-05-20
+
+### Fixed
+- **Tab completion doubled name** — restored `name: comprehensive-review` to SKILL.md frontmatter. Without this field Claude Code falls back to the skill directory name, producing `/comprehensive-review:comprehensive-review` in tab completion. The `name:` field was incorrectly removed in v1.6.x under the belief it was unsupported.
+
+---
+
 ## [1.7.0] - 2026-05-20
 
 ### Added
