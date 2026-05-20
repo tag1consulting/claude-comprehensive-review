@@ -171,8 +171,11 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    ```bash
    LANGUAGE_PROFILES=""
    PROFILE_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/language-profiles"
-   # Fallback for local installs
-   [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="${CLAUDE_DIR:-}/../skills/comprehensive-review/language-profiles"
+   # Fallback for install.sh installs (any version slug under tag1consulting-local)
+   if [[ ! -d "$PROFILE_DIR" ]]; then
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/language-profiles 2>/dev/null | head -1)
+     [[ -n "$_cr_fallback" ]] && PROFILE_DIR="$_cr_fallback"
+   fi
    [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/skills/comprehensive-review/language-profiles"
    if [[ -d "$PROFILE_DIR" ]]; then
      for lang in $(echo "$LANGUAGES" | tr ',' '\n' | tr -d ' ' | tr '[:upper:]' '[:lower:]'); do
@@ -268,7 +271,11 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    SUPPRESSION_RULES="[]"
    # Global rules (shipped with the skill)
    GLOBAL_SUPP="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/suppressions.json"
-   [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="${CLAUDE_DIR:-}/../skills/comprehensive-review/suppressions.json"
+   # Fallback for install.sh installs (any version slug under tag1consulting-local)
+   if [[ ! -f "$GLOBAL_SUPP" ]]; then
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/suppressions.json 2>/dev/null | head -1)
+     [[ -n "$_cr_fallback" ]] && GLOBAL_SUPP="$_cr_fallback"
+   fi
    [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="$HOME/.claude/skills/comprehensive-review/suppressions.json"
    # Local override (repo-specific rules)
    LOCAL_SUPP=".claude/comprehensive-review/suppressions.json"
@@ -407,22 +414,22 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 **Model assignments** — the table below is the source of truth. Always specify `model:` and `subagent_type:` explicitly when spawning agents via the Agent tool. If this table disagrees with an agent's frontmatter `model:` field, this table wins — the frontmatter is a standalone default for agents running outside this skill.
 
-**CRITICAL — namespace**: Use the `subagent_type` values from this table **verbatim**. Do NOT prepend `comprehensive-review:` to any agent name. Agents in `pr-review-toolkit:` must be spawned as `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter`, etc. — never as `comprehensive-review:code-reviewer`. The correct values are in the table below.
+**CRITICAL — namespace**: Use the `subagent_type` values from this table **verbatim**, including plugin-namespace prefixes. Owned agents are spawned as `comprehensive-review:<name>` (e.g. `comprehensive-review:pr-summarizer`); toolkit agents as `pr-review-toolkit:<name>`. Both prefixes are mandatory — the plugin install registers all agents under their plugin namespace, and spawning bare (`pr-summarizer`) will fail with `Agent type not found`. If a spawn fails with that error, abort and report the misconfiguration — do NOT retry with a different namespace.
 
 | Agent | subagent_type | Model (depth=normal) | Model (depth=deep) |
 |-------|--------------|----------------------|---------------------|
-| pr-summarizer | `pr-summarizer` | sonnet | sonnet |
+| pr-summarizer | `comprehensive-review:pr-summarizer` | sonnet | sonnet |
 | code-reviewer | `pr-review-toolkit:code-reviewer` | sonnet | sonnet |
-| architecture-reviewer | `architecture-reviewer` | opus | opus |
-| security-reviewer | `security-reviewer` | opus | opus |
-| blind-hunter | `blind-hunter` | sonnet | **opus** |
-| edge-case-hunter | `edge-case-hunter` | sonnet | **opus** |
+| architecture-reviewer | `comprehensive-review:architecture-reviewer` | opus | opus |
+| security-reviewer | `comprehensive-review:security-reviewer` | opus | opus |
+| blind-hunter | `comprehensive-review:blind-hunter` | sonnet | **opus** |
+| edge-case-hunter | `comprehensive-review:edge-case-hunter` | sonnet | **opus** |
 | silent-failure-hunter | `pr-review-toolkit:silent-failure-hunter` | sonnet | sonnet |
 | pr-test-analyzer | `pr-review-toolkit:pr-test-analyzer` | sonnet | sonnet |
 | comment-analyzer | `pr-review-toolkit:comment-analyzer` | sonnet | sonnet |
 | type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet | sonnet |
-| adversarial-general | `adversarial-general` | opus | opus |
-| issue-linker | `issue-linker` | haiku | haiku |
+| adversarial-general | `comprehensive-review:adversarial-general` | opus | opus |
+| issue-linker | `comprehensive-review:issue-linker` | haiku | haiku |
 | dependency-check | `skills/comprehensive-review/scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
 
 **TIER=tiny model overrides** — when TIER=tiny was computed in Phase 0 step 7, apply these overrides on top of the model table. Overrides only apply at TIER=tiny; at TIER=small/medium the model table governs unchanged.
@@ -455,36 +462,36 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
 
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
-- **pr-summarizer** (subagent_type: `pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **pr-summarizer** (subagent_type: `comprehensive-review:pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   If `--diagrams` was passed (and not `--quick`): include `DIAGRAMS=true` in the task description. Otherwise: include `DIAGRAMS=false`.
   **TIER=tiny:** use haiku instead of sonnet; pass only diff + PR title (drop manifest, commit log, project context).
 - **code-reviewer** (subagent_type: `pr-review-toolkit:code-reviewer`, model: sonnet) — always pass the full diff.
 
 **Full-run-only agents** (skipped with `--quick`):
 
-- **architecture-reviewer** (subagent_type: `architecture-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, project context. Small diffs: also full diff inline.
+- **architecture-reviewer** (subagent_type: `comprehensive-review:architecture-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If RELATED_FILES is non-empty, include it in the task description (see directive table above).
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Read/Grep calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
   **TIER=tiny:** skip unless ARCH_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, and PRIOR_REVIEW_CONTEXT.
-- **security-reviewer** (subagent_type: `security-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, detected languages, project context. Small diffs: also full diff inline.
+- **security-reviewer** (subagent_type: `comprehensive-review:security-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, detected languages, project context. Small diffs: also full diff inline.
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If RELATED_FILES is non-empty, include it in the task description (see directive table above).
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Bash/Read calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
   **TIER=tiny:** skip unless SECURITY_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, and PRIOR_REVIEW_CONTEXT.
-- **adversarial-general** (subagent_type: `adversarial-general`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline. Medium/large: agent reads files via `git diff <base>...HEAD -- <file>`.
+- **adversarial-general** (subagent_type: `comprehensive-review:adversarial-general`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline. Medium/large: agent reads files via `git diff <base>...HEAD -- <file>`.
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   **TIER=tiny:** skip unconditionally. `--quick`: skip.
-- **blind-hunter** (subagent_type: `blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
+- **blind-hunter** (subagent_type: `comprehensive-review:blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log.**
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
   **TIER=tiny:** skip unconditionally. `--depth deep` does not override this skip.
-- **edge-case-hunter** (subagent_type: `edge-case-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+- **edge-case-hunter** (subagent_type: `comprehensive-review:edge-case-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   Has full codebase read access for surrounding context.
   **TIER=tiny:** skip unconditionally. `--depth deep` does not override this skip.
@@ -507,7 +514,7 @@ The grep checks the aggregate diff as a boolean — if it matches anywhere, the 
   **TIER=tiny:** skip.
 - **type-design-analyzer** (subagent_type: `pr-review-toolkit:type-design-analyzer`, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `) in the diff. Pass the full diff when triggered.
   **TIER=tiny:** skip.
-- **issue-linker** (subagent_type: `issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick` and `--pr` modes, and when `--no-post`/`--local` was **explicitly** passed (not the default no-post behavior). Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
+- **issue-linker** (subagent_type: `comprehensive-review:issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick` and `--pr` modes, and when `--no-post`/`--local` was **explicitly** passed (not the default no-post behavior). Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 
@@ -553,7 +560,11 @@ Path resolution order: `$CLAUDE_PLUGIN_ROOT` (set by the plugin harness when the
 Detect script root (same priority chain as CVE script):
 ```bash
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts"
-[[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="${CLAUDE_DIR:-}/skills/comprehensive-review/scripts"
+# Fallback for install.sh installs (any version slug under tag1consulting-local)
+if [[ ! -d "$SCRIPTS_DIR" ]]; then
+  _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting-local/comprehensive-review/"*/skills/comprehensive-review/scripts 2>/dev/null | head -1)
+  [[ -n "$_cr_fallback" ]] && SCRIPTS_DIR="$_cr_fallback"
+fi
 [[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/skills/comprehensive-review/scripts"
 ```
 
@@ -615,7 +626,7 @@ After all Phase 1 agents complete and Phase 1b finishes, run Phase 1c if applica
 - `--depth deep` was passed
 - `CVE_JSON` is non-empty (Phase 1b found vulnerabilities)
 
-When running: launch a single Opus agent (subagent_type: `security-reviewer`, model: `opus`) to annotate each CVE finding with a `reachability` tag without dropping or modifying any findings. Pass `CVE_JSON` and the diff of the changed manifest files. Task description:
+When running: launch a single Opus agent (subagent_type: `comprehensive-review:security-reviewer`, model: `opus`) to annotate each CVE finding with a `reachability` tag without dropping or modifying any findings. Pass `CVE_JSON` and the diff of the changed manifest files. Task description:
 
 > "You are a dependency security analyst. For each CVE finding in the JSON array below, determine whether the vulnerable package is actually reachable in this diff — i.e., is it used directly in changed code, or is it only a dev dependency, or is it a transitive dependency with no import visible in the diff? Return the same JSON array with one additional field per entry: `reachability` (string, one of: `reachable` | `dev-only` | `transitive-only` | `unknown`). Never drop findings. Never change any existing field. Only add the `reachability` field."
 
