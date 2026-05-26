@@ -440,10 +440,14 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    for candidate in \
      "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/GOVERNANCE.md" \
      "${CLAUDE_DIR:-}/skills/comprehensive-review/GOVERNANCE.md" \
-     "$HOME/.claude/skills/comprehensive-review/GOVERNANCE.md" \
-     "$HOME/.claude/plugins/marketplaces/tag1consulting/plugins/comprehensive-review/skills/comprehensive-review/GOVERNANCE.md"; do
+     "$HOME/.claude/skills/comprehensive-review/GOVERNANCE.md"; do
      [[ -n "$candidate" && -r "$candidate" ]] && { GOVERNANCE_FILE="$candidate"; break; }
    done
+   # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting)
+   if [[ -z "$GOVERNANCE_FILE" ]]; then
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/GOVERNANCE.md 2>/dev/null | head -1)
+     [[ -n "$_cr_fallback" && -r "$_cr_fallback" ]] && GOVERNANCE_FILE="$_cr_fallback"
+   fi
 
    GOVERNANCE_BLOCK=""
    if [[ -n "$GOVERNANCE_FILE" ]]; then
@@ -947,43 +951,71 @@ Group findings by file. Within each file, sort by line number. Cluster findings 
 
 Agents are told via `GOVERNANCE.md` to redact secrets at source, but a missed redaction in finding text would land verbatim in PR/MR comments via Phase 4/4b. Apply a hardcoded redaction pass to the `finding` and `remediation` fields of every finding in `ALL_FINDINGS`, and to the assembled Block A summary text (built in Phase 3) before any external posting.
 
+The function uses `perl` rather than `sed` for portability: BSD sed (default on macOS) does not support the `i` (case-insensitive) flag, and `\b` word boundaries behave inconsistently across `sed` variants. `perl -0pe` reads the entire input at once, allowing multi-line patterns (e.g., PEM blocks).
+
 ```bash
 # Redacts known secret patterns from a string, replacing each match with <secret-redacted>.
 # Returns the redacted string on stdout. Patterns are deliberately narrow to avoid mangling
 # legitimate code; the goal is preventing real-secret leakage, not perfect detection.
+# Requires perl (present by default on every supported platform).
 redact_secrets() {
-  local input="$1"
-  # Each pattern is applied independently. Order matters only for overlapping cases.
-  # Token-prefix patterns (entire token replaced):
-  #   GitHub: ghp_/gho_/ghs_/ghu_/ghr_ + 36 base64url chars
-  #   Slack: xoxb-/xoxp-/xoxa-/xoxr- + token body
-  #   OpenAI/Anthropic-style: sk- + 20+ chars (anchored to non-word boundary)
-  #   AWS access key: AKIA + 16 uppercase alphanum
-  # Assignment patterns: matches the value after =, " = ", or : up to whitespace/quote
-  #   password=, token=, api[_-]?key=, secret=, Bearer <token>, aws_secret_access_key=
-  echo "$input" | sed -E '
-    s/(ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9_]{36,}/<secret-redacted>/g
-    s/xox[baprs]-[A-Za-z0-9-]{10,}/<secret-redacted>/g
-    s/\bsk-[A-Za-z0-9_-]{20,}/<secret-redacted>/g
-    s/\bAKIA[0-9A-Z]{16}\b/<secret-redacted>/g
-    s/(password|passwd|pwd)([[:space:]]*[:=][[:space:]]*)("[^"]+"|'\''[^'\'']+'\''|[^[:space:],;]+)/\1\2<secret-redacted>/gi
-    s/(token|api[_-]?key|secret|access[_-]?key|aws[_-]?secret[_-]?access[_-]?key)([[:space:]]*[:=][[:space:]]*)("[^"]+"|'\''[^'\'']+'\''|[^[:space:],;]+)/\1\2<secret-redacted>/gi
-    s/(Bearer|Basic)[[:space:]]+[A-Za-z0-9._~+/=-]{20,}/\1 <secret-redacted>/g
+  perl -0pe '
+    # Token-prefix patterns (entire token replaced):
+    s/\b(ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9_]{36,}/<secret-redacted>/g;          # GitHub classic PAT
+    s/\bgithub_pat_[A-Za-z0-9_]{22,}_[A-Za-z0-9]{59,}/<secret-redacted>/g;    # GitHub fine-grained PAT
+    s/\bglpat-[A-Za-z0-9_-]{20,}/<secret-redacted>/g;                          # GitLab PAT
+    s/\bxox[baprs]-[A-Za-z0-9-]{10,}/<secret-redacted>/g;                      # Slack tokens
+    s/\bsk-[A-Za-z0-9_-]{20,}/<secret-redacted>/g;                             # Anthropic / OpenAI
+    s/\b(sk|rk|pk)_(live|test)_[A-Za-z0-9]{20,}/<secret-redacted>/g;           # Stripe keys
+    s/\bnpm_[A-Za-z0-9]{30,}/<secret-redacted>/g;                              # npm tokens
+    s/\bAKIA[0-9A-Z]{16}\b/<secret-redacted>/g;                                # AWS access key
+    s/\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/<secret-redacted>/g;  # JWT (header.payload.sig)
+
+    # PEM private-key blocks (multi-line):
+    s/-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----/<secret-redacted>/gs;
+
+    # Assignment patterns: matches the value after =, " = ", or : (handles JSON-quoted keys).
+    # Quote-and-keyword group is captured so it survives; only the value is redacted.
+    # Minimum value length 8 to avoid mangling prose like `token=null` or `secret=42`.
+    s/("?)(password|passwd|pwd|token|api[_-]?key|secret|access[_-]?key|aws[_-]?secret[_-]?access[_-]?key)\1?(\s*[:=]\s*)("[^"]{8,}"|'\''[^'\'']{8,}'\''|[^\s,;]{8,})/\1\2\1\3<secret-redacted>/gi;
+
+    # HTTP auth headers (anchored after colon or whitespace at start of line):
+    s/(^|[\s:])(Bearer|Basic)\s+([A-Za-z0-9._~+\/=-]{20,})/\1\2 <secret-redacted>/g;
   '
 }
 ```
 
-Apply to each finding:
+Apply to every finding's `finding` and `remediation` fields and rebuild `ALL_FINDINGS`. Use `jq -c` to emit one finding per line, redact each line's text fields with the function above, then reassemble:
+
 ```bash
-finding.finding     = redact_secrets("$finding.finding")
-finding.remediation = redact_secrets("$finding.remediation")
+ALL_FINDINGS=$(echo "$ALL_FINDINGS" | jq -c '.[]' | while IFS= read -r row; do
+  redacted_finding=$(echo "$row" | jq -r '.finding // ""' | redact_secrets)
+  redacted_remediation=$(echo "$row" | jq -r '.remediation // ""' | redact_secrets)
+  echo "$row" | jq --arg f "$redacted_finding" --arg r "$redacted_remediation" \
+    '.finding = $f | .remediation = $r'
+done | jq -s '.')
 ```
 
-Apply to Block A's assembled summary text (in Phase 3, after walkthrough table is built and before any `--create-pr` or `--post-summary` invocation in Phase 4).
+Then redact Block A summary text the same way before any external posting:
+```bash
+BLOCK_A=$(echo "$BLOCK_A" | redact_secrets)
+```
+
+**Smoke test (run once after editing this step):** verify the pipeline executes and redacts a known token:
+```bash
+echo '[{"severity":"Low","finding":"leaked ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA in code","remediation":"rotate token=abcdefghij1234567890","file":"x","line":1}]' \
+  | jq -c '.[]' | while IFS= read -r row; do
+      f=$(echo "$row" | jq -r '.finding' | redact_secrets)
+      r=$(echo "$row" | jq -r '.remediation' | redact_secrets)
+      echo "$row" | jq --arg f "$f" --arg r "$r" '.finding = $f | .remediation = $r'
+    done | jq -s '.'
+# Expected: both `ghp_*` and `token=*` values replaced with <secret-redacted>.
+```
 
 **Limitations (documented intentionally):**
 - This is defense-in-depth, not detection. High-entropy strings without a known prefix or assignment pattern (e.g., a raw 64-char hex API key in prose) will not be caught. The agent-level redaction in `GOVERNANCE.md` is the first line of defense.
-- The patterns are narrow to avoid false positives that mangle legitimate code references (e.g., variable names that happen to contain `token`). Reviewers should still scan posted output before approving the user-confirmation prompts in Phase 4 and Phase 4b.
+- The patterns are narrow to avoid false positives that mangle legitimate code references (e.g., short values like `token=null` or `secret=42` are intentionally not redacted — assignment patterns require ≥8-char values). Reviewers should still scan posted output before approving the user-confirmation prompts in Phase 4 and Phase 4b.
+- The `<secret-redacted>` marker does not preserve the redacted token's format. A finding that legitimately needed to discuss a token format (e.g., "logger writes `ghp_*`-prefixed tokens") will read as "logger writes `<secret-redacted>`-prefixed tokens" — over-redaction is preferred to under-redaction.
 - If a project has known secret formats not covered here (e.g., proprietary token prefixes), the agent-level GOVERNANCE rule still applies; add patterns to the `redact_secrets` function in this step.
 
 **Collect as structured data:** `{ severity, confidence, agent, file, line, finding, remediation, source }` per finding. Used for Block B rendering and Phase 4b inline comments.
@@ -1086,6 +1118,8 @@ Determine PR/MR state:
 **Create PR/MR** (own-branch, `--create-pr`):
 
 **Pre-check — refuse `--create-pr` from a default branch.** Before any other Phase 4 action, verify the current branch is not the repository's default branch. This enforces the rule in the Orchestrator Governance section above.
+
+**Orchestrator behavior on refusal:** If the pre-check below prints an `Error: --create-pr refused...` message (i.e., the script exits non-zero), the orchestrator MUST stop the entire review run. Do not proceed to user confirmation, do not call **OP: Create PR/MR**, do not run Phase 4b or Phase 5 cleanup logic that depends on a created PR. Display the error to the user verbatim, then halt. The `exit 1` in the pre-check is advisory for the embedded shell snippet; the orchestrator is responsible for honoring it.
 
 ```bash
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
