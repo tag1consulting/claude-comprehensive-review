@@ -448,7 +448,14 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    # lexicographic order from `ls`, and warn so the user knows to clean stale cache entries.
    if [[ -z "$GOVERNANCE_FILE" ]]; then
      _cr_matches=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/GOVERNANCE.md 2>/dev/null | sort -V -r)
-     _cr_count=$(echo "$_cr_matches" | grep -c . || echo 0)
+     # Count non-empty lines without conflating "grep tool error" with "zero matches".
+     # Empty input → 0; multi-line input → N. Avoids `grep -c . || echo 0` which masks
+     # grep failures.
+     if [[ -z "$_cr_matches" ]]; then
+       _cr_count=0
+     else
+       _cr_count=$(echo "$_cr_matches" | wc -l | tr -d ' ')
+     fi
      if [[ "$_cr_count" -gt 1 ]]; then
        echo "WARNING: ${_cr_count} cached versions of GOVERNANCE.md found under ~/.claude/plugins/cache/tag1consulting/comprehensive-review/ — using the highest version. Consider clearing stale cache entries with /plugins update." >&2
      fi
@@ -664,7 +671,7 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
   If SYMBOL_CONTEXT is non-empty, include it under `SYMBOL_CONTEXT:`.
   **TIER=tiny:** skip unconditionally. `--quick`: skip.
 - **blind-hunter** (subagent_type: `comprehensive-review:blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff and the GOVERNANCE_BLOCK. No manifest, no project context, no commit log, no PR_NARRATIVE, no SYMBOL_CONTEXT.** GOVERNANCE_BLOCK is behavioral rules, not project context — it does not breach the constraint.
-  If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:`, then immediately after the GOVERNANCE block append a single line: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.`
+  If GOVERNANCE_BLOCK is non-empty (i.e., `GOVERNANCE_DEGRADED=false`), prepend it under `GOVERNANCE:`, then immediately after the GOVERNANCE block append a single line: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.` If `GOVERNANCE_DEGRADED=true`, omit BOTH the GOVERNANCE block AND the BLIND_HUNTER_NOTE — the note would reference a directive the agent never received.
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
@@ -962,7 +969,7 @@ Group findings by file. Within each file, sort by line number. Cluster findings 
 
 Agents are told via `GOVERNANCE.md` to redact secrets at source, but a missed redaction in finding text would land verbatim in PR/MR comments via Phase 4/4b. Apply a hardcoded redaction pass to the `finding` and `remediation` fields of every finding in `ALL_FINDINGS`, and to the assembled Block A summary text (built in Phase 3) before any external posting.
 
-**Orchestrator behavior:** the bash blocks below are NOT illustrative pseudocode — execute them via Bash tool calls. Define `redact_secrets` once (the function block below), then run the rebuild pipeline against `ALL_FINDINGS`, then run it against `BLOCK_A`. If any of those Bash invocations fails non-zero, halt the run and surface the failure to the user — do not post Block A or Block B to any provider with unredacted text.
+**Orchestrator behavior:** the bash blocks below are NOT illustrative pseudocode — execute them via Bash tool calls. First, clear the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. Then define `redact_secrets` once (the function block below), then run the rebuild pipeline against `ALL_FINDINGS`, then run it against `BLOCK_A`. If any of those Bash invocations fails non-zero, halt the run and surface the failure to the user — do not post Block A or Block B to any provider with unredacted text. After all redactions complete, check for the sentinel: `[[ -e /tmp/cr-redaction-degraded ]] && REDACTION_DEGRADED=true || REDACTION_DEGRADED=false`. The flag is read by Phase 3 Block A assembly.
 
 The function uses `perl` rather than `sed` for portability: BSD sed (default on macOS) does not support the `i` (case-insensitive) flag, and `\b` word boundaries behave inconsistently across `sed` variants. `perl -0pe` reads the entire input at once, allowing multi-line patterns (e.g., PEM blocks). If `perl` is unavailable on the host, the function passes input through unchanged and emits a stderr warning — better to post unredacted-but-visible text than to silently destroy all finding text by piping through an empty perl invocation.
 
@@ -977,6 +984,11 @@ The function uses `perl` rather than `sed` for portability: BSD sed (default on 
 redact_secrets() {
   if ! command -v perl >/dev/null 2>&1; then
     echo "WARNING: perl not found; secret redaction skipped — review output before posting." >&2
+    # Set the degraded flag so Phase 3 can render a user-visible banner on Block A.
+    # Use a sentinel file rather than a shell variable because redact_secrets runs
+    # inside subshell pipelines (e.g., `... | redact_secrets`); a plain export would
+    # not propagate back to the orchestrator's parent shell.
+    : > /tmp/cr-redaction-degraded
     cat
     return
   fi
@@ -1009,15 +1021,19 @@ redact_secrets() {
 Apply to every finding's `finding` and `remediation` fields and rebuild `ALL_FINDINGS`. Use `jq -c` to emit one finding per line, redact each line's text fields with the function above, then reassemble. After rebuilding, compare the row count against the original — if any rows were lost (malformed input, jq error, etc.), halt the run rather than posting a partial finding set:
 
 ```bash
-COUNT_BEFORE=$(echo "$ALL_FINDINGS" | jq 'length')
+COUNT_BEFORE=$(echo "$ALL_FINDINGS" | jq 'length') \
+  || { echo "ERROR: jq length failed on input ALL_FINDINGS." >&2; exit 1; }
 ALL_FINDINGS=$(echo "$ALL_FINDINGS" | jq -c '.[]' | while IFS= read -r row; do
   redacted_finding=$(echo "$row" | jq -r '.finding // ""' | redact_secrets)
   redacted_remediation=$(echo "$row" | jq -r '.remediation // ""' | redact_secrets)
   echo "$row" | jq --arg f "$redacted_finding" --arg r "$redacted_remediation" \
     '.finding = $f | .remediation = $r'
-done | jq -s '.')
-COUNT_AFTER=$(echo "$ALL_FINDINGS" | jq 'length')
-if [[ "$COUNT_BEFORE" != "$COUNT_AFTER" ]]; then
+done | jq -s '.') \
+  || { echo "ERROR: ALL_FINDINGS rebuild pipeline failed. Halting before any external posting." >&2; exit 1; }
+COUNT_AFTER=$(echo "$ALL_FINDINGS" | jq 'length') \
+  || { echo "ERROR: jq length failed on rebuilt ALL_FINDINGS — likely malformed JSON output from redaction loop." >&2; exit 1; }
+# Numeric comparison (-ne, not !=) so whitespace in jq output cannot mask or fabricate a mismatch.
+if [[ "$COUNT_BEFORE" -ne "$COUNT_AFTER" ]]; then
   echo "ERROR: redaction pipeline lost rows: ${COUNT_BEFORE} -> ${COUNT_AFTER}. Halting before any external posting." >&2
   exit 1
 fi
@@ -1025,9 +1041,17 @@ fi
 
 **Orchestrator behavior on row-count mismatch:** if the script above exits non-zero, halt the entire review run. Do not proceed to Phase 3 or any Phase 4/4b posting — losing finding rows during redaction means the user would see a partial finding set with no indication that data was dropped.
 
-Then redact Block A summary text the same way before any external posting:
+Then redact Block A summary text the same way before any external posting. Guard against the redaction pipeline failing or producing empty output (which would post an empty PR description):
 ```bash
-BLOCK_A=$(echo "$BLOCK_A" | redact_secrets)
+BLOCK_A_BEFORE_LEN=${#BLOCK_A}
+BLOCK_A=$(echo "$BLOCK_A" | redact_secrets) || {
+  echo "ERROR: Block A redaction pipeline failed. Halting before any external posting." >&2
+  exit 1
+}
+if [[ -z "$BLOCK_A" && "$BLOCK_A_BEFORE_LEN" -gt 0 ]]; then
+  echo "ERROR: Block A is empty after redaction (input was non-empty). Halting before any external posting." >&2
+  exit 1
+fi
 ```
 
 **Smoke test (run once after editing this step):** verify the pipeline executes and redacts a known token:
@@ -1059,10 +1083,16 @@ Assemble the pr-summarizer and issue-linker outputs into this format.
 **Omit the `## Sequence Diagrams` section unless `--diagrams` was passed** (pr-summarizer was told not to generate it).
 If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs` section entirely.
 
-**Degraded-mode banner:** if `GOVERNANCE_DEGRADED=true` (set in Phase 0 step 9 when GOVERNANCE.md could not be located), prepend the following banner to Block A before the `## Summary` heading. Otherwise omit it entirely.
+**Degraded-mode banners:** prepend banners to Block A (before the `## Summary` heading) for any of the following degradation flags. If multiple flags are set, render multiple banners stacked.
 
+If `GOVERNANCE_DEGRADED=true` (set in Phase 0 step 9 when GOVERNANCE.md could not be located):
 ```markdown
 > ⚠️ **Review ran in degraded mode — `GOVERNANCE.md` not found.** The shared governance directives (harm prioritization, verify-before-naming, secret redaction at source, etc.) were not inlined into agent task descriptions. Findings may be lower-quality than a normal run, and agent self-redaction was not enforced. Reinstall the plugin (`/plugins install comprehensive-review@tag1consulting`) or report this to the plugin maintainer.
+```
+
+If `REDACTION_DEGRADED=true` (set in Phase 2 step 2f when `perl` was unavailable on the host and the secret-redaction backstop ran in pass-through mode):
+```markdown
+> ⚠️ **Secret redaction was skipped — `perl` not found on this host.** The defense-in-depth redaction pass that strips known token patterns from finding text and Block A was not executed. Agent-level redaction (per `GOVERNANCE.md`) is the only line of defense in this run. Scan finding text for credential leaks before approving any post.
 ```
 
 ```markdown
@@ -1260,7 +1290,7 @@ Once the pre-check passes: Before running the create operation, display the prop
 
 ### Phase 5: Final Output
 
-**Cleanup:** `rm -f` all temp diff/slice files. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`.
+**Cleanup:** `rm -f` all temp diff/slice files, including the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`.
 
 **Store review summary to claude-mem** (skip if MEM_AVAILABLE is false, or mode is `--summary-only` or `--security-only`):
 
