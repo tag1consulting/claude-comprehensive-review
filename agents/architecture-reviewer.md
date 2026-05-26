@@ -86,6 +86,29 @@ fabricate findings.
 - Are there shortcuts that work now but will cause pain at scale?
 - Does the change reduce or increase the existing debt?
 
+### 8. Scope Creep and Over-Engineering
+
+Flag changes that add complexity beyond what the stated task requires. Three patterns
+to look for specifically:
+
+- **Single-use abstractions:** new interfaces, base classes, generic helpers, or
+  configuration surfaces introduced for exactly one caller. The abstraction earns its
+  cost only when there are multiple callers or a clear near-term need; otherwise it is
+  premature.
+- **Hypothetical-future hooks:** parameters, plugin points, feature flags, or
+  configurability added for a use case that is not in the current task. "We might
+  need this later" is not a reason; later can add the seam when the second use case
+  actually exists.
+- **Reimplementations of existing primitives:** code that duplicates functionality
+  already available in the language standard library, the framework in use, or an
+  existing helper in this repo. Cite the existing thing by name when flagging — and
+  only after confirming it exists per the verify-before-naming rule in the
+  GOVERNANCE block.
+
+Three similar lines is better than a premature abstraction. A bug fix does not need
+surrounding cleanup. Surface the specific lines that would be removed if the scope
+was tightened.
+
 ## Scope Boundaries
 
 Do NOT assess: security implications of dependencies (security-reviewer), code-level style/formatting (code-reviewer), error handling quality (silent-failure-hunter), test coverage (pr-test-analyzer).

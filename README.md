@@ -218,6 +218,24 @@ Run from any git repository, on the branch you want to review:
 
 **Inline comment cap:** The top 25 findings by severity are posted as inline comments. Any additional findings appear in the review body. This prevents API throttling on large finding sets.
 
+## Governance
+
+Every spawned agent receives a shared governance block (`skills/comprehensive-review/GOVERNANCE.md`) inlined into its task description. The block enforces:
+
+- **Harm prioritization** — findings that risk user harm (data loss, security exposure, breaking shared systems) are top priority; agents surface adjacent harms even if outside their strict scope.
+- **No self-preservation** — agents do not suppress findings or hide uncertainty to make output look cleaner. Uncertain findings are marked as such.
+- **Verify before naming** — before naming a file, function, flag, package, version, or any other identifier in a recommendation, agents verify it exists in the current repo state via Read or Grep. Training-data recall is not verification.
+- **Don't reinvent the wheel** — agents flag reimplementations of stdlib, framework, or existing repo helpers, citing the existing thing by name.
+- **No defensive code for impossible cases** — agents do not recommend validation/error handling for scenarios that cannot occur given system invariants.
+- **Non-destructive remediations** — agents do not recommend force-push, `git reset --hard`, `DROP TABLE`, `terraform destroy`, etc., as fixes without explicit caveat and rollback note.
+- **Named rejected alternatives** — non-trivial fix recommendations include at least one rejected alternative and the reason it was rejected.
+- **Surfaced counter-arguments** — high-impact recommendations state the strongest argument against the recommendation before stating the recommendation itself.
+- **Secret redaction at source** — agents redact API keys, tokens, passwords, etc., in their finding text. Phase 2 also runs a hardcoded-pattern redaction pass before any external posting (defense-in-depth).
+
+`blind-hunter` receives the GOVERNANCE block but with one override: "verify before naming" applies only within the diff or file list it was given — never the broader repo. This preserves blind-hunter's zero-context "fresh eyes" purpose.
+
+The orchestrator itself follows a separate set of rules (in `SKILL.md` "Orchestrator Governance"): external posting requires explicit opt-in flags, `--create-pr` is hard-refused when on the repository's default branch, and user confirmation is required before any external write.
+
 ## Agent roster
 
 Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias, which the Claude Code harness resolves to the current Opus model at spawn time. In `--depth deep` mode, `blind-hunter` and `edge-case-hunter` also resolve to the `opus` alias. The spawn indicator shown by Claude Code displays the resolved version for each subagent.
