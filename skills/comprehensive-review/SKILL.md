@@ -7,13 +7,9 @@ allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem
 
 # Comprehensive PR Review
 
-**BEFORE READING ANYTHING ELSE:** Check whether `$ARGUMENTS` contains `--help`. If the injected block below contains `===HELP-START===`, your ONLY action is to output the text between `===HELP-START===` and `===HELP-END===` verbatim, then stop completely. Do NOT output this line. Do NOT output the markers. Do NOT read further. YOUR ENTIRE RESPONSE IS THAT TEXT AND NOTHING ELSE.
-
-!`case "$ARGUMENTS" in *--help*) echo "===HELP-START==="; cat "${CLAUDE_SKILL_DIR}/HELP.md" 2>/dev/null || echo "Help file not found. Run /plugins install comprehensive-review@tag1consulting to reinstall."; echo "===HELP-END===" ;; esac`
-
-**STOP NOW IF HELP-START APPEARED ABOVE. Output only the text between the markers. Nothing else. No preamble. No explanation. No further reading.**
-
 **Arguments:** `$ARGUMENTS`
+
+**If `$ARGUMENTS` is exactly `--help` or contains `--help` as the first token:** respond with exactly this single line and nothing else: `Use /comprehensive-review-help for usage information.`
 
 ## Orchestrator Model Recommendation
 
