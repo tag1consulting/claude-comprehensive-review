@@ -15,27 +15,6 @@ allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem
 
 **Arguments:** `$ARGUMENTS`
 
-Supported flags:
-- `--base <branch>` — compare against a different base branch (default: auto-detect upstream or `main`)
-- `--quick` — fast mode: pr-summarizer + code-reviewer + triggered error/test agents only; skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis (roughly 60–80% cheaper depending on diff composition). When the diff is also tiny (<50 lines, ≤3 files), the auto-selected TIER=tiny further demotes pr-summarizer to Haiku. No flag needed — tiny-tier is automatic.
-- `--diagrams` — include Mermaid sequence diagrams in Block A (default: omitted; always omitted in `--quick`)
-- `--security-only` — run security-reviewer + CVE check (on changed dependency manifests) only
-- `--summary-only` — run pr-summarizer only
-- `--create-pr` — create a PR using Block A as the description (without this flag, no PR is created)
-- `--post-summary` — post Block A (informational summary) as a comment on an existing PR/MR
-- `--post-findings` — post Block B (findings) as inline review on an existing own PR/MR
-- `--no-findings` — suppress posting findings as a review (useful for dry-run with `--pr`)
-- `--no-post` / `--local` — explicit alias for the default behavior: display everything locally, skip all remote operations (all runs default to no-post; posting requires explicit flags)
-- `--pr <number>` — review an existing PR/MR by number (external review mode)
-- `--provider <name>` — override auto-detected git provider (valid: `github`, `gitlab`, `bitbucket`)
-- `--depth <normal|deep>` — agent-depth promotion: `deep` promotes blind-hunter and edge-case-hunter to the `opus` alias (same as security-reviewer/architecture-reviewer), adds step-by-step extended thinking instructions to all Opus agents, and adds a CVE reachability triage pass when CVE findings are found. Default: `normal` (current behavior unchanged).
-- `--no-enrich-context` — disable symbol context enrichment (Grep-based cross-file definition lookup); by default context enrichment is enabled on all full runs except TIER=tiny (<50 lines, ≤3 files)
-- `--no-mem` — disable claude-mem integration even if claude-mem is detected
-- `--no-suppress` — disable suppression rules (useful for debugging / audit runs where you want to see every finding)
-- `--min-confidence <N>` — filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applies to findings from custom agents that emit a confidence score. Applied before suppression rules. See `skills/comprehensive-review/SEVERITY.md` for how external agent scores are mapped.
-- `--help` — show this usage
-- `--output-file <path>` — write Block A + Block B to a markdown file during Phase 5, in addition to terminal output
-
 ## Orchestrator Model Recommendation
 
 The orchestrator performs template-filling, tool dispatch, and structured severity normalization — it does not require Opus-level reasoning. **Run this skill on Sonnet for 5× lower orchestrator cost.** The `opus` alias is reserved for `architecture-reviewer` and `security-reviewer` (and `blind-hunter`/`edge-case-hunter` in `--depth deep`), where deep reasoning pays off.
