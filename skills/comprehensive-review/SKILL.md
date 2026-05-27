@@ -672,48 +672,16 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
 
 **Gate evaluation — run before all conditional agent dispatch:**
 
-Evaluate these gates once using the diff file and the file path list. Gates are cheap boolean checks; all greps run against `$DIFF_FILE` (never read its content into the conversation). All gate evaluations run in parallel. Store results as boolean flags for the agent dispatch logic below.
-
-**Important:** when the diff includes SKILL.md itself, exclude SKILL.md lines from the gate patterns to avoid false positives from the grep command strings embedded in this file.
+Evaluate these gates once using the diff file and the file path list. All gate logic lives in `$SCRIPTS_DIR/evaluate-gates.sh` — source its output to set the four boolean flags. When the script is unavailable, fall back to `true` for all gates (conservative — avoids silently skipping agents).
 
 ```bash
-# Gate: has_error_patterns — fires silent-failure-hunter
-GATE_ERROR_PATTERNS=false
-grep -qE 'catch\b|if err|try \{|rescue\b|Result<|unwrap\b|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE" \
-  && GATE_ERROR_PATTERNS=true
-
-# Gate: has_control_flow — fires edge-case-hunter (added lines only via + prefix filter)
-GATE_CONTROL_FLOW=false
-grep -E '^\+' "$DIFF_FILE" | grep -qE '\b(if|elif|else|for|while|do|case|switch|match|try|catch|except|rescue|unless|when|loop|break|continue|return|goto|defer|finally)\b' \
-  && GATE_CONTROL_FLOW=true
-
-# Gate: has_security_patterns — ensures security-reviewer runs even at TIER=small/medium when security-relevant changes are present
-GATE_SECURITY_PATTERNS=false
-if grep -qiE 'auth|token|secret|password|crypt|hash|\bsign\b|verify|exec\b|eval\b|sql|sanitize|escape|xss|csrf|cors|header|redirect|deserialize|cookie|session|jwt|oauth|ldap|saml|rbac|acl|permission|privilege|sudo|chmod|chown|setuid|x509|tls|ssl|cert|certificate|keystore|nonce|salt|hmac|aes|rsa|ecdsa|pbkdf2|bcrypt|scrypt|curl\b|wget\b|\bsource\b|\bIFS\b|LD_PRELOAD|\$\{\{' "$DIFF_FILE"; then
-  GATE_SECURITY_PATTERNS=true
+GATE_ERROR_PATTERNS=true
+GATE_CONTROL_FLOW=true
+GATE_SECURITY_PATTERNS=true
+GATE_CODE_OR_INFRA=true
+if [[ -x "${SCRIPTS_DIR}/evaluate-gates.sh" ]]; then
+  source <(DIFF_FILE="$DIFF_FILE" DIFF_PATHS="$DIFF_PATHS" bash "${SCRIPTS_DIR}/evaluate-gates.sh" 2>/dev/null) || true
 fi
-# Also check file paths for security-relevant patterns
-if echo "$DIFF_PATHS" | grep -qiE '(auth|passwords?|credentials?|tokens?|secrets?)|(^|/)(?:api|routes?)/|(^|/)(?:package\.json|package-lock\.json|go\.mod|go\.sum|composer\.json|composer\.lock|requirements[^/]*\.txt|pyproject\.toml|Pipfile(?:\.lock)?|Gemfile(?:\.lock)?|[Cc]argo\.(?:toml|lock)|yarn\.lock|pnpm-lock\.yaml)$|(^|/)\.env|(^|/)settings\.(py|ya?ml|json|toml)$|(^|/)(?:Dockerfile|Containerfile)$|\.(?:sh|bash)$|(^|/)\.github/workflows/'; then
-  GATE_SECURITY_PATTERNS=true
-fi
-
-# Gate: has_code_or_infra — ensures architecture-reviewer skips pure docs/meta-only PRs
-# Fires when ANY changed file is code, config, or infra (including .github/workflows/).
-# Docs-only (.md, .rst, .txt, .adoc), meta dirs (docs/, memory-bank/, .claude/), and meta
-# filenames (CHANGELOG, README, LICENSE) are excluded.
-GATE_CODE_OR_INFRA=false
-for f in $DIFF_PATHS; do
-  # Workflow files always count as infra
-  echo "$f" | grep -qE '(^|/)\.github/workflows/' && { GATE_CODE_OR_INFRA=true; break; }
-  # Pure doc extensions → skip
-  echo "$f" | grep -qE '\.(md|markdown|txt|rst|adoc)$' && continue
-  # Meta directories → skip
-  echo "$f" | grep -qE '(^|/)(docs|memory-bank|\.github|\.claude)/' && continue
-  # Meta filenames → skip
-  echo "$f" | grep -qiE '(^|/)(CHANGELOG|README|LICENSE|NOTICE|AUTHORS|CONTRIBUTING|CODEOWNERS|CODE_OF_CONDUCT)(\..+)?$' && continue
-  # Anything else is code or infra
-  GATE_CODE_OR_INFRA=true; break
-done
 ```
 
 **Effect of gates at TIER=small and TIER=medium:**
