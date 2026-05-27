@@ -410,7 +410,35 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
    These triggers only apply at TIER=tiny; at TIER=small or TIER=medium they are ignored.
    Surface both flags in Phase 5 metadata (e.g., `TIER=tiny — architecture-reviewer promoted by infra trigger`).
 
-8. Determine which agents to run (see Phase 1).
+8. **Classify diff type for auto-cheap routing** (skip if `--quick`, `--depth deep`, `--security-only`, or `--summary-only` already active — those modes have explicit cost contracts):
+
+   ```bash
+   # DOCS_ONLY=true when every changed file is a documentation or meta file.
+   # Reuses GATE_CODE_OR_INFRA which is already computed above: if it is false,
+   # the diff has no code, infra, or CI content.
+   DOCS_ONLY=false
+   [[ "$GATE_CODE_OR_INFRA" == "false" ]] && DOCS_ONLY=true
+
+   # LOW_RISK_CONFIG=true when the diff contains config/YAML/TOML but none of the
+   # high-risk triggers (CI pipelines, auth, secrets, dependency manifests).
+   LOW_RISK_CONFIG=false
+   if [[ "$DOCS_ONLY" == "false" && "$GATE_SECURITY_PATTERNS" == "false" ]]; then
+     if echo "$DIFF_PATHS" | grep -qiE '\.(ya?ml|toml|ini|conf|cfg|env\.example)$'; then
+       LOW_RISK_CONFIG=true
+     fi
+   fi
+   ```
+
+   **Auto-cheap rules (applied in Phase 1 agent dispatch):**
+
+   - **DOCS_ONLY=true**: run pr-summarizer + code-reviewer only. Skip architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker, adversarial-general. Silent-failure-hunter and pr-test-analyzer still trigger on their patterns (rare for docs-only, but correct). CVE check still runs if manifest files changed. Phase 5 reports: `Auto-cheap: DOCS_ONLY — Opus agents skipped (no code/infra in diff).`
+
+   - **LOW_RISK_CONFIG=true**: run deterministic checks first. Run pr-summarizer + code-reviewer. Promote security-reviewer if `GATE_SECURITY_PATTERNS=true` (yes, by definition false here, but re-checked in Phase 1 after CVE results for safety). Skip blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer. Phase 5 reports: `Auto-cheap: LOW_RISK_CONFIG — specialist agents skipped (no security patterns in diff).`
+
+   **NOT cheap (auto-cheap is never applied when):**
+   - CI/infra/workflow files are in the diff (`GATE_CODE_OR_INFRA=true` from a `.github/workflows/` path)
+   - `GATE_SECURITY_PATTERNS=true` (auth, credential, dependency manifest paths)
+   - `--depth deep` was passed (user explicitly requested full coverage)
 
 9. **Load governance directives** — read `GOVERNANCE.md` once for inlining into agent task descriptions in Phase 1. The file is co-located with this SKILL.md in `skills/comprehensive-review/`. Resolve via the same fallback chain used for `run-cve-check.sh`:
 
@@ -558,6 +586,8 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 |------|-----------------|
 | (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) + CVE check if manifest files changed + static analyzers if binaries available |
 | `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer + CVE check if manifest files changed |
+| `DOCS_ONLY` (auto, no code/infra in diff) | pr-summarizer + code-reviewer + triggered silent-failure-hunter/pr-test-analyzer + CVE check; Opus agents skipped. Overridden by `--depth deep`, `--quick`, `--security-only`, `--summary-only`. Phase 5 reports auto-cheap reason. |
+| `LOW_RISK_CONFIG` (auto, config-only with no security patterns) | pr-summarizer + code-reviewer + deterministic checks; specialist Opus agents skipped. Phase 5 reports auto-cheap reason. |
 | `--no-post` / `--local` (explicit flag) | Same as default but also skips issue-linker; all Phase 4 operations suppressed |
 | `--security-only` | security-reviewer + CVE check (if manifest files changed) |
 | `--summary-only` | pr-summarizer only |
@@ -1286,7 +1316,7 @@ Note in terminal: "Review written to <path>"
 2. Summary posted → "Summary comment posted to ${PR_TERM} #<N>"
 3. Review posted → "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
 4. Always display Block B (findings).
-5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ..."
+5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ...". If DOCS_ONLY=true, also report: `"Auto-cheap: DOCS_ONLY — Opus agents skipped (no code/infra in diff)."` If LOW_RISK_CONFIG=true, also report: `"Auto-cheap: LOW_RISK_CONFIG — specialist agents skipped (no security patterns in diff)."`
 6. Report diff tier and Opus agent tool-call usage:
    - `"Diff tier: <tiny|small|medium>  (<N> lines, <M> files)"` — if TIER=tiny, also show which agents were promoted or skipped, e.g.: `"TIER=tiny — architecture-reviewer: promoted (infra trigger) | security-reviewer: skipped | blind-hunter: skipped | edge-case-hunter: skipped"`
    - `"Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)"` — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time. Omit any agent that was skipped.

@@ -80,6 +80,21 @@ Agents — TIER=tiny (auto, <50 lines AND ≤3 files)
   Skipped:           blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer,
                      issue-linker (GitHub-only conditions still apply)
 
+Auto-cheap routing (automatic, no flag needed)
+  DOCS_ONLY          All changed files are docs/markdown/meta (no code or infra). Runs:
+                     pr-summarizer + code-reviewer + triggered silent-failure-hunter/pr-test-analyzer
+                     + CVE check if manifest files changed. Skips all Opus agents and
+                     blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer.
+                     Phase 5 reports: "Auto-cheap: DOCS_ONLY — Opus agents skipped."
+                     Overridden by: --depth deep, --quick, --security-only, --summary-only.
+
+  LOW_RISK_CONFIG    Diff contains only config/YAML/TOML/INI with no security-sensitive
+                     patterns (no auth/token/secret/exec keywords, no dep manifests, no
+                     Dockerfile/CI paths). Runs: pr-summarizer + code-reviewer + deterministic
+                     checks. Skips: architecture-reviewer, security-reviewer, blind-hunter,
+                     edge-case-hunter, comment-analyzer, type-design-analyzer.
+                     Phase 5 reports: "Auto-cheap: LOW_RISK_CONFIG — specialist agents skipped."
+
 Deterministic checks (all modes except --summary-only)
   dependency-check:  Queries OSV.dev for CVEs in changed dependency manifests.
                      Also runs in --security-only mode (CVE checks are security checks).

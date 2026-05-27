@@ -72,6 +72,22 @@ teardown() {
   grep -q "evaluate-gates.sh" "$SKILL_MD"
 }
 
+@test "SKILL.md: defines DOCS_ONLY auto-cheap routing variable" {
+  grep -q "DOCS_ONLY=true\|DOCS_ONLY=false" "$SKILL_MD"
+}
+
+@test "SKILL.md: defines LOW_RISK_CONFIG auto-cheap routing variable" {
+  grep -q "LOW_RISK_CONFIG=true\|LOW_RISK_CONFIG=false" "$SKILL_MD"
+}
+
+@test "SKILL.md: Phase 5 reports DOCS_ONLY auto-cheap reason" {
+  grep -q "Auto-cheap: DOCS_ONLY" "$SKILL_MD"
+}
+
+@test "SKILL.md: Phase 5 reports LOW_RISK_CONFIG auto-cheap reason" {
+  grep -q "Auto-cheap: LOW_RISK_CONFIG" "$SKILL_MD"
+}
+
 # ---------------------------------------------------------------------------
 # SEVERITY.md: json-findings contract documented
 # ---------------------------------------------------------------------------
