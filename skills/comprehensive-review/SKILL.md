@@ -25,11 +25,9 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 
 ## Pre-flight Context
 
-Run the following shell commands at the start of Phase 0 (after the `--help` check) to populate context:
-
-- **Repository:** `git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`
-- **Branch:** `git branch --show-current 2>/dev/null`
-- **Branch context:** `BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
+- **Repository:** !`git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`
+- **Branch:** !`git branch --show-current 2>/dev/null`
+- **Branch context:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
 
 ## Orchestrator Governance
 
@@ -83,7 +81,7 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 ### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
-   - `--help` is handled by the dynamic-injection block at the top of this file (the `===HELP-START===` / `===HELP-END===` sentinel). If you have reached this step, `--help` was not present — continue parsing the flags below.
+   - If `$ARGUMENTS` contains `--help`, respond with exactly: `Use /comprehensive-review-help for usage information.` and stop. If you have reached this step without stopping, `--help` was not present — continue parsing the flags below.
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
@@ -100,7 +98,7 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
      - If `--create-pr` and `--pr <N>` are both present, report
        "Error: --create-pr and --pr are mutually exclusive." and stop.
 
-1a. **Run Pre-flight Context commands** (see "Pre-flight Context" section above — run these now, after the `--help` check).
+1a. **Pre-flight Context** — the repository, branch, and diff stats were injected above by the harness at skill load time. Use them directly.
 
 1b. **Detect claude-mem availability** (skip if `--no-mem` was passed):
    - Read the worker port: `MEM_PORT=$(jq -r '.CLAUDE_MEM_WORKER_PORT // "37777"' ~/.claude-mem/settings.json 2>/dev/null || echo "37777")`
