@@ -50,6 +50,16 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 - **Branch:** !`git branch --show-current 2>/dev/null`
 - **Branch context:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
 
+## Orchestrator Governance
+
+The orchestrator is a software-engineering actor: it spawns subagents, calls provider APIs, creates branches/PRs, and posts comments. These rules govern its behavior. Spawned subagents receive their own `GOVERNANCE.md` block (see Phase 0 step 9 and Phase 1) — the rules below complement that, they do not replace it.
+
+- **External communication is gated by explicit flags.** Posting to a PR/MR (Phase 4 `--post-summary`, Phase 4b `--post-findings`) and creating a PR/MR (Phase 4 `--create-pr`) require the user to pass the corresponding flag. The flag itself is the user's authorization checkpoint. The orchestrator does not infer additional posting beyond what was requested, does not auto-enable `--post-findings` in `--pr` mode, and does not promote a `--post-summary` to a `--post-findings` run. When in doubt, do less.
+- **No `--create-pr` from a default branch.** Phase 4 must refuse `--create-pr` when the local `HEAD` matches the provider's default branch (or one of `main`/`master`/`develop` as a conservative fallback when the provider lookup fails). This is a hard refuse — exit non-zero, print a clear error directing the user to check out a feature branch. There is no override flag.
+- **User-confirmation prompts are not optional.** Phase 4 (`--create-pr`, `--post-summary`) and Phase 4b (`--post-findings`) display the proposed body and ask for confirmation before any external write. This is the orchestrator's equivalent of a Checkpoint Trigger pause. Do not collapse multiple confirmations into one for "convenience."
+- **Secret-redaction defense in depth.** Phase 2 step 2f redacts known-pattern secrets from finding text and Block A summary before any external posting. This is a backstop for the agent-level redaction in `GOVERNANCE.md`, not a replacement.
+- **Reference for agent-level rules.** Subagent governance (harm prioritization, no self-preservation, verify before naming, don't reinvent the wheel, named rejected alternatives, surfaced counter-arguments, non-destructive remediations) lives in `skills/comprehensive-review/GOVERNANCE.md`. Do not duplicate those rules here; instead update `GOVERNANCE.md` and re-run.
+
 ## Review Workflow
 
 ### Provider Detection
@@ -423,6 +433,56 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 
 8. Determine which agents to run (see Phase 1).
 
+9. **Load governance directives** — read `GOVERNANCE.md` once for inlining into agent task descriptions in Phase 1. The file is co-located with this SKILL.md in `skills/comprehensive-review/`. Resolve via the same fallback chain used for `run-cve-check.sh`:
+
+   ```bash
+   GOVERNANCE_FILE=""
+   for candidate in \
+     "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/GOVERNANCE.md" \
+     "${CLAUDE_DIR:-}/skills/comprehensive-review/GOVERNANCE.md" \
+     "$HOME/.claude/skills/comprehensive-review/GOVERNANCE.md"; do
+     [[ -n "$candidate" && -r "$candidate" ]] && { GOVERNANCE_FILE="$candidate"; break; }
+   done
+   # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting).
+   # When multiple cached versions exist, sort by version (highest first) rather than relying on
+   # lexicographic order from `ls`, and warn so the user knows to clean stale cache entries.
+   if [[ -z "$GOVERNANCE_FILE" ]]; then
+     _cr_matches=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/GOVERNANCE.md 2>/dev/null | sort -V -r)
+     # Count non-empty lines without conflating "grep tool error" with "zero matches".
+     # Empty input → 0; multi-line input → N. Avoids `grep -c . || echo 0` which masks
+     # grep failures.
+     if [[ -z "$_cr_matches" ]]; then
+       _cr_count=0
+     else
+       _cr_count=$(echo "$_cr_matches" | wc -l | tr -d ' ')
+     fi
+     if [[ "$_cr_count" -gt 1 ]]; then
+       echo "WARNING: ${_cr_count} cached versions of GOVERNANCE.md found under ~/.claude/plugins/cache/tag1consulting/comprehensive-review/ — using the highest version. Consider clearing stale cache entries with /plugins update." >&2
+     fi
+     _cr_fallback=$(echo "$_cr_matches" | head -1)
+     [[ -n "$_cr_fallback" && -r "$_cr_fallback" ]] && GOVERNANCE_FILE="$_cr_fallback"
+   fi
+
+   # Invariant: GOVERNANCE_DEGRADED=true ⇔ GOVERNANCE_BLOCK is empty.
+   # We enforce this by treating an empty/unreadable file the same as a missing one,
+   # so downstream Phase 1 conditions can use either flag interchangeably without
+   # divergence in edge cases (zero-byte file, cat failure, etc.).
+   GOVERNANCE_BLOCK=""
+   GOVERNANCE_DEGRADED=false
+   if [[ -n "$GOVERNANCE_FILE" ]]; then
+     GOVERNANCE_BLOCK=$(cat "$GOVERNANCE_FILE" 2>/dev/null)
+   fi
+   if [[ -z "$GOVERNANCE_BLOCK" ]]; then
+     echo "WARNING: GOVERNANCE.md not found or empty; agents will run without inlined governance directives." >&2
+     GOVERNANCE_DEGRADED=true
+     GOVERNANCE_BLOCK=""  # explicitly clear in case cat partially succeeded then errored
+   fi
+   ```
+
+   `GOVERNANCE_BLOCK` is passed to all 7 custom agent spawns in Phase 1 (see "Governance directive" row in the directive table). If the file cannot be located, agents fall back to their own built-in framing — degrades gracefully rather than failing the run.
+
+   **User-visible degradation banner:** when `GOVERNANCE_DEGRADED=true`, Phase 3 prepends a banner to Block A so the user can see that the review ran without the shared governance directives. The stderr WARNING above is invisible once the review output is posted to a PR/MR — the banner ensures the degradation is observable in the rendered output. See Phase 3 Block A assembly for the exact banner text.
+
 ### Phase 0c: Symbol Context Extraction (context enrichment)
 
 **Context enrichment** is **on by default** and can be disabled with `--no-enrich-context`. Skip entirely when:
@@ -571,21 +631,26 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `LANGUAGE_PROFILES` | concatenated markdown context blocks | architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, silent-failure-hunter, code-reviewer, pr-test-analyzer | unset (agents use built-in language guidance) |
 | `PR_NARRATIVE` | full commit bodies + optional PR description body | pr-summarizer, code-reviewer, architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter | unset (agents work without author context) |
 | `SYMBOL_CONTEXT` | `<symbol-context>…</symbol-context>` XML block with cross-file definitions | architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, code-reviewer | unset (no cross-file definitions injected) |
+| `GOVERNANCE` | full text of `skills/comprehensive-review/GOVERNANCE.md` | all 7 custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer, adversarial-general, edge-case-hunter, blind-hunter) | unset (only when GOVERNANCE.md cannot be located; agents fall back to built-in framing) |
 
 Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
+
+**GOVERNANCE injection:** when `GOVERNANCE_BLOCK` is non-empty (Phase 0 step 9), prepend it to every custom agent's task description under the heading `GOVERNANCE:` before any other directives. **blind-hunter override:** for blind-hunter only, append a single line after the `GOVERNANCE:` block: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.`
 
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
 - **pr-summarizer** (subagent_type: `comprehensive-review:pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+  If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:` (always — applies even at TIER=tiny).
   If `--diagrams` was passed (and not `--quick`): include `DIAGRAMS=true` in the task description. Otherwise: include `DIAGRAMS=false`.
   If PR_NARRATIVE is non-empty, include it under `PR_NARRATIVE:`.
-  **TIER=tiny:** use haiku instead of sonnet; pass only diff + PR title (drop manifest, commit log, project context, PR_NARRATIVE).
+  **TIER=tiny:** use haiku instead of sonnet; pass only diff + PR title (drop manifest, commit log, project context, PR_NARRATIVE). GOVERNANCE_BLOCK is still included.
 - **code-reviewer** (subagent_type: `pr-review-toolkit:code-reviewer`, model: sonnet) — always pass the full diff.
   If PR_NARRATIVE is non-empty, prefix the diff with a `PR_NARRATIVE:` block.
 
 **Full-run-only agents** (skipped with `--quick`):
 
 - **architecture-reviewer** (subagent_type: `comprehensive-review:architecture-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, project context. Small diffs: also full diff inline.
+  If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:` (always — applies even at TIER=tiny when promoted).
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If RELATED_FILES is non-empty, include it in the task description (see directive table above).
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
@@ -594,8 +659,9 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Read/Grep calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
   **Gate (non-tiny tiers):** skip if `GATE_CODE_OR_INFRA=false` — all changes are docs/meta-only.
-  **TIER=tiny:** skip unless ARCH_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, PRIOR_REVIEW_CONTEXT, PR_NARRATIVE, and SYMBOL_CONTEXT.
+  **TIER=tiny:** skip unless ARCH_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, PRIOR_REVIEW_CONTEXT, PR_NARRATIVE, and SYMBOL_CONTEXT. GOVERNANCE_BLOCK is still included.
 - **security-reviewer** (subagent_type: `comprehensive-review:security-reviewer`, model: opus) — pass manifest, FILE_DIGEST (from Phase 0 step 4), commit log, detected languages, project context. Small diffs: also full diff inline.
+  If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:` (always — applies even at TIER=tiny when promoted).
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If RELATED_FILES is non-empty, include it in the task description (see directive table above).
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
@@ -603,18 +669,21 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
   If SYMBOL_CONTEXT is non-empty, include it under `SYMBOL_CONTEXT:`.
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Bash/Read calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
-  **TIER=tiny:** skip unless SECURITY_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, PRIOR_REVIEW_CONTEXT, PR_NARRATIVE, and SYMBOL_CONTEXT.
+  **TIER=tiny:** skip unless SECURITY_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, PRIOR_REVIEW_CONTEXT, PR_NARRATIVE, and SYMBOL_CONTEXT. GOVERNANCE_BLOCK is still included.
 - **adversarial-general** (subagent_type: `comprehensive-review:adversarial-general`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline. Medium/large: agent reads files via `git diff <base>...HEAD -- <file>`.
+  If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:`.
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   If PR_NARRATIVE is non-empty, include it under `PR_NARRATIVE:`.
   If SYMBOL_CONTEXT is non-empty, include it under `SYMBOL_CONTEXT:`.
   **TIER=tiny:** skip unconditionally. `--quick`: skip.
-- **blind-hunter** (subagent_type: `comprehensive-review:blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff. No manifest, no project context, no commit log, no PR_NARRATIVE, no SYMBOL_CONTEXT.**
+- **blind-hunter** (subagent_type: `comprehensive-review:blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff and the GOVERNANCE_BLOCK. No manifest, no project context, no commit log, no PR_NARRATIVE, no SYMBOL_CONTEXT.** GOVERNANCE_BLOCK is behavioral rules, not project context — it does not breach the constraint.
+  If `GOVERNANCE_DEGRADED=false` AND `GOVERNANCE_BLOCK` is non-empty, prepend it under `GOVERNANCE:`, then immediately after the GOVERNANCE block append a single line: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.` If `GOVERNANCE_DEGRADED=true`, omit BOTH the GOVERNANCE block AND the BLIND_HUNTER_NOTE unconditionally — the note would reference a directive the agent never received. (Per the Phase 0 step 9 invariant, these two cases are exhaustive: `GOVERNANCE_DEGRADED=true` ⇔ `GOVERNANCE_BLOCK` empty.)
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
   **TIER=tiny:** skip unconditionally. `--depth deep` does not override this skip.
 - **edge-case-hunter** (subagent_type: `comprehensive-review:edge-case-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — pass manifest, commit log, project context. Small diffs: also full diff inline.
+  If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:`.
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
   If PR_NARRATIVE is non-empty, include it under `PR_NARRATIVE:`.
   If SYMBOL_CONTEXT is non-empty, include it under `SYMBOL_CONTEXT:`.
@@ -689,7 +758,7 @@ The grep checks the aggregate diff as a boolean — if it matches anywhere, the 
   **TIER=tiny:** skip.
 - **type-design-analyzer** (subagent_type: `pr-review-toolkit:type-design-analyzer`, model: sonnet) — trigger: type definitions (`type ... struct`, `interface `, `class `, `enum `) in the diff. Pass the full diff when triggered.
   **TIER=tiny:** skip.
-- **issue-linker** (subagent_type: `comprehensive-review:issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. Skip in `--quick` and `--pr` modes, and when `--no-post`/`--local` was **explicitly** passed (not the default no-post behavior). Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
+- **issue-linker** (subagent_type: `comprehensive-review:issue-linker`, model: haiku) — pass commit log, branch name, manifest, repo slug, and PROVIDER value. If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:`. Skip in `--quick` and `--pr` modes, and when `--no-post`/`--local` was **explicitly** passed (not the default no-post behavior). Also skipped when PROVIDER is not `github` (agent returns NONE for non-GitHub providers).
 
 Track skipped agents and reasons for Phase 5. Launch all applicable agents simultaneously.
 
@@ -902,6 +971,112 @@ Group findings by file. Within each file, sort by line number. Cluster findings 
 - Annotate the kept finding: "(also flagged by: [source2, source3])" if sources has more than one entry.
 - Same file without a line number → deduplicate by file + category (the bracketed label in finding text, lowercased).
 
+**Step 2f — Secret redaction (defense-in-depth):**
+
+Agents are told via `GOVERNANCE.md` to redact secrets at source, but a missed redaction in finding text would land verbatim in PR/MR comments via Phase 4/4b. Apply a hardcoded redaction pass to the `finding` and `remediation` fields of every finding in `ALL_FINDINGS`, and to the assembled Block A summary text (built in Phase 3) before any external posting.
+
+**Orchestrator behavior:** the bash blocks below are NOT illustrative pseudocode — execute them via Bash tool calls. First, clear the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. Then define `redact_secrets` once (the function block below), then run the rebuild pipeline against `ALL_FINDINGS`, then run it against `BLOCK_A`. If any of those Bash invocations fails non-zero, halt the run and surface the failure to the user — do not post Block A or Block B to any provider with unredacted text. After all redactions complete, check for the sentinel: `[[ -e /tmp/cr-redaction-degraded ]] && REDACTION_DEGRADED=true || REDACTION_DEGRADED=false`. The flag is read by Phase 3 Block A assembly.
+
+The function uses `perl` rather than `sed` for portability: BSD sed (default on macOS) does not support the `i` (case-insensitive) flag, and `\b` word boundaries behave inconsistently across `sed` variants. `perl -0pe` reads the entire input at once, allowing multi-line patterns (e.g., PEM blocks). If `perl` is unavailable on the host, the function passes input through unchanged and emits a stderr warning — better to post unredacted-but-visible text than to silently destroy all finding text by piping through an empty perl invocation.
+
+```bash
+# Redacts known secret patterns from a string, replacing each match with <secret-redacted>.
+# Returns the redacted string on stdout. Patterns are deliberately narrow to avoid mangling
+# legitimate code; the goal is preventing real-secret leakage, not perfect detection.
+# Requires perl (present by default on every supported platform). If perl is
+# missing, pass input through unchanged with a stderr warning — preserving the
+# original text is safer than emitting empty strings that would silently strip
+# all finding/remediation content.
+redact_secrets() {
+  if ! command -v perl >/dev/null 2>&1; then
+    echo "WARNING: perl not found; secret redaction skipped — review output before posting." >&2
+    # Set the degraded flag so Phase 3 can render a user-visible banner on Block A.
+    # Use a sentinel file rather than a shell variable because redact_secrets runs
+    # inside subshell pipelines (e.g., `... | redact_secrets`); a plain export would
+    # not propagate back to the orchestrator's parent shell.
+    : > /tmp/cr-redaction-degraded
+    cat
+    return
+  fi
+  perl -0pe '
+    # Token-prefix patterns (entire token replaced):
+    s/\b(ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9_]{36,}/<secret-redacted>/g;          # GitHub classic PAT
+    s/\bgithub_pat_[A-Za-z0-9_]{22,}_[A-Za-z0-9]{59,}/<secret-redacted>/g;    # GitHub fine-grained PAT
+    s/\bglpat-[A-Za-z0-9_-]{20,}/<secret-redacted>/g;                          # GitLab PAT
+    s/\bxox[baprs]-[A-Za-z0-9-]{10,}/<secret-redacted>/g;                      # Slack tokens
+    s/\bsk-[A-Za-z0-9_-]{20,}/<secret-redacted>/g;                             # Anthropic / OpenAI
+    s/\b(sk|rk|pk)_(live|test)_[A-Za-z0-9]{20,}/<secret-redacted>/g;           # Stripe keys
+    s/\bnpm_[A-Za-z0-9]{30,}/<secret-redacted>/g;                              # npm tokens
+    s/\bAKIA[0-9A-Z]{16}\b/<secret-redacted>/g;                                # AWS access key
+    s/\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/<secret-redacted>/g;  # JWT (header.payload.sig)
+
+    # PEM private-key blocks (multi-line):
+    s/-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----/<secret-redacted>/gs;
+
+    # Assignment patterns: matches the value after =, " = ", or : (handles JSON-quoted keys).
+    # Quote-and-keyword group is captured so it survives; only the value is redacted.
+    # Minimum value length 8 to avoid mangling prose like `token=null` or `secret=42`.
+    s/("?)(password|passwd|pwd|token|api[_-]?key|secret|access[_-]?key|aws[_-]?secret[_-]?access[_-]?key)\1?(\s*[:=]\s*)("[^"]{8,}"|'\''[^'\'']{8,}'\''|[^\s,;]{8,})/\1\2\1\3<secret-redacted>/gi;
+
+    # HTTP auth headers (anchored after colon or whitespace at start of line):
+    s/(^|[\s:])(Bearer|Basic)\s+([A-Za-z0-9._~+\/=-]{20,})/\1\2 <secret-redacted>/g;
+  '
+}
+```
+
+Apply to every finding's `finding` and `remediation` fields and rebuild `ALL_FINDINGS`. Use `jq -c` to emit one finding per line, redact each line's text fields with the function above, then reassemble. After rebuilding, compare the row count against the original — if any rows were lost (malformed input, jq error, etc.), halt the run rather than posting a partial finding set:
+
+```bash
+COUNT_BEFORE=$(echo "$ALL_FINDINGS" | jq 'length') \
+  || { echo "ERROR: jq length failed on input ALL_FINDINGS." >&2; exit 1; }
+ALL_FINDINGS=$(echo "$ALL_FINDINGS" | jq -c '.[]' | while IFS= read -r row; do
+  redacted_finding=$(echo "$row" | jq -r '.finding // ""' | redact_secrets)
+  redacted_remediation=$(echo "$row" | jq -r '.remediation // ""' | redact_secrets)
+  echo "$row" | jq --arg f "$redacted_finding" --arg r "$redacted_remediation" \
+    '.finding = $f | .remediation = $r'
+done | jq -s '.') \
+  || { echo "ERROR: ALL_FINDINGS rebuild pipeline failed. Halting before any external posting." >&2; exit 1; }
+COUNT_AFTER=$(echo "$ALL_FINDINGS" | jq 'length') \
+  || { echo "ERROR: jq length failed on rebuilt ALL_FINDINGS — likely malformed JSON output from redaction loop." >&2; exit 1; }
+# Numeric comparison (-ne, not !=) so whitespace in jq output cannot mask or fabricate a mismatch.
+if [[ "$COUNT_BEFORE" -ne "$COUNT_AFTER" ]]; then
+  echo "ERROR: redaction pipeline lost rows: ${COUNT_BEFORE} -> ${COUNT_AFTER}. Halting before any external posting." >&2
+  exit 1
+fi
+```
+
+**Orchestrator behavior on row-count mismatch:** if the script above exits non-zero, halt the entire review run. Do not proceed to Phase 3 or any Phase 4/4b posting — losing finding rows during redaction means the user would see a partial finding set with no indication that data was dropped.
+
+Then redact Block A summary text the same way before any external posting. Guard against the redaction pipeline failing or producing empty output (which would post an empty PR description):
+```bash
+BLOCK_A_BEFORE_LEN=${#BLOCK_A}
+BLOCK_A=$(echo "$BLOCK_A" | redact_secrets) || {
+  echo "ERROR: Block A redaction pipeline failed. Halting before any external posting." >&2
+  exit 1
+}
+if [[ -z "$BLOCK_A" && "$BLOCK_A_BEFORE_LEN" -gt 0 ]]; then
+  echo "ERROR: Block A is empty after redaction (input was non-empty). Halting before any external posting." >&2
+  exit 1
+fi
+```
+
+**Smoke test (run once after editing this step):** verify the pipeline executes and redacts a known token:
+```bash
+echo '[{"severity":"Low","finding":"leaked ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA in code","remediation":"rotate token=abcdefghij1234567890","file":"x","line":1}]' \
+  | jq -c '.[]' | while IFS= read -r row; do
+      f=$(echo "$row" | jq -r '.finding' | redact_secrets)
+      r=$(echo "$row" | jq -r '.remediation' | redact_secrets)
+      echo "$row" | jq --arg f "$f" --arg r "$r" '.finding = $f | .remediation = $r'
+    done | jq -s '.'
+# Expected: both `ghp_*` and `token=*` values replaced with <secret-redacted>.
+```
+
+**Limitations (documented intentionally):**
+- This is defense-in-depth, not detection. High-entropy strings without a known prefix or assignment pattern (e.g., a raw 64-char hex API key in prose) will not be caught. The agent-level redaction in `GOVERNANCE.md` is the first line of defense.
+- The patterns are narrow to avoid false positives that mangle legitimate code references (e.g., short values like `token=null` or `secret=42` are intentionally not redacted — assignment patterns require ≥8-char values). Reviewers should still scan posted output before approving the user-confirmation prompts in Phase 4 and Phase 4b.
+- The `<secret-redacted>` marker does not preserve the redacted token's format. A finding that legitimately needed to discuss a token format (e.g., "logger writes `ghp_*`-prefixed tokens") will read as "logger writes `<secret-redacted>`-prefixed tokens" — over-redaction is preferred to under-redaction.
+- If a project has known secret formats not covered here (e.g., proprietary token prefixes), the agent-level GOVERNANCE rule still applies; add patterns to the `redact_secrets` function in this step.
+
 **Collect as structured data:** `{ severity, confidence, agent, file, line, finding, remediation, source }` per finding. Used for Block B rendering and Phase 4b inline comments.
 
 ### Phase 3: Assemble the Reports
@@ -913,6 +1088,18 @@ Build two separate output blocks:
 Assemble the pr-summarizer and issue-linker outputs into this format.
 **Omit the `## Sequence Diagrams` section unless `--diagrams` was passed** (pr-summarizer was told not to generate it).
 If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs` section entirely.
+
+**Degraded-mode banners:** prepend banners to Block A (before the `## Summary` heading) for any of the following degradation flags. If multiple flags are set, render multiple banners stacked.
+
+If `GOVERNANCE_DEGRADED=true` (set in Phase 0 step 9 when GOVERNANCE.md could not be located):
+```markdown
+> ⚠️ **Review ran in degraded mode — `GOVERNANCE.md` not found.** The shared governance directives (harm prioritization, verify-before-naming, secret redaction at source, etc.) were not inlined into agent task descriptions. Findings may be lower-quality than a normal run, and agent self-redaction was not enforced. Reinstall the plugin (`/plugins install comprehensive-review@tag1consulting`) or report this to the plugin maintainer.
+```
+
+If `REDACTION_DEGRADED=true` (set in Phase 2 step 2f when `perl` was unavailable on the host and the secret-redaction backstop ran in pass-through mode):
+```markdown
+> ⚠️ **Secret redaction was skipped — `perl` not found on this host.** The defense-in-depth redaction pass that strips known token patterns from finding text and Block A was not executed. Agent-level redaction (per `GOVERNANCE.md`) is the only line of defense in this run. Scan finding text for credential leaks before approving any post.
+```
 
 ```markdown
 ## Summary
@@ -999,7 +1186,60 @@ Determine PR/MR state:
   - **Other failures** (auth, network): report "${PROVIDER} API error: <error>. Use --no-post to skip remote operations." and skip Phase 4.
   - **Succeeds:** PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR/MR already exists.
 
-**Create PR/MR** (own-branch, `--create-pr`): Before running the create operation, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
+**Create PR/MR** (own-branch, `--create-pr`):
+
+**Pre-check — refuse `--create-pr` from a default branch.** Before any other Phase 4 action, verify the current branch is not the repository's default branch. This enforces the rule in the Orchestrator Governance section above.
+
+**Orchestrator behavior — execute the bash script below as a single Bash tool call:**
+
+1. Run the script (it queries the provider for the default branch and compares to `CURRENT_BRANCH`).
+2. If the Bash tool returns exit code 0, the pre-check passed — proceed to user confirmation.
+3. If the Bash tool returns a non-zero exit code, halt the entire review run immediately. Display the script's stderr message to the user verbatim. Do NOT call **OP: Create PR/MR**. Do NOT run Phase 4b. Do NOT run Phase 5 cleanup that depends on a created PR. The skill exits without creating anything.
+
+The `exit 1` lines in the script are not advisory — they cause the Bash tool call to exit non-zero, which is the trigger for orchestrator halt.
+
+**Fallback warning (lookup-failure case):** when the provider lookup returns empty, the script falls back to a 4-name heuristic (`main`/`master`/`develop`/`trunk`). On a repo with a non-standard default branch (e.g., `development`, `release`), this fallback won't catch it. The script emits a `WARNING:` to stderr whenever it hits the fallback path so the user can see when the strong guarantee has degraded to the heuristic.
+
+**Orchestrator behavior on refusal:** If the pre-check below prints an `Error: --create-pr refused...` message (i.e., the script exits non-zero), the orchestrator MUST stop the entire review run. Do not proceed to user confirmation, do not call **OP: Create PR/MR**, do not run Phase 4b or Phase 5 cleanup logic that depends on a created PR. Display the error to the user verbatim, then halt. The `exit 1` in the pre-check is advisory for the embedded shell snippet; the orchestrator is responsible for honoring it.
+
+```bash
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+DEFAULT_BRANCH=""
+case "$PROVIDER" in
+  github)
+    # gh repo view returns the provider's declared default branch.
+    DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null)
+    ;;
+  gitlab)
+    DEFAULT_BRANCH=$(glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" 2>/dev/null | jq -r '.default_branch // empty')
+    ;;
+  bitbucket)
+    DEFAULT_BRANCH=$(curl -sf -u "$BITBUCKET_EMAIL:$BITBUCKET_TOKEN" \
+      "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}" 2>/dev/null \
+      | jq -r '.mainbranch.name // empty')
+    ;;
+esac
+
+# Conservative fallback when the provider lookup fails or returns empty:
+# block on the most common default-branch names. False positives here are preferable
+# to silently creating a PR from a default branch. WARN explicitly so the user
+# knows the strong (provider-verified) guarantee has degraded to a heuristic that
+# does NOT catch non-standard default branches like 'development' or 'release'.
+if [[ -z "$DEFAULT_BRANCH" ]]; then
+  echo "WARNING: provider default-branch lookup failed for ${PROVIDER}; falling back to a 4-name heuristic (main/master/develop/trunk). If this repository's default branch is none of those, the pre-check below will not catch it." >&2
+  case "$CURRENT_BRANCH" in
+    main|master|develop|trunk)
+      echo "Error: --create-pr refused. The current branch '${CURRENT_BRANCH}' is a common default-branch name and the provider's default-branch lookup failed. Check out a feature branch and try again." >&2
+      exit 1
+      ;;
+  esac
+elif [[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]]; then
+  echo "Error: --create-pr refused. The current branch '${CURRENT_BRANCH}' is the repository's default branch on ${PROVIDER}. PRs must be created from a feature branch. Check out a feature branch (e.g., 'git checkout -b feat/<name>') and try again." >&2
+  exit 1
+fi
+```
+
+Once the pre-check passes: Before running the create operation, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
 
 **Post summary comment** (POST_SUMMARY): Before posting, display the full comment body to the user and ask: "Post this comment to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Post comment on PR/MR** with Block A as body. Use `## ${PR_TERM} Review Summary (Updated)` heading if summary already exists.
 
@@ -1056,7 +1296,7 @@ Determine PR/MR state:
 
 ### Phase 5: Final Output
 
-**Cleanup:** `rm -f` all temp diff/slice files. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`.
+**Cleanup:** `rm -f` all temp diff/slice files, including the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`.
 
 **Store review summary to claude-mem** (skip if MEM_AVAILABLE is false, or mode is `--summary-only` or `--security-only`):
 

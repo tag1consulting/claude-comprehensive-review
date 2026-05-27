@@ -71,6 +71,21 @@ To reduce duplicate analysis and wasted tokens, each agent has explicit scope bo
 - **blind-hunter** receives zero project context by design; it is orthogonal to all other agents. Overlap is expected and handled by deduplication. Do not try to scope-limit it — the independent perspective is the point.
 - **edge-case-hunter** asks "does a handling path exist?"; **silent-failure-hunter** asks "is the existing error handling adequate?" — these are distinct questions with minimal overlap. **edge-case-hunter** does not report security implications of gaps (that's **security-reviewer**'s domain).
 
+### Governance directives
+
+The skill applies a single shared set of governance directives to every custom agent it spawns. The directives are stored in `skills/comprehensive-review/GOVERNANCE.md` and inlined into each agent's task description by Phase 1 (Phase 0 step 9 loads the file once into `GOVERNANCE_BLOCK`).
+
+What `GOVERNANCE.md` covers:
+- **Priority and harm:** First Law framing — findings that risk user harm (data loss, security exposure, breaking shared systems) are top priority. Surface adjacent harms even if outside strict scope.
+- **Honesty:** No self-preservation (don't suppress findings to look cleaner). Mark uncertainty explicitly. Blunt and factual tone — no flattery, no padding.
+- **Verification before naming:** Before naming a file path, function, flag, command, package, version, or any other identifier in a recommendation, verify it currently exists via Read or Grep. Training-data recall is not verification.
+- **Recommendations:** Don't reinvent the wheel (flag reimplementations of stdlib/framework/repo helpers, citing the existing thing by name after verifying). No defensive code for impossible cases. Non-destructive remediations only (no force-push, `reset --hard`, `DROP TABLE`, etc., as fixes without explicit caveat + rollback). Name a rejected alternative for non-trivial recommendations. Surface the strongest counter-argument before recommending high-impact changes.
+- **Output safety:** Redact secrets in finding text at source (replace with `<secret-redacted>`). Phase 2 step 2f also runs a hardcoded-pattern redaction pass as defense-in-depth before any external posting.
+
+All 7 custom agents receive the GOVERNANCE block, including `blind-hunter`. **blind-hunter exception:** the orchestrator appends a single `BLIND_HUNTER_NOTE` line after the GOVERNANCE block clarifying that "verify before naming" for blind-hunter means verifying within the diff or file list it was given — never Grep or Read outside the supplied content. The zero-context constraint takes precedence over repo-wide verification. This preserves blind-hunter's "fresh eyes" purpose while keeping every other directive in force.
+
+The orchestrator itself is governed by a separate "Orchestrator Governance" section near the top of `SKILL.md`. Key rules: external communication is gated by explicit flags (the flag is the user's authorization checkpoint), `--create-pr` is hard-refused when the current branch is the repository's default branch, and user-confirmation prompts before posting are not optional.
+
 ### Two-block output design
 
 The skill produces two distinct output blocks with different audiences:
@@ -176,6 +191,7 @@ Plugin versions use semver without the `v` prefix (e.g., `1.0.0`). Git tags use 
 skills/comprehensive-review/SKILL.md                         ← orchestrator: phases 0–5, all workflow logic
 skills/comprehensive-review/HELP.md                          ← --help text (deferred; loaded only when --help is passed)
 skills/comprehensive-review/SEVERITY.md                      ← severity normalization + confidence scale
+skills/comprehensive-review/GOVERNANCE.md                    ← shared governance directives inlined into every custom agent's task description
 skills/comprehensive-review/suppressions.json                ← global suppression rules (trimmed per-run by verify checks)
 skills/comprehensive-review/language-profiles/go.md          ← Go-specific review context (injected per detected language)
 skills/comprehensive-review/language-profiles/python.md      ← Python-specific review context
@@ -230,3 +246,6 @@ agents/adversarial-general.md                                ← holistic comple
 - **Static analyzers** in `skills/comprehensive-review/scripts/run-*.sh` are opportunistic — they skip silently if the binary is not installed. Each script reads changed file paths from stdin and emits a `json-findings` JSON array with a stamped `source` field. When adding a new analyzer script, follow the pattern of existing scripts. Add an `OSV_MOCK_FILE`-style mock env var for offline testing.
 - **`json-findings` contract**: All custom findings agents (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, adversarial-general) must emit a trailing ` ```json-findings ` block with fields: `severity` (Critical/High/Medium/Low), `confidence` (0–100), `file`, `line`, `finding`, `remediation`, `source`. The confidence field is required; findings below `--min-confidence` (default 75) are dropped by Phase 2 before suppression. When modifying an agent's output format, keep both the markdown section (for human readability) and the json-findings block (for the pipeline).
 - **adversarial-general** scope boundary: it covers completeness, operational readiness, documentation debt, and deployment/rollback concerns. It must NOT duplicate what specialist agents cover. If you add a new specialist domain, update adversarial-general's scope boundary section in its agent file to explicitly exclude the new domain.
+- **`skills/comprehensive-review/GOVERNANCE.md`** is the shared governance directives file inlined into every custom agent's task description by Phase 1 (loaded once into `GOVERNANCE_BLOCK` in Phase 0 step 9). Edit this file — not individual agent prompts — when adding or changing a directive that should apply to all agents. Keep it concise; every byte is paid per-agent-spawn × 7 agents on every full review. Per-agent emphasis (e.g., architecture-reviewer's "scope creep" lens) belongs in the agent file. The blind-hunter exception note is hardcoded in `SKILL.md` adjacent to the blind-hunter spawn entry.
+- **Orchestrator governance** (`SKILL.md` "Orchestrator Governance" section near the top): rules that govern the orchestrator's own actions (external comms gated by explicit flags, `--create-pr` refused from default branch, mandatory user-confirmation prompts before posting). Edit here when changing orchestrator-side behavior; do not duplicate these rules into `GOVERNANCE.md` (which is for spawned agents).
+- **Secret redaction** (Phase 2 step 2f): hardcoded pattern list in `SKILL.md`. Defense-in-depth backstop for the agent-source redaction required by `GOVERNANCE.md`. Add new patterns by editing the `redact_secrets` function inline in `SKILL.md`. Keep patterns narrow to avoid mangling legitimate code.

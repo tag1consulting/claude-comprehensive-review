@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-05-26
+
+### Added
+
+**Shared governance directives for all custom agents.** A new `skills/comprehensive-review/GOVERNANCE.md` file is loaded once in Phase 0 (step 9) and inlined into every custom agent's task description in Phase 1. Directives cover:
+
+- Harm prioritization (First Law framing)
+- No self-preservation (don't suppress findings or hide uncertainty)
+- Verification before naming files, functions, flags, packages, versions
+- Don't reinvent the wheel (flag reimplementations of stdlib/framework/repo helpers)
+- No defensive code for impossible cases
+- Non-destructive remediations only (no force-push, `reset --hard`, `DROP TABLE`, etc., as fixes without explicit caveat)
+- Named rejected alternatives for non-trivial recommendations
+- Surfaced counter-arguments before high-impact recommendations
+- Secret redaction at source
+
+All 7 custom agents (`pr-summarizer`, `issue-linker`, `security-reviewer`, `architecture-reviewer`, `adversarial-general`, `edge-case-hunter`, `blind-hunter`) receive the GOVERNANCE block. **blind-hunter exception:** a `BLIND_HUNTER_NOTE` line clarifies that "verify before naming" for blind-hunter applies only within the diff or file list it was given — never the broader repo. This preserves the zero-context constraint while keeping every other directive in force.
+
+**Architecture-reviewer scope-creep lens.** New review section (#8) explicitly hunts for single-use abstractions, hypothetical-future hooks, and reimplementations of existing primitives. Three similar lines is better than a premature abstraction.
+
+**Phase 2 secret-redaction backstop.** New step 2f applies a hardcoded-pattern redaction pass to all finding text and Block A summary text before any external posting. Patterns cover GitHub tokens (`ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`), Slack tokens (`xox[baprs]-`), AWS access keys (`AKIA*`), Bearer/Basic auth headers, and assignment patterns for `password=`/`token=`/`api_key=`/`secret=`/`aws_secret_access_key=`. This is defense-in-depth for the agent-source redaction in `GOVERNANCE.md`, not a replacement.
+
+**Orchestrator governance section in SKILL.md.** New section near the top of `SKILL.md` documents the orchestrator-side rules: external comms gated by explicit flags, mandatory user-confirmation prompts before posting, and the new default-branch refuse for `--create-pr`.
+
+**`--create-pr` default-branch hard refuse.** Phase 4 now refuses `--create-pr` when the current branch matches the repository's default branch (queried from the provider via `gh repo view` / `glab api projects/...` / Bitbucket `mainbranch.name`, with `main`/`master`/`develop`/`trunk` as a conservative fallback when the lookup fails). Exits non-zero with a clear error directing the user to check out a feature branch. No override flag.
+
+### Changed
+
+- `security-reviewer.md`, `adversarial-general.md`: brief framing additions noting that the `GOVERNANCE` block is authoritative when present.
+- `architecture-reviewer.md`: new "Scope creep and over-engineering" review lens (#8).
+- Agent task-description directive table: `GOVERNANCE` added as a new directive consumed by all 7 custom agents.
+
+### Notes
+
+The shared-file approach was chosen over per-agent inlining to make future directive changes single-source. Token cost is ~400 tokens × 7 spawned agents ≈ 2.8k tokens per full review — acceptable given the governance value and the avoidance of drift across 7 separate agent files.
+
 ## [1.7.1] - 2026-05-20
 
 ### Fixed
