@@ -1,6 +1,6 @@
 # comprehensive-review
 
-A Claude Code skill that runs a full CodeRabbit-style PR/MR review using a parallel fleet of specialized agents. Supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. Produces a structured PR/MR summary and a findings report. Supports reviewing your own branch before opening a PR/MR, or reviewing an existing PR/MR by number.
+A Claude Code skill that runs a comprehensive PR/MR review using a parallel fleet of specialized agents. Supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. Produces a structured PR/MR summary and a findings report. Supports reviewing your own branch before opening a PR/MR, or reviewing an existing PR/MR by number.
 
 ## What it does
 
@@ -159,7 +159,6 @@ Run from any git repository, on the branch you want to review:
 | `--no-suppress` | Disable all suppression rules (useful for debugging / audit runs where you want to see every finding) |
 | `--min-confidence <N>` | Filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applied before suppression rules. |
 | `--output-file <path>` | Write Block A + Block B to a markdown file during Phase 5. Avoids re-running the review in a fresh session just to save the output — saves ~$5–15 on large PRs where the post-review context would otherwise force a new expensive session. |
-| `--help` | Show usage |
 
 ### Examples
 

@@ -1,6 +1,6 @@
 /comprehensive-review — Comprehensive PR/MR Review
 
-Run a full CodeRabbit-style review using specialized agents.
+Run a comprehensive PR/MR review using specialized agents.
 Supports GitHub (including Enterprise), GitLab, and Bitbucket.
 
 Model tip: run this skill on Sonnet (not Opus) — the orchestrator does structured
@@ -54,8 +54,6 @@ Flags
                      Use this to avoid re-running the review in a fresh session just to save
                      the output — saves ~$5–15 on large PRs where the post-review context
                      would otherwise force a new expensive session.
-
-  --help             Show this help
 
 Default behavior
   All runs:          Everything local. No remote posting unless explicitly requested.

@@ -1,13 +1,13 @@
 ---
 name: comprehensive-review
-description: "Run a comprehensive CodeRabbit-style PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR."
+description: "Run a comprehensive PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR."
 argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--create-pr] [--depth deep] [--diagrams]"
 allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
 ---
 
 # Comprehensive PR Review
 
-Run a full CodeRabbit-style review of all changes on the current branch (or a specified PR/MR). If `$ARGUMENTS` contains `--help`, respond with exactly: `Use /comprehensive-review-help for usage information.` and stop. Otherwise, execute the review workflow below.
+Run a full PR/MR review of all changes on the current branch (or a specified PR/MR). Execute the review workflow below.
 
 **Arguments:** `$ARGUMENTS`
 
@@ -81,7 +81,6 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 ### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
-   - If `$ARGUMENTS` contains `--help`, respond with exactly: `Use /comprehensive-review-help for usage information.` and stop. If you have reached this step without stopping, `--help` was not present — continue parsing the flags below.
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
