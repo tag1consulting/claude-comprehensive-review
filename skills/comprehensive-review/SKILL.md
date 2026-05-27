@@ -9,6 +9,10 @@ allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem
 
 Run a full CodeRabbit-style review of all changes on the current branch (or a specified PR/MR).
 
+!`case "$ARGUMENTS" in *--help*) echo "===HELP-START==="; cat "${CLAUDE_SKILL_DIR}/HELP.md" 2>/dev/null || echo "Help file not found. Run /plugins install comprehensive-review@tag1consulting to reinstall."; echo "===HELP-END===" ;; esac`
+
+**If the block between `===HELP-START===` and `===HELP-END===` appears above, the user passed `--help`. Output the content between those two markers verbatim (without the markers themselves) as your entire response, then STOP. Do not read or act on any other part of this file.**
+
 **Arguments:** `$ARGUMENTS`
 
 Supported flags:
@@ -104,10 +108,7 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 ### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
-   - If `--help` is present: **call the `Bash` tool immediately** with this exact command, output the result verbatim to the user, then **stop — do not execute any other steps**:
-     ```bash
-     HELP_FILE=""; for candidate in "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/HELP.md" "${CLAUDE_DIR:-}/skills/comprehensive-review/HELP.md" "$HOME/.claude/skills/comprehensive-review/HELP.md"; do [[ -n "$candidate" && -r "$candidate" ]] && { HELP_FILE="$candidate"; break; }; done; [[ -z "$HELP_FILE" ]] && { _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/HELP.md 2>/dev/null | sort -V -r | head -1); [[ -n "$_cr_fallback" && -r "$_cr_fallback" ]] && HELP_FILE="$_cr_fallback"; }; [[ -n "$HELP_FILE" ]] && cat "$HELP_FILE" || echo "Help file not found. Run \`/plugins install comprehensive-review@tag1consulting\` to reinstall."
-     ```
+   - `--help` is handled by the dynamic-injection block at the top of this file (the `===HELP-START===` / `===HELP-END===` sentinel). If you have reached this step, `--help` was not present — continue parsing the flags below.
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
