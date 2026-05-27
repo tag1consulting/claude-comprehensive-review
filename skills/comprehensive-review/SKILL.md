@@ -37,7 +37,7 @@ The orchestrator is a software-engineering actor: it spawns subagents, calls pro
 - **No `--create-pr` from a default branch.** Phase 4 must refuse `--create-pr` when the local `HEAD` matches the provider's default branch (or one of `main`/`master`/`develop` as a conservative fallback when the provider lookup fails). This is a hard refuse — exit non-zero, print a clear error directing the user to check out a feature branch. There is no override flag.
 - **User-confirmation prompts are not optional.** Phase 4 (`--create-pr`, `--post-summary`) and Phase 4b (`--post-findings`) display the proposed body and ask for confirmation before any external write. This is the orchestrator's equivalent of a Checkpoint Trigger pause. Do not collapse multiple confirmations into one for "convenience."
 - **Secret-redaction defense in depth.** Phase 2 step 2f redacts known-pattern secrets from finding text and Block A summary before any external posting. This is a backstop for the agent-level redaction in `GOVERNANCE.md`, not a replacement.
-- **Reference for agent-level rules.** Subagent governance (harm prioritization, no self-preservation, verify before naming, don't reinvent the wheel, named rejected alternatives, surfaced counter-arguments, non-destructive remediations) lives in `skills/review/GOVERNANCE.md`. Do not duplicate those rules here; instead update `GOVERNANCE.md` and re-run.
+- **Reference for agent-level rules.** Subagent governance (harm prioritization, no self-preservation, verify before naming, don't reinvent the wheel, named rejected alternatives, surfaced counter-arguments, non-destructive remediations) lives in `skills/comprehensive-review/GOVERNANCE.md`. Do not duplicate those rules here; instead update `GOVERNANCE.md` and re-run.
 
 ## Review Workflow
 
@@ -76,7 +76,7 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 
 > **Skip reading PROVIDERS.md** if `--no-post` or `--local` was passed — no provider operations will fire in that mode.
 >
-> When a provider operation is needed in Phase 0 (external PR checkout), Phase 4, or Phase 4b, read the full command reference from `skills/review/PROVIDERS.md`. All OP names referenced below are defined there.
+> When a provider operation is needed in Phase 0 (external PR checkout), Phase 4, or Phase 4b, read the full command reference from `skills/comprehensive-review/PROVIDERS.md`. All OP names referenced below are defined there.
 
 ### Phase 0: Pre-flight and Manifest Construction
 
@@ -171,13 +171,13 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 
    ```bash
    LANGUAGE_PROFILES=""
-   PROFILE_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/review/language-profiles"
+   PROFILE_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/language-profiles"
    # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting)
    if [[ ! -d "$PROFILE_DIR" ]]; then
-     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/review/language-profiles 2>/dev/null | head -1)
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/language-profiles 2>/dev/null | head -1)
      [[ -n "$_cr_fallback" ]] && PROFILE_DIR="$_cr_fallback"
    fi
-   [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/skills/review/language-profiles"
+   [[ ! -d "$PROFILE_DIR" ]] && PROFILE_DIR="$HOME/.claude/skills/comprehensive-review/language-profiles"
    if [[ -d "$PROFILE_DIR" ]]; then
      for lang in $(echo "$LANGUAGES" | tr ',' '\n' | tr -d ' ' | tr '[:upper:]' '[:lower:]'); do
        profile_file="$PROFILE_DIR/${lang}.md"
@@ -270,13 +270,13 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    ```bash
    SUPPRESSION_RULES="[]"
    # Global rules (shipped with the skill)
-   GLOBAL_SUPP="${CLAUDE_PLUGIN_ROOT:-}/skills/review/suppressions.json"
+   GLOBAL_SUPP="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/suppressions.json"
    # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting)
    if [[ ! -f "$GLOBAL_SUPP" ]]; then
-     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/review/suppressions.json 2>/dev/null | head -1)
+     _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/suppressions.json 2>/dev/null | head -1)
      [[ -n "$_cr_fallback" ]] && GLOBAL_SUPP="$_cr_fallback"
    fi
-   [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="$HOME/.claude/skills/review/suppressions.json"
+   [[ ! -f "$GLOBAL_SUPP" ]] && GLOBAL_SUPP="$HOME/.claude/skills/comprehensive-review/suppressions.json"
    # Local override (repo-specific rules)
    LOCAL_SUPP=".claude/comprehensive-review/suppressions.json"
    if [[ -f "$GLOBAL_SUPP" ]] && [[ -f "$LOCAL_SUPP" ]]; then
@@ -411,21 +411,21 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 
 8. Determine which agents to run (see Phase 1).
 
-9. **Load governance directives** — read `GOVERNANCE.md` once for inlining into agent task descriptions in Phase 1. The file is co-located with this SKILL.md in `skills/review/`. Resolve via the same fallback chain used for `run-cve-check.sh`:
+9. **Load governance directives** — read `GOVERNANCE.md` once for inlining into agent task descriptions in Phase 1. The file is co-located with this SKILL.md in `skills/comprehensive-review/`. Resolve via the same fallback chain used for `run-cve-check.sh`:
 
    ```bash
    GOVERNANCE_FILE=""
    for candidate in \
-     "${CLAUDE_PLUGIN_ROOT:-}/skills/review/GOVERNANCE.md" \
-     "${CLAUDE_DIR:-}/skills/review/GOVERNANCE.md" \
-     "$HOME/.claude/skills/review/GOVERNANCE.md"; do
+     "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/GOVERNANCE.md" \
+     "${CLAUDE_DIR:-}/skills/comprehensive-review/GOVERNANCE.md" \
+     "$HOME/.claude/skills/comprehensive-review/GOVERNANCE.md"; do
      [[ -n "$candidate" && -r "$candidate" ]] && { GOVERNANCE_FILE="$candidate"; break; }
    done
    # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting).
    # When multiple cached versions exist, sort by version (highest first) rather than relying on
    # lexicographic order from `ls`, and warn so the user knows to clean stale cache entries.
    if [[ -z "$GOVERNANCE_FILE" ]]; then
-     _cr_matches=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/review/GOVERNANCE.md 2>/dev/null | sort -V -r)
+     _cr_matches=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/GOVERNANCE.md 2>/dev/null | sort -V -r)
      # Count non-empty lines without conflating "grep tool error" with "zero matches".
      # Empty input → 0; multi-line input → N. Avoids `grep -c . || echo 0` which masks
      # grep failures.
@@ -580,7 +580,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | type-design-analyzer | `pr-review-toolkit:type-design-analyzer` | sonnet | sonnet |
 | adversarial-general | `comprehensive-review:adversarial-general` | opus | opus |
 | issue-linker | `comprehensive-review:issue-linker` | haiku | haiku |
-| dependency-check | `skills/review/scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
+| dependency-check | `skills/comprehensive-review/scripts/run-cve-check.sh` (script, not agent) | n/a | n/a |
 
 **TIER=tiny model overrides** — when TIER=tiny was computed in Phase 0 step 7, apply these overrides on top of the model table. Overrides only apply at TIER=tiny; at TIER=small/medium the model table governs unchanged.
 
@@ -609,7 +609,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `LANGUAGE_PROFILES` | concatenated markdown context blocks | architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, silent-failure-hunter, code-reviewer, pr-test-analyzer | unset (agents use built-in language guidance) |
 | `PR_NARRATIVE` | full commit bodies + optional PR description body | pr-summarizer, code-reviewer, architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter | unset (agents work without author context) |
 | `SYMBOL_CONTEXT` | `<symbol-context>…</symbol-context>` XML block with cross-file definitions | architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, code-reviewer | unset (no cross-file definitions injected) |
-| `GOVERNANCE` | full text of `skills/review/GOVERNANCE.md` | all 7 custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer, adversarial-general, edge-case-hunter, blind-hunter) | unset (only when GOVERNANCE.md cannot be located; agents fall back to built-in framing) |
+| `GOVERNANCE` | full text of `skills/comprehensive-review/GOVERNANCE.md` | all 7 custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer, adversarial-general, edge-case-hunter, blind-hunter) | unset (only when GOVERNANCE.md cannot be located; agents fall back to built-in framing) |
 
 Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
 
@@ -747,13 +747,13 @@ Run after all Phase 1 agents are launched (they run in parallel; this runs in th
 **CVE / dependency vulnerability check** — run when `MANIFEST_FILES` is non-empty (skip only if `--summary-only` mode; run in all other modes including `--quick` and `--security-only`):
 
 ```bash
-# Resolve run-cve-check.sh from skills/review/scripts/ (primary location).
+# Resolve run-cve-check.sh from skills/comprehensive-review/scripts/ (primary location).
 CVE_SCRIPT=""
 for candidate in \
-  "${CLAUDE_PLUGIN_ROOT:-}/skills/review/scripts/run-cve-check.sh" \
-  "${CLAUDE_DIR:-}/skills/review/scripts/run-cve-check.sh" \
-  "$HOME/.claude/skills/review/scripts/run-cve-check.sh" \
-  "$HOME/.claude/plugins/marketplaces/tag1consulting/plugins/comprehensive-review/skills/review/scripts/run-cve-check.sh"; do
+  "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts/run-cve-check.sh" \
+  "${CLAUDE_DIR:-}/skills/comprehensive-review/scripts/run-cve-check.sh" \
+  "$HOME/.claude/skills/comprehensive-review/scripts/run-cve-check.sh" \
+  "$HOME/.claude/plugins/marketplaces/tag1consulting/plugins/comprehensive-review/skills/comprehensive-review/scripts/run-cve-check.sh"; do
   [[ -n "$candidate" && -x "$candidate" ]] && { CVE_SCRIPT="$candidate"; break; }
 done
 
@@ -766,28 +766,28 @@ if [[ -n "$CVE_SCRIPT" ]]; then
     CVE_CHECK_FAILED=true
   }
 else
-  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/skills/review/scripts, \$CLAUDE_DIR/skills/review/scripts, ~/.claude/skills/review/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting'." >&2
+  echo "WARNING: run-cve-check.sh not found. Tried: \$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts, \$CLAUDE_DIR/skills/comprehensive-review/scripts, ~/.claude/skills/comprehensive-review/scripts, and the marketplace install path. CVE check skipped. Install via '/plugins install comprehensive-review@tag1consulting'." >&2
   CVE_CHECK_FAILED=true
 fi
 ```
 
-Path resolution order: `$CLAUDE_PLUGIN_ROOT` (set by the plugin harness when the skill runs as an installed plugin) → `$CLAUDE_PLUGIN_ROOT/skills/review/scripts/` → `$CLAUDE_DIR` → `$HOME/.claude` → known marketplace install path. First executable match wins. The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency via a single `/v1/querybatch` POST (not one call per package), and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`. Each finding text includes the CVSS score (e.g., `[CVSS 9.8]`) or version prefix (e.g., `[CVSS:4.0]`) when the score cannot be computed. CVSS v4.0 and v2 vectors map to High conservatively rather than silently defaulting to Medium.
+Path resolution order: `$CLAUDE_PLUGIN_ROOT` (set by the plugin harness when the skill runs as an installed plugin) → `$CLAUDE_PLUGIN_ROOT/skills/comprehensive-review/scripts/` → `$CLAUDE_DIR` → `$HOME/.claude` → known marketplace install path. First executable match wins. The script reads the manifest file list from stdin, queries OSV.dev for each declared dependency via a single `/v1/querybatch` POST (not one call per package), and emits a JSON array of `{ severity, agent, file, line, finding, remediation }` tuples — the same structure as Phase 2 agent findings — with `agent: "dependency-check"`. Each finding text includes the CVSS score (e.g., `[CVSS 9.8]`) or version prefix (e.g., `[CVSS:4.0]`) when the score cannot be computed. CVSS v4.0 and v2 vectors map to High conservatively rather than silently defaulting to Medium.
 
 - Capture `CVE_JSON` from stdout; on any non-zero exit, set to `[]` and emit a warning to stderr.
 - Network failures are non-blocking: the script returns `[]` and logs to stderr.
 - `--no-post`/`--local` does **not** skip the CVE check; it only gates posting.
 
-**Static analyzers** — run in parallel alongside the CVE check (background subshells) when the relevant binary is installed and the diff contains matching files. Each script lives in `skills/review/scripts/`, reads the changed-file list from stdin, and emits `json-findings` JSON with a stamped `source` field. Absence of a binary is silent — analyzers are opportunistic. Skip all static analyzers in `--summary-only` mode.
+**Static analyzers** — run in parallel alongside the CVE check (background subshells) when the relevant binary is installed and the diff contains matching files. Each script lives in `skills/comprehensive-review/scripts/`, reads the changed-file list from stdin, and emits `json-findings` JSON with a stamped `source` field. Absence of a binary is silent — analyzers are opportunistic. Skip all static analyzers in `--summary-only` mode.
 
 Detect script root (same priority chain as CVE script):
 ```bash
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/review/scripts"
+SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/scripts"
 # Fallback for installs where $CLAUDE_PLUGIN_ROOT is unset (any version slug under tag1consulting)
 if [[ ! -d "$SCRIPTS_DIR" ]]; then
-  _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/review/scripts 2>/dev/null | head -1)
+  _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/scripts 2>/dev/null | head -1)
   [[ -n "$_cr_fallback" ]] && SCRIPTS_DIR="$_cr_fallback"
 fi
-[[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/skills/review/scripts"
+[[ ! -d "$SCRIPTS_DIR" ]] && SCRIPTS_DIR="$HOME/.claude/skills/comprehensive-review/scripts"
 ```
 
 Run in background via temp files (background subshell assignments don't propagate to the parent shell):
@@ -909,7 +909,7 @@ Merge all extracted findings plus CVE_JSON and static analyzer JSON (SHELLCHECK_
 
 **Step 2b — Severity normalization:**
 
-Apply the mapping table from `skills/review/SEVERITY.md`:
+Apply the mapping table from `skills/comprehensive-review/SEVERITY.md`:
 - `code-reviewer` uses confidence scores (not labels); `pr-test-analyzer` uses gap scores. See SEVERITY.md for numeric ranges and external-agent confidence mapping.
 - `dependency-check` with unparseable CVSS vectors (v4.0, v2, or missing) maps conservatively to High.
 - For external agents without a confidence field, assign a default confidence per SEVERITY.md (silent-failure-hunter and comment-analyzer → 80; code-reviewer → pass through its own confidence).

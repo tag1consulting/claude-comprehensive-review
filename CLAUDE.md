@@ -73,7 +73,7 @@ To reduce duplicate analysis and wasted tokens, each agent has explicit scope bo
 
 ### Governance directives
 
-The skill applies a single shared set of governance directives to every custom agent it spawns. The directives are stored in `skills/review/GOVERNANCE.md` and inlined into each agent's task description by Phase 1 (Phase 0 step 9 loads the file once into `GOVERNANCE_BLOCK`).
+The skill applies a single shared set of governance directives to every custom agent it spawns. The directives are stored in `skills/comprehensive-review/GOVERNANCE.md` and inlined into each agent's task description by Phase 1 (Phase 0 step 9 loads the file once into `GOVERNANCE_BLOCK`).
 
 What `GOVERNANCE.md` covers:
 - **Priority and harm:** First Law framing — findings that risk user harm (data loss, security exposure, breaking shared systems) are top priority. Surface adjacent harms even if outside strict scope.
@@ -188,38 +188,38 @@ Plugin versions use semver without the `v` prefix (e.g., `1.0.0`). Git tags use 
 
 ```
 .claude-plugin/plugin.json                                   ← plugin manifest (name, version, author, keywords)
-skills/review/SKILL.md                         ← orchestrator: phases 0–5, all workflow logic
-skills/review/HELP.md                          ← usage reference (not currently surfaced by a skill; see README)
+skills/comprehensive-review/SKILL.md                         ← orchestrator: phases 0–5, all workflow logic
+skills/comprehensive-review/HELP.md                          ← usage reference (not currently surfaced by a skill; see README)
 skills/comprehensive-review-help/SKILL.md                    ← placeholder skill (help display not yet implemented)
-skills/review/SEVERITY.md                      ← severity normalization + confidence scale
-skills/review/GOVERNANCE.md                    ← shared governance directives inlined into every custom agent's task description
-skills/review/suppressions.json                ← global suppression rules (trimmed per-run by verify checks)
-skills/review/language-profiles/go.md          ← Go-specific review context (injected per detected language)
-skills/review/language-profiles/python.md      ← Python-specific review context
-skills/review/language-profiles/typescript.md  ← TypeScript/JavaScript-specific review context
-skills/review/language-profiles/javascript.md  ← JavaScript-specific review context
-skills/review/language-profiles/php.md         ← PHP-specific review context (includes Drupal patterns)
-skills/review/language-profiles/ruby.md        ← Ruby-specific review context
-skills/review/language-profiles/rust.md        ← Rust-specific review context
-skills/review/language-profiles/java.md        ← Java-specific review context
-skills/review/language-profiles/c++.md         ← C++-specific review context
-skills/review/language-profiles/shell.md       ← Shell/Bash-specific review context
-skills/review/language-profiles/csharp.md      ← C#-specific review context
-skills/review/language-profiles/kotlin.md      ← Kotlin-specific review context
-skills/review/language-profiles/swift.md       ← Swift-specific review context
-skills/review/language-profiles/scala.md       ← Scala-specific review context
-skills/review/language-profiles/lua.md         ← Lua-specific review context
-skills/review/language-profiles/perl.md        ← Perl-specific review context
-skills/review/language-profiles/sql.md         ← SQL-specific review context
-skills/review/language-profiles/terraform.md   ← Terraform-specific review context
-skills/review/language-profiles/yaml.md        ← YAML-specific review context
-skills/review/scripts/run-cve-check.sh         ← deterministic CVE check via OSV.dev (Phase 1b)
-skills/review/scripts/run-shellcheck.sh        ← ShellCheck static analysis (optional; Phase 1b)
-skills/review/scripts/run-semgrep.sh           ← Semgrep SAST analysis (optional; Phase 1b)
-skills/review/scripts/run-trufflehog.sh        ← TruffleHog secret scanning (optional; Phase 1b)
-skills/review/scripts/run-ruff.sh              ← Ruff Python linting (optional; Phase 1b)
-skills/review/scripts/run-golangci-lint.sh     ← golangci-lint Go analysis (optional; Phase 1b)
-skills/review/scripts/run-checkov.sh           ← checkov IaC security scanning (optional; Phase 1b)
+skills/comprehensive-review/SEVERITY.md                      ← severity normalization + confidence scale
+skills/comprehensive-review/GOVERNANCE.md                    ← shared governance directives inlined into every custom agent's task description
+skills/comprehensive-review/suppressions.json                ← global suppression rules (trimmed per-run by verify checks)
+skills/comprehensive-review/language-profiles/go.md          ← Go-specific review context (injected per detected language)
+skills/comprehensive-review/language-profiles/python.md      ← Python-specific review context
+skills/comprehensive-review/language-profiles/typescript.md  ← TypeScript/JavaScript-specific review context
+skills/comprehensive-review/language-profiles/javascript.md  ← JavaScript-specific review context
+skills/comprehensive-review/language-profiles/php.md         ← PHP-specific review context (includes Drupal patterns)
+skills/comprehensive-review/language-profiles/ruby.md        ← Ruby-specific review context
+skills/comprehensive-review/language-profiles/rust.md        ← Rust-specific review context
+skills/comprehensive-review/language-profiles/java.md        ← Java-specific review context
+skills/comprehensive-review/language-profiles/c++.md         ← C++-specific review context
+skills/comprehensive-review/language-profiles/shell.md       ← Shell/Bash-specific review context
+skills/comprehensive-review/language-profiles/csharp.md      ← C#-specific review context
+skills/comprehensive-review/language-profiles/kotlin.md      ← Kotlin-specific review context
+skills/comprehensive-review/language-profiles/swift.md       ← Swift-specific review context
+skills/comprehensive-review/language-profiles/scala.md       ← Scala-specific review context
+skills/comprehensive-review/language-profiles/lua.md         ← Lua-specific review context
+skills/comprehensive-review/language-profiles/perl.md        ← Perl-specific review context
+skills/comprehensive-review/language-profiles/sql.md         ← SQL-specific review context
+skills/comprehensive-review/language-profiles/terraform.md   ← Terraform-specific review context
+skills/comprehensive-review/language-profiles/yaml.md        ← YAML-specific review context
+skills/comprehensive-review/scripts/run-cve-check.sh         ← deterministic CVE check via OSV.dev (Phase 1b)
+skills/comprehensive-review/scripts/run-shellcheck.sh        ← ShellCheck static analysis (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-semgrep.sh           ← Semgrep SAST analysis (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-trufflehog.sh        ← TruffleHog secret scanning (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-ruff.sh              ← Ruff Python linting (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-golangci-lint.sh     ← golangci-lint Go analysis (optional; Phase 1b)
+skills/comprehensive-review/scripts/run-checkov.sh           ← checkov IaC security scanning (optional; Phase 1b)
 agents/pr-summarizer.md                                      ← Block A generation
 agents/issue-linker.md                                       ← issue cross-referencing (GitHub only; returns NONE for other providers)
 agents/security-reviewer.md                                  ← security analysis
@@ -242,12 +242,12 @@ agents/adversarial-general.md                                ← holistic comple
 - **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
 - When modifying provider-specific behavior, update the Provider Operations Reference block, all three provider branches (github/gitlab/bitbucket) within Phases 0, 4, and 4b, and the provider support matrix in README.md.
 - **BMAD attribution**: `blind-hunter`, `edge-case-hunter`, and `adversarial-general` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in all three agent files and in README.md. Do not remove attribution when editing these agents.
-- **`skills/review/scripts/run-cve-check.sh`** implements the CVE check invoked in Phase 1b. CVSS parsing, OSV schema handling, and severity mapping all live in this script. If the OSV API response shape or CVSS vector format changes, update this file. The `OSV_MOCK_FILE` env var is for offline testing only; never set it in production.
-- **Language profiles** live in `skills/review/language-profiles/`. To add a new language: create `<lang>.md` following the structure of existing profiles (Do-NOT-Flag idioms, common bugs, language-specific security, trust boundaries, idiomatic patterns). The filename (lowercased) must match the extension-based language detection in SKILL.md Phase 0. Do not put language guidance in agent prompts directly — use language profiles instead.
-- **Suppressions** live in `skills/review/suppressions.json`. Each rule has `id`, `reason`, and `match` (with `file` and/or `pattern` fields). Rules with a `verify` field are verify-gated: the skill calls a registry API to confirm the version exists before suppressing. Supported `verify` ecosystems: `github-release`, `npm`, `pypi`, `go-module`, `cargo`, `docker-hub`, `ruby-org`. Consumers can override via `.claude/comprehensive-review/suppressions.json` in their repo (merged with `jq -s 'add'`). Do not add rules specific to a single project into the global suppressions file.
-- **Static analyzers** in `skills/review/scripts/run-*.sh` are opportunistic — they skip silently if the binary is not installed. Each script reads changed file paths from stdin and emits a `json-findings` JSON array with a stamped `source` field. When adding a new analyzer script, follow the pattern of existing scripts. Add an `OSV_MOCK_FILE`-style mock env var for offline testing.
+- **`skills/comprehensive-review/scripts/run-cve-check.sh`** implements the CVE check invoked in Phase 1b. CVSS parsing, OSV schema handling, and severity mapping all live in this script. If the OSV API response shape or CVSS vector format changes, update this file. The `OSV_MOCK_FILE` env var is for offline testing only; never set it in production.
+- **Language profiles** live in `skills/comprehensive-review/language-profiles/`. To add a new language: create `<lang>.md` following the structure of existing profiles (Do-NOT-Flag idioms, common bugs, language-specific security, trust boundaries, idiomatic patterns). The filename (lowercased) must match the extension-based language detection in SKILL.md Phase 0. Do not put language guidance in agent prompts directly — use language profiles instead.
+- **Suppressions** live in `skills/comprehensive-review/suppressions.json`. Each rule has `id`, `reason`, and `match` (with `file` and/or `pattern` fields). Rules with a `verify` field are verify-gated: the skill calls a registry API to confirm the version exists before suppressing. Supported `verify` ecosystems: `github-release`, `npm`, `pypi`, `go-module`, `cargo`, `docker-hub`, `ruby-org`. Consumers can override via `.claude/comprehensive-review/suppressions.json` in their repo (merged with `jq -s 'add'`). Do not add rules specific to a single project into the global suppressions file.
+- **Static analyzers** in `skills/comprehensive-review/scripts/run-*.sh` are opportunistic — they skip silently if the binary is not installed. Each script reads changed file paths from stdin and emits a `json-findings` JSON array with a stamped `source` field. When adding a new analyzer script, follow the pattern of existing scripts. Add an `OSV_MOCK_FILE`-style mock env var for offline testing.
 - **`json-findings` contract**: All custom findings agents (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, adversarial-general) must emit a trailing ` ```json-findings ` block with fields: `severity` (Critical/High/Medium/Low), `confidence` (0–100), `file`, `line`, `finding`, `remediation`, `source`. The confidence field is required; findings below `--min-confidence` (default 75) are dropped by Phase 2 before suppression. When modifying an agent's output format, keep both the markdown section (for human readability) and the json-findings block (for the pipeline).
 - **adversarial-general** scope boundary: it covers completeness, operational readiness, documentation debt, and deployment/rollback concerns. It must NOT duplicate what specialist agents cover. If you add a new specialist domain, update adversarial-general's scope boundary section in its agent file to explicitly exclude the new domain.
-- **`skills/review/GOVERNANCE.md`** is the shared governance directives file inlined into every custom agent's task description by Phase 1 (loaded once into `GOVERNANCE_BLOCK` in Phase 0 step 9). Edit this file — not individual agent prompts — when adding or changing a directive that should apply to all agents. Keep it concise; every byte is paid per-agent-spawn × 7 agents on every full review. Per-agent emphasis (e.g., architecture-reviewer's "scope creep" lens) belongs in the agent file. The blind-hunter exception note is hardcoded in `SKILL.md` adjacent to the blind-hunter spawn entry.
+- **`skills/comprehensive-review/GOVERNANCE.md`** is the shared governance directives file inlined into every custom agent's task description by Phase 1 (loaded once into `GOVERNANCE_BLOCK` in Phase 0 step 9). Edit this file — not individual agent prompts — when adding or changing a directive that should apply to all agents. Keep it concise; every byte is paid per-agent-spawn × 7 agents on every full review. Per-agent emphasis (e.g., architecture-reviewer's "scope creep" lens) belongs in the agent file. The blind-hunter exception note is hardcoded in `SKILL.md` adjacent to the blind-hunter spawn entry.
 - **Orchestrator governance** (`SKILL.md` "Orchestrator Governance" section near the top): rules that govern the orchestrator's own actions (external comms gated by explicit flags, `--create-pr` refused from default branch, mandatory user-confirmation prompts before posting). Edit here when changing orchestrator-side behavior; do not duplicate these rules into `GOVERNANCE.md` (which is for spawned agents).
 - **Secret redaction** (Phase 2 step 2f): hardcoded pattern list in `SKILL.md`. Defense-in-depth backstop for the agent-source redaction required by `GOVERNANCE.md`. Add new patterns by editing the `redact_secrets` function inline in `SKILL.md`. Keep patterns narrow to avoid mangling legitimate code.

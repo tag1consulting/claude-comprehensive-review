@@ -97,12 +97,12 @@ cp .claude-plugin/plugin.json "$PLUGIN_DIR/.claude-plugin/"
 
 # Skill
 mkdir -p "$PLUGIN_DIR/skills/comprehensive-review"
-cp skills/review/SKILL.md "$PLUGIN_DIR/skills/review/"
-cp skills/review/HELP.md "$PLUGIN_DIR/skills/review/"
-cp skills/review/PROVIDERS.md "$PLUGIN_DIR/skills/review/"
-cp skills/review/SEVERITY.md "$PLUGIN_DIR/skills/review/"
-cp skills/review/suppressions.json "$PLUGIN_DIR/skills/review/"
-cp -r skills/review/language-profiles "$PLUGIN_DIR/skills/review/"
+cp skills/comprehensive-review/SKILL.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/HELP.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/PROVIDERS.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/SEVERITY.md "$PLUGIN_DIR/skills/comprehensive-review/"
+cp skills/comprehensive-review/suppressions.json "$PLUGIN_DIR/skills/comprehensive-review/"
+cp -r skills/comprehensive-review/language-profiles "$PLUGIN_DIR/skills/comprehensive-review/"
 
 # Agents
 mkdir -p "$PLUGIN_DIR/agents"
@@ -115,10 +115,10 @@ cp agents/edge-case-hunter.md "$PLUGIN_DIR/agents/"
 cp agents/adversarial-general.md "$PLUGIN_DIR/agents/"
 
 # Scripts
-mkdir -p "$PLUGIN_DIR/skills/review/scripts"
-for s in skills/review/scripts/*.sh; do
-  cp "$s" "$PLUGIN_DIR/skills/review/scripts/"
-  chmod +x "$PLUGIN_DIR/skills/review/scripts/$(basename "$s")"
+mkdir -p "$PLUGIN_DIR/skills/comprehensive-review/scripts"
+for s in skills/comprehensive-review/scripts/*.sh; do
+  cp "$s" "$PLUGIN_DIR/skills/comprehensive-review/scripts/"
+  chmod +x "$PLUGIN_DIR/skills/comprehensive-review/scripts/$(basename "$s")"
 done
 ```
 
@@ -219,7 +219,7 @@ Run from any git repository, on the branch you want to review:
 
 ## Governance
 
-Every spawned agent receives a shared governance block (`skills/review/GOVERNANCE.md`) inlined into its task description. The block enforces:
+Every spawned agent receives a shared governance block (`skills/comprehensive-review/GOVERNANCE.md`) inlined into its task description. The block enforces:
 
 - **Harm prioritization** — findings that risk user harm (data loss, security exposure, breaking shared systems) are top priority; agents surface adjacent harms even if outside their strict scope.
 - **No self-preservation** — agents do not suppress findings or hide uncertainty to make output look cleaner. Uncertain findings are marked as such.
@@ -291,7 +291,7 @@ The skill ships per-language context profiles for 19 languages: Go, Python, Type
 
 **blind-hunter does not receive language profiles** — its zero-context constraint is preserved.
 
-To add a language profile, create `skills/review/language-profiles/<lang>.md` and add the language extension to the detection block in SKILL.md Phase 0.
+To add a language profile, create `skills/comprehensive-review/language-profiles/<lang>.md` and add the language extension to the detection block in SKILL.md Phase 0.
 
 ## Symbol context enrichment
 
@@ -306,7 +306,7 @@ Agents excluded: blind-hunter (zero-context constraint), pr-summarizer (does not
 
 ## Suppressions
 
-The skill ships a default suppressions file (`skills/review/suppressions.json`) and supports per-repo overrides at `.claude/comprehensive-review/suppressions.json`.
+The skill ships a default suppressions file (`skills/comprehensive-review/suppressions.json`) and supports per-repo overrides at `.claude/comprehensive-review/suppressions.json`.
 
 Each suppression rule has:
 - `id` — unique identifier
@@ -402,10 +402,10 @@ implementation detail of Claude Code and may change between versions).
 **Legacy install** (Option 2/3) — files copied directly:
 
 ```
-~/.claude/skills/review/SKILL.md
-~/.claude/skills/review/HELP.md
-~/.claude/skills/review/PROVIDERS.md
-~/.claude/skills/review/SEVERITY.md
+~/.claude/skills/comprehensive-review/SKILL.md
+~/.claude/skills/comprehensive-review/HELP.md
+~/.claude/skills/comprehensive-review/PROVIDERS.md
+~/.claude/skills/comprehensive-review/SEVERITY.md
 ~/.claude/agents/pr-summarizer.md
 ~/.claude/agents/issue-linker.md
 ~/.claude/agents/security-reviewer.md
