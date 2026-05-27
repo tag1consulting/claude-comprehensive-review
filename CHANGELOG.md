@@ -5,6 +5,98 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.10] - 2026-05-27
+
+### Changed
+
+- Removed all `--help` / `-h` flag handling from `SKILL.md`. Every implementation approach tried in v1.8.1–v1.8.9 proved unreliable (see note below). `HELP.md` remains as reference documentation accessible in the repo and README.
+- Replaced "CodeRabbit-style" wording with neutral language across `SKILL.md`, `HELP.md`, `README.md`, `plugin.json`, and `CLAUDE.md`.
+
+---
+
+## [1.8.9] - 2026-05-27
+
+### Fixed
+
+- Restored eager `!`-prefixed Pre-flight Context injection in `SKILL.md`. These commands run at skill load time before LLM invocation, injecting real repo/branch/diff data into context. The `!` prefix was accidentally removed during the v1.8.x `--help` refactoring, causing the LLM to treat `SKILL.md` as a document to render rather than a workflow to execute.
+- Restored imperative opening sentence ("Run a full PR/MR review…") that was lost in the same refactoring.
+
+---
+
+## [1.8.8] - 2026-05-27
+
+### Changed
+
+- Moved `--help` redirect instruction to the top of the `SKILL.md` H1 heading as a diagnostic test — restored the v1.6.0 instruct-stop pattern verbatim to determine whether failure was body-size dependent. Confirmed: the pattern fails at v1.8.x body size (~1,400 lines); it worked in v1.6.0 at ~200 lines.
+
+---
+
+## [1.8.7] - 2026-05-27
+
+### Added
+
+- Introduced a dedicated `comprehensive-review-help` sibling skill using `disable-model-invocation: true` to serve `--help` output without LLM involvement.
+
+### Changed
+
+- Replaced `--help` flag in the main skill with a redirect to `/comprehensive-review-help`.
+
+### Notes
+
+`disable-model-invocation: true` suppressed all output in Claude Code 2.1.152 — the skill ran silently with no output. This approach was abandoned; `comprehensive-review-help` remains as a placeholder stub.
+
+---
+
+## [1.8.6] - 2026-05-27
+
+### Fixed
+
+- Removed duplicate inline flag documentation from `SKILL.md` that gave the LLM fallback content to render when the `--help` injection block was present, causing flags to appear in output alongside or instead of `HELP.md` content.
+
+---
+
+## [1.8.5] - 2026-05-27
+
+### Fixed
+
+- Strengthened `--help` stop instruction to include sentinel markers (`===HELP-START===` / `===HELP-END===`) to give the LLM an unambiguous literal anchor for the help block boundaries.
+
+---
+
+## [1.8.4] - 2026-05-27
+
+### Changed
+
+- Replaced LLM-executed bash snippet for `--help` with dynamic context injection using the `!`-prefix syntax. The injection command guards on `$ARGUMENTS` so it emits nothing on normal runs. Rationale: injection runs at skill load time before the LLM sees the file, making it deterministic rather than LLM-discretionary.
+
+---
+
+## [1.8.3] - 2026-05-27
+
+### Fixed
+
+- Rewrote `--help` bash snippet as an explicit `Bash` tool call instruction to prevent the LLM from shortcutting to inline flag docs instead of running the command.
+
+---
+
+## [1.8.2] - 2026-05-27
+
+### Fixed
+
+- Added Phase 0 step to read and display `HELP.md` when `--help` is present, replacing the previous stub that had no implementation.
+
+---
+
+## [1.8.1] - 2026-05-27
+
+### Fixed
+
+- Deferred eager `!`-prefixed pre-flight shell commands (branch detection, diff stats) to after the `--help` check in Phase 0, preventing them from executing and dumping output before help text could be shown.
+
+> **Note on v1.8.1–v1.8.9:** All ten patch releases were attempts to implement a working `--help` flag. Each was tagged and pushed to the marketplace as a candidate, then superseded within the same session when testing revealed it didn't work. The root cause: the LLM receives the entire ~1,400-line `SKILL.md` as context; no stop instruction embedded within it reliably prevents the LLM from processing subsequent content at that body size. v1.8.10 accepts this constraint and removes the flag entirely. See the [v1.8.10 release notes](https://github.com/tag1consulting/claude-comprehensive-review/releases/tag/v1.8.10) for the full account.
+
+---
+
 ## [1.8.0] - 2026-05-26
 
 ### Added
