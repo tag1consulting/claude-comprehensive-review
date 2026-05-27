@@ -463,13 +463,19 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
      [[ -n "$_cr_fallback" && -r "$_cr_fallback" ]] && GOVERNANCE_FILE="$_cr_fallback"
    fi
 
+   # Invariant: GOVERNANCE_DEGRADED=true ⇔ GOVERNANCE_BLOCK is empty.
+   # We enforce this by treating an empty/unreadable file the same as a missing one,
+   # so downstream Phase 1 conditions can use either flag interchangeably without
+   # divergence in edge cases (zero-byte file, cat failure, etc.).
    GOVERNANCE_BLOCK=""
    GOVERNANCE_DEGRADED=false
    if [[ -n "$GOVERNANCE_FILE" ]]; then
-     GOVERNANCE_BLOCK=$(cat "$GOVERNANCE_FILE")
-   else
-     echo "WARNING: GOVERNANCE.md not found in any expected location; agents will run without inlined governance directives." >&2
+     GOVERNANCE_BLOCK=$(cat "$GOVERNANCE_FILE" 2>/dev/null)
+   fi
+   if [[ -z "$GOVERNANCE_BLOCK" ]]; then
+     echo "WARNING: GOVERNANCE.md not found or empty; agents will run without inlined governance directives." >&2
      GOVERNANCE_DEGRADED=true
+     GOVERNANCE_BLOCK=""  # explicitly clear in case cat partially succeeded then errored
    fi
    ```
 
@@ -671,7 +677,7 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
   If SYMBOL_CONTEXT is non-empty, include it under `SYMBOL_CONTEXT:`.
   **TIER=tiny:** skip unconditionally. `--quick`: skip.
 - **blind-hunter** (subagent_type: `comprehensive-review:blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff and the GOVERNANCE_BLOCK. No manifest, no project context, no commit log, no PR_NARRATIVE, no SYMBOL_CONTEXT.** GOVERNANCE_BLOCK is behavioral rules, not project context — it does not breach the constraint.
-  If GOVERNANCE_BLOCK is non-empty (i.e., `GOVERNANCE_DEGRADED=false`), prepend it under `GOVERNANCE:`, then immediately after the GOVERNANCE block append a single line: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.` If `GOVERNANCE_DEGRADED=true`, omit BOTH the GOVERNANCE block AND the BLIND_HUNTER_NOTE — the note would reference a directive the agent never received.
+  If `GOVERNANCE_DEGRADED=false` AND `GOVERNANCE_BLOCK` is non-empty, prepend it under `GOVERNANCE:`, then immediately after the GOVERNANCE block append a single line: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.` If `GOVERNANCE_DEGRADED=true`, omit BOTH the GOVERNANCE block AND the BLIND_HUNTER_NOTE unconditionally — the note would reference a directive the agent never received. (Per the Phase 0 step 9 invariant, these two cases are exhaustive: `GOVERNANCE_DEGRADED=true` ⇔ `GOVERNANCE_BLOCK` empty.)
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
