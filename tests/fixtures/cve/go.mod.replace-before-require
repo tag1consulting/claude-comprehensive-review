@@ -1,0 +1,10 @@
+module example.com/app
+
+go 1.22
+
+replace example.com/original => example.com/fork v1.2.3
+
+require (
+	example.com/original v1.0.0
+	example.com/safe v2.0.0
+)

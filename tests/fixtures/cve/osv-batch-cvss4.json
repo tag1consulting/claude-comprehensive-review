@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "vulns": [
+        {
+          "id": "GHSA-yyyy-cvss4",
+          "summary": "Vulnerability scored only with a CVSS v4.0 vector",
+          "aliases": ["CVE-2025-88888"],
+          "severity": [
+            { "type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N" }
+          ],
+          "affected": [
+            {
+              "package": { "name": "example.com/fork", "ecosystem": "Go" },
+              "ranges": [
+                { "type": "SEMVER", "events": [ { "introduced": "0" }, { "fixed": "1.2.4" } ] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {}
+  ]
+}
