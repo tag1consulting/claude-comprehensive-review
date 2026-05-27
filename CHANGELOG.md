@@ -9,13 +9,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- New `GOVERNANCE.md` directive: **Cite evidence in the finding.** Findings must reference the specific code that exhibits the problem (snippet, symbol, or pattern at `file:line`) — the json-findings location fields are not the citation. Reduces hallucinated structural findings.
+- New `GOVERNANCE.md` directive: **Cite evidence in the finding.** Findings must reference the specific code that exhibits the problem (snippet, symbol, or pattern at `file:line`) — the json-findings location fields are not the citation. Intended to reduce hallucinated structural findings; effectiveness has not been measured.
 - New `GOVERNANCE.md` directive: **Refuse incoherent input.** If a diff contradicts its own commit message or claims to fix something it doesn't touch, agents surface that as a top-level finding rather than reviewing line-by-line as if coherent.
 - New Orchestrator Governance directive in `SKILL.md`: **Cite the observed result, not the action taken.** Phase 4/4b/5 success claims reference the provider-returned URL, ID, or status — not just the fact that an API call was attempted.
+- Phase 4/4b/5 capture-variable wiring to back the new directive with mechanism rather than text. Phase 4 PR/MR creation captures provider stdout/exit into `CREATED_PR_URL`/`CREATED_PR_ERROR`; Phase 4 comment posting captures `POSTED_COMMENT_REF`/`POSTED_COMMENT_ERROR`; Phase 4b inline review posting captures `POSTED_REVIEW_URL`/`POSTED_REVIEW_ID`/`INLINE_POSTED_COUNT`/`INLINE_FAILED_COUNT`/`POSTED_REVIEW_ERROR`; Phase 5 worktree cleanup verifies removal via `[[ -e "$WORKTREE_PATH" ]]` and sets `WORKTREE_REMOVED`; Phase 5 claude-mem POST captures `MEM_HTTP_STATUS` via `curl -w '%{http_code}'` and only reports success on 2xx. Phase 5 terminal output cites these captured values rather than asserting success from the fact that an API call was invoked. Failure paths are reported plainly when capture variables are empty.
+- BLIND_HUNTER_NOTE extended to scope the new "Refuse incoherent input" directive to incoherence visible within the diff itself (e.g., a hunk that calls a symbol the same diff just deleted), preserving blind-hunter's zero-context constraint.
 
 ### Changed
 
 - Aligned plugin governance with refactored `~/.claude/CLAUDE.md` (Outcome Verification, Disagreement & Alternatives sections). Items deemed out of scope for a per-run review tool (Session Self-Audit, Active Guardrails, Checkpoint Triggers list, Pre-Claim/Pre-Action Check) were intentionally not imported.
+- Updated `CLAUDE.md` Governance directives summary to enumerate the two new agent-side directives under the Honesty bullet and to reflect the extended BLIND_HUNTER_NOTE scope.
 
 ---
 

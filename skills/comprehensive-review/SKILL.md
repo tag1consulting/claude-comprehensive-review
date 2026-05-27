@@ -614,7 +614,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
 
-**GOVERNANCE injection:** when `GOVERNANCE_BLOCK` is non-empty (Phase 0 step 9), prepend it to every custom agent's task description under the heading `GOVERNANCE:` before any other directives. **blind-hunter override:** for blind-hunter only, append a single line after the `GOVERNANCE:` block: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.`
+**GOVERNANCE injection:** when `GOVERNANCE_BLOCK` is non-empty (Phase 0 step 9), prepend it to every custom agent's task description under the heading `GOVERNANCE:` before any other directives. **blind-hunter override:** for blind-hunter only, append a single line after the `GOVERNANCE:` block: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The "Refuse incoherent input" directive applies only to incoherence visible within the diff itself (e.g., a hunk that adds a call to a symbol the same diff just deleted, or two hunks in the same diff that contradict each other) — do NOT consult commit messages, branch history, PR descriptions, or any other context to assess coherence. The zero-context constraint takes precedence over repo-wide verification and over any directive that would require external context.`
 
 **Always-run agents** (unless `--security-only` or `--summary-only` limits scope):
 
@@ -656,7 +656,7 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
   If SYMBOL_CONTEXT is non-empty, include it under `SYMBOL_CONTEXT:`.
   **TIER=tiny:** skip unconditionally. `--quick`: skip.
 - **blind-hunter** (subagent_type: `comprehensive-review:blind-hunter`, model: sonnet if depth=normal or **opus** if depth=deep) — **ZERO CONTEXT CONSTRAINT: pass ONLY the diff and the GOVERNANCE_BLOCK. No manifest, no project context, no commit log, no PR_NARRATIVE, no SYMBOL_CONTEXT.** GOVERNANCE_BLOCK is behavioral rules, not project context — it does not breach the constraint.
-  If `GOVERNANCE_DEGRADED=false` AND `GOVERNANCE_BLOCK` is non-empty, prepend it under `GOVERNANCE:`, then immediately after the GOVERNANCE block append a single line: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The zero-context constraint takes precedence over repo-wide verification.` If `GOVERNANCE_DEGRADED=true`, omit BOTH the GOVERNANCE block AND the BLIND_HUNTER_NOTE unconditionally — the note would reference a directive the agent never received. (Per the Phase 0 step 9 invariant, these two cases are exhaustive: `GOVERNANCE_DEGRADED=true` ⇔ `GOVERNANCE_BLOCK` empty.)
+  If `GOVERNANCE_DEGRADED=false` AND `GOVERNANCE_BLOCK` is non-empty, prepend it under `GOVERNANCE:`, then immediately after the GOVERNANCE block append a single line: `BLIND_HUNTER_NOTE: The "Verification before naming" directive in GOVERNANCE.md means verify within the diff or file list you were given — do NOT Grep or Read outside it. The "Refuse incoherent input" directive applies only to incoherence visible within the diff itself (e.g., a hunk that adds a call to a symbol the same diff just deleted, or two hunks in the same diff that contradict each other) — do NOT consult commit messages, branch history, PR descriptions, or any other context to assess coherence. The zero-context constraint takes precedence over repo-wide verification and over any directive that would require external context.` If `GOVERNANCE_DEGRADED=true`, omit BOTH the GOVERNANCE block AND the BLIND_HUNTER_NOTE unconditionally — the note would reference a directive the agent never received. (Per the Phase 0 step 9 invariant, these two cases are exhaustive: `GOVERNANCE_DEGRADED=true` ⇔ `GOVERNANCE_BLOCK` empty.)
   Small diffs: full diff inline only.
   Medium/large (non-`--pr`): base branch name + plain file list from `git diff --name-only` (NOT the categorized manifest). Agent reads files via `git diff <base>...HEAD -- <file>`.
   Medium/large (`--pr` mode): `BLIND_DIFF_FILE=$(mktemp /tmp/cr-diff-blind-XXXXXXXX.txt) && git -C "$WORKTREE_PATH" diff <base>...HEAD > "$BLIND_DIFF_FILE"`, passes `$BLIND_DIFF_FILE` inline (agent has no worktree knowledge). Track for Phase 5 cleanup.
@@ -1220,7 +1220,21 @@ fi
 
 Once the pre-check passes: Before running the create operation, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
 
+**Capture the result.** Run the **OP: Create PR/MR** command via the Bash tool and capture stdout, stderr, and exit code into a single buffer (`2>&1`). Extract the provider-returned PR/MR URL into `CREATED_PR_URL`:
+- **github:** `gh pr create` prints the PR URL to stdout on success. `CREATE_OUT=$(gh pr create --title "<title>" --base "<base>" --body "<body>" 2>&1); CREATE_RC=$?`. If `CREATE_RC=0`, set `CREATED_PR_URL=$(echo "$CREATE_OUT" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. If `CREATE_RC≠0` or the URL extraction comes up empty, set `CREATED_PR_URL=""` and `CREATED_PR_ERROR="$CREATE_OUT"`.
+- **gitlab:** `glab mr create --title "<title>" --target-branch "<base>" --description "<body>" --no-editor` prints the MR URL to stdout. Same capture pattern.
+- **bitbucket:** the `curl -sf -X POST` response is JSON. `CREATED_PR_URL=$(echo "$CREATE_OUT" | jq -r '.links.html.href // empty' 2>/dev/null)`. Treat an empty result as failure.
+
+If `CREATED_PR_URL` is empty after the command runs, do NOT report success in Phase 5. Report the failure plainly using `CREATED_PR_ERROR` (or "no URL returned by ${PROVIDER} API" if stderr was empty). Do not proceed to Phase 4b inline posting in this case — without a created PR/MR there is no target.
+
 **Post summary comment** (POST_SUMMARY): Before posting, display the full comment body to the user and ask: "Post this comment to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Post comment on PR/MR** with Block A as body. Use `## ${PR_TERM} Review Summary (Updated)` heading if summary already exists.
+
+**Capture the result.** Run the **OP: Post comment on PR/MR** command via the Bash tool with combined stdout/stderr capture (`2>&1`). Capture the provider-returned comment URL or identifier into `POSTED_COMMENT_REF`:
+- **github:** `COMMENT_OUT=$(gh pr comment <N> --body "<body>" 2>&1); COMMENT_RC=$?`. On `COMMENT_RC=0`: `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. If empty, treat as failure.
+- **gitlab:** `glab mr comment <N> --message "<body>"` prints a confirmation including the note URL; capture with the same `grep -Eo 'https://[^[:space:]]+'` pattern.
+- **bitbucket:** the JSON response from `curl -sf -X POST ...`; `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | jq -r '.links.html.href // .id // empty' 2>/dev/null)`. Treat an empty result as failure.
+
+On non-zero exit or empty `POSTED_COMMENT_REF`: set `POSTED_COMMENT_REF=""` and `POSTED_COMMENT_ERROR="$COMMENT_OUT"`. Do NOT report a successful post in Phase 5; report the failure using `POSTED_COMMENT_ERROR`.
 
 ### Phase 4b: Post Findings as Inline Review
 
@@ -1264,18 +1278,30 @@ Once the pre-check passes: Before running the create operation, display the prop
 
 7. **Confirm with user before submitting:** Display the review event type (`COMMENT` or `REQUEST_CHANGES`), the full review body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Post this review to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again.
 
-8. Once confirmed: **Submit** using **OP: Post inline review**:
-   - GitHub: via `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file>`. If this fails, report the error and skip inline posting.
-   - GitLab: post review body as MR comment, then post each inline comment as a discussion thread via `glab api`. For each discussion thread, if `glab api` returns a non-zero exit code, log "Warning: Failed to post inline comment for <file>:<line> — <error>." Tally failed posts for Phase 5 reporting.
-   - Bitbucket: N/A (handled in step 4).
+8. Once confirmed: **Submit** using **OP: Post inline review**, capturing provider-returned identifiers into named variables for Phase 5 citation. Initialize `POSTED_REVIEW_ID=""`, `POSTED_REVIEW_URL=""`, `INLINE_POSTED_COUNT=0`, `INLINE_FAILED_COUNT=0` before the call.
+   - **GitHub:** `REVIEW_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file> 2>&1)`. On exit 0: `POSTED_REVIEW_ID=$(echo "$REVIEW_RESPONSE" | jq -r '.id // empty')` and `POSTED_REVIEW_URL=$(echo "$REVIEW_RESPONSE" | jq -r '.html_url // empty')`. If both are empty after a successful exit, treat as a partial failure — log "Warning: GitHub review API returned 200 but no review ID/URL — cannot confirm posting." On non-zero exit: capture stderr into `POSTED_REVIEW_ERROR`, leave both ID/URL empty, and skip inline posting (do not retry).
+     `INLINE_POSTED_COUNT` is the length of the `comments` array in the request when the review POST succeeded with a non-empty `POSTED_REVIEW_ID`; otherwise 0.
+   - **GitLab:** First post the review body as an MR comment via `BODY_RESPONSE=$(glab mr comment <N> --message "<review body>" 2>&1)`; capture into `POSTED_REVIEW_URL` (the comment URL line glab prints). Then, for each inline comment, run `THREAD_RESPONSE=$(glab api -X POST ... 2>&1)`. On exit 0 AND `echo "$THREAD_RESPONSE" | jq -r '.id // empty'` non-empty: increment `INLINE_POSTED_COUNT`. On non-zero exit OR empty `.id`: increment `INLINE_FAILED_COUNT` and log "Warning: Failed to post inline comment for <file>:<line> — <error or 'no thread ID returned'>."
+   - **Bitbucket:** N/A (handled in step 4 — that path uses **OP: Post comment on PR/MR** and must capture into `POSTED_COMMENT_REF` per the Phase 4 pattern above).
 
-9. Report for Phase 5: "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
-   GitLab partial failure: "Warning: <M> of <N> inline comments failed to post on GitLab ${PR_TERM} #<N>."
-   Bitbucket variant: "Findings posted as comment on ${PR_TERM} #<N> (inline reviews not supported on Bitbucket)"
+9. **Cite the captured result for Phase 5.** Build the Phase 5 status string from the captured variables, not from the fact that the command was invoked:
+   - If `POSTED_REVIEW_URL` (GitHub) or `POSTED_REVIEW_URL` (GitLab review-body comment URL) is non-empty: report "Review posted to ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline, <BODY_FINDINGS_COUNT> in body — <POSTED_REVIEW_URL>".
+   - If both are empty after the call: report "Failed to post review to ${PR_TERM} #<N>: <POSTED_REVIEW_ERROR or 'no identifier returned by ${PROVIDER} API'>". Do NOT report success.
+   - GitLab partial failure (`INLINE_FAILED_COUNT > 0`): append "Warning: <INLINE_FAILED_COUNT> of <INLINE_POSTED_COUNT + INLINE_FAILED_COUNT> inline comments failed to post on GitLab ${PR_TERM} #<N>."
+   - Bitbucket variant: report "Findings posted as comment on ${PR_TERM} #<N> (inline reviews not supported on Bitbucket) — <POSTED_COMMENT_REF>" if `POSTED_COMMENT_REF` is non-empty; otherwise report failure.
 
 ### Phase 5: Final Output
 
-**Cleanup:** `rm -f` all temp diff/slice files, including the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`.
+**Cleanup:** `rm -f` all temp diff/slice files, including the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`, then verify removal:
+```bash
+if [[ -n "$WORKTREE_PATH" && -e "$WORKTREE_PATH" ]]; then
+  WORKTREE_REMOVED=false
+  WORKTREE_CLEANUP_ERROR="path still exists at ${WORKTREE_PATH}"
+else
+  WORKTREE_REMOVED=true
+fi
+```
+The terminal report below cites `WORKTREE_REMOVED` rather than asserting cleanup succeeded from the fact that `git worktree remove` was run.
 
 **Store review summary to claude-mem** (skip if MEM_AVAILABLE is false, or mode is `--summary-only` or `--security-only`):
 
@@ -1284,17 +1310,24 @@ Compose a compact summary and POST it to the worker API. The summary text should
 Reviewed <REPO_SLUG> branch <BRANCH> against <BASE>. Mode: <full|quick|security-only|summary-only>. Files: <N> (<comma-separated categories e.g. Source, Tests, Config>). Findings: <N> Critical, <N> High, <N> Medium, <N> Low. Top findings: 1) [<sev>] [<agent>] <one-line description> in <file>:<line>. 2) ... 3) ... Agents run: <comma-separated list>. Failed: <list or none>. Commit range: <base_sha>..<head_sha>.
 ```
 
-Use `jq` to safely construct the JSON body, avoiding injection from special characters in branch names, slugs, or finding descriptions:
+Use `jq` to safely construct the JSON body, avoiding injection from special characters in branch names, slugs, or finding descriptions. Capture the HTTP status code and the response body so the Phase 5 terminal report can cite the observed result rather than the fact that `curl` was invoked:
 ```bash
 MEM_TITLE="Review: <REPO_SLUG> #<PR_NUMBER|branch_name> <YYYY-MM-DD>"
 MEM_BODY=$(jq -n --arg text "$MEM_SUMMARY" --arg title "$MEM_TITLE" --arg project "$REPO_SLUG" \
   '{text: $text, title: $title, project: $project}')
-curl -sf -X POST "http://127.0.0.1:${MEM_PORT}/api/memory/save" \
+MEM_RESPONSE_FILE=$(mktemp /tmp/cr-mem-response-XXXXXXXX.json)
+MEM_HTTP_STATUS=$(curl -s -o "$MEM_RESPONSE_FILE" -w '%{http_code}' \
+  -X POST "http://127.0.0.1:${MEM_PORT}/api/memory/save" \
   -H "Content-Type: application/json" \
-  -d "$MEM_BODY"
+  -d "$MEM_BODY" 2>/dev/null || echo "000")
+MEM_SAVED=false
+if [[ "$MEM_HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+  MEM_SAVED=true
+fi
+rm -f "$MEM_RESPONSE_FILE"
 ```
 
-If the POST fails: silently continue. If it succeeds: note "Review summary stored to claude-mem." in terminal output below.
+If `MEM_SAVED=true` (HTTP 2xx): note "Review summary stored to claude-mem (HTTP ${MEM_HTTP_STATUS})." in terminal output below. If `MEM_SAVED=false`: silently continue (do not surface the failure as an error — claude-mem is a best-effort optional integration), but do NOT print the success line. Never print "stored to claude-mem" without a verified 2xx status.
 
 **Write output file** (if `--output-file <path>` was passed): write Block A followed by Block B to the given path via the Write tool. Do this before displaying terminal output so the file exists even if terminal output is truncated by context limits.
 ```
@@ -1306,10 +1339,24 @@ If the POST fails: silently continue. If it succeeds: note "Review summary store
 ```
 Note in terminal: "Review written to <path>"
 
-**Display in terminal:**
-1. PR/MR created → "${PR_TERM} created: <URL>". No PR/MR + no `--create-pr` → "Tip: use --create-pr to create a ${PR_TERM_LONG}."
-2. Summary posted → "Summary comment posted to ${PR_TERM} #<N>"
-3. Review posted → "Review posted to ${PR_TERM} #<N>: <N> inline, <M> in body"
+**Display in terminal:** Cite the captured variables from Phase 4/4b/5, not the fact that the action was attempted. If a capture variable is empty, report failure plainly — never substitute a generic success string.
+1. PR/MR creation outcome:
+   - `CREATED_PR_URL` non-empty → "${PR_TERM} created: ${CREATED_PR_URL}".
+   - `--create-pr` was passed AND `CREATED_PR_URL` is empty → "${PR_TERM} creation FAILED: ${CREATED_PR_ERROR:-no URL returned by ${PROVIDER} API}".
+   - No `--create-pr` and no PR/MR exists → "Tip: use --create-pr to create a ${PR_TERM_LONG}."
+2. Summary post outcome:
+   - `POSTED_COMMENT_REF` non-empty → "Summary comment posted to ${PR_TERM} #<N>: ${POSTED_COMMENT_REF}".
+   - `--post-summary` was passed AND `POSTED_COMMENT_REF` is empty → "Summary post FAILED: ${POSTED_COMMENT_ERROR:-no identifier returned by ${PROVIDER} API}".
+3. Review post outcome:
+   - `POSTED_REVIEW_URL` non-empty → "Review posted to ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline, <BODY_FINDINGS_COUNT> in body — ${POSTED_REVIEW_URL}".
+   - `--post-findings` was passed AND `POSTED_REVIEW_URL` is empty AND Bitbucket POSTED_COMMENT_REF is empty → "Review post FAILED: ${POSTED_REVIEW_ERROR:-no identifier returned by ${PROVIDER} API}".
+   - GitLab partial failure → append "Warning: <INLINE_FAILED_COUNT> of <total> inline comments failed to post."
+3a. `--pr` mode worktree cleanup:
+   - `WORKTREE_REMOVED=true` → "Worktree at ${WORKTREE_PATH} removed."
+   - `WORKTREE_REMOVED=false` → "Worktree cleanup INCOMPLETE: ${WORKTREE_CLEANUP_ERROR}. Run 'git worktree remove ${WORKTREE_PATH} --force' manually."
+3b. claude-mem save outcome (only when MEM_AVAILABLE was true):
+   - `MEM_SAVED=true` → "Review summary stored to claude-mem (HTTP ${MEM_HTTP_STATUS})."
+   - `MEM_SAVED=false` → omit the line entirely (best-effort integration; do not report failure).
 4. Always display Block B (findings).
 5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ..."
 6. Report diff tier and Opus agent tool-call usage:
