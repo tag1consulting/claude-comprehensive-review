@@ -46,9 +46,11 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 
 ## Pre-flight Context
 
-- **Repository:** !`git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`
-- **Branch:** !`git branch --show-current 2>/dev/null`
-- **Branch context:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
+Run the following shell commands at the start of Phase 0 (after the `--help` check) to populate context:
+
+- **Repository:** `git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`
+- **Branch:** `git branch --show-current 2>/dev/null`
+- **Branch context:** `BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
 
 ## Orchestrator Governance
 
@@ -118,6 +120,8 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
        "Error: --create-pr and --no-post/--local are mutually exclusive." and stop.
      - If `--create-pr` and `--pr <N>` are both present, report
        "Error: --create-pr and --pr are mutually exclusive." and stop.
+
+1a. **Run Pre-flight Context commands** (see "Pre-flight Context" section above — run these now, after the `--help` check).
 
 1b. **Detect claude-mem availability** (skip if `--no-mem` was passed):
    - Read the worker port: `MEM_PORT=$(jq -r '.CLAUDE_MEM_WORKER_PORT // "37777"' ~/.claude-mem/settings.json 2>/dev/null || echo "37777")`
