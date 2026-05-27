@@ -104,20 +104,9 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 ### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
-   - If `--help` is present: locate and read `HELP.md` using this shell snippet, then display its contents and **stop immediately** — do not continue.
+   - If `--help` is present: **call the `Bash` tool immediately** with this exact command, output the result verbatim to the user, then **stop — do not execute any other steps**:
      ```bash
-     HELP_FILE=""
-     for candidate in \
-       "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/HELP.md" \
-       "${CLAUDE_DIR:-}/skills/comprehensive-review/HELP.md" \
-       "$HOME/.claude/skills/comprehensive-review/HELP.md"; do
-       [[ -n "$candidate" && -r "$candidate" ]] && { HELP_FILE="$candidate"; break; }
-     done
-     if [[ -z "$HELP_FILE" ]]; then
-       _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/HELP.md 2>/dev/null | sort -V -r | head -1)
-       [[ -n "$_cr_fallback" && -r "$_cr_fallback" ]] && HELP_FILE="$_cr_fallback"
-     fi
-     if [[ -n "$HELP_FILE" ]]; then cat "$HELP_FILE"; else echo "Help file not found. Run \`/plugins install comprehensive-review@tag1consulting\` to reinstall."; fi
+     HELP_FILE=""; for candidate in "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/HELP.md" "${CLAUDE_DIR:-}/skills/comprehensive-review/HELP.md" "$HOME/.claude/skills/comprehensive-review/HELP.md"; do [[ -n "$candidate" && -r "$candidate" ]] && { HELP_FILE="$candidate"; break; }; done; [[ -z "$HELP_FILE" ]] && { _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/HELP.md 2>/dev/null | sort -V -r | head -1); [[ -n "$_cr_fallback" && -r "$_cr_fallback" ]] && HELP_FILE="$_cr_fallback"; }; [[ -n "$HELP_FILE" ]] && cat "$HELP_FILE" || echo "Help file not found. Run \`/plugins install comprehensive-review@tag1consulting\` to reinstall."
      ```
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
