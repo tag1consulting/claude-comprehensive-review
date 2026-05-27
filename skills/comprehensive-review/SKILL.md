@@ -1220,21 +1220,21 @@ fi
 
 Once the pre-check passes: Before running the create operation, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
 
-**Capture the result.** Run the **OP: Create PR/MR** command via the Bash tool and capture stdout, stderr, and exit code into a single buffer (`2>&1`). Extract the provider-returned PR/MR URL into `CREATED_PR_URL`:
-- **github:** `gh pr create` prints the PR URL to stdout on success. `CREATE_OUT=$(gh pr create --title "<title>" --base "<base>" --body "<body>" 2>&1); CREATE_RC=$?`. If `CREATE_RC=0`, set `CREATED_PR_URL=$(echo "$CREATE_OUT" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. If `CREATE_RC≠0` or the URL extraction comes up empty, set `CREATED_PR_URL=""` and `CREATED_PR_ERROR="$CREATE_OUT"`.
-- **gitlab:** `glab mr create --title "<title>" --target-branch "<base>" --description "<body>" --no-editor` prints the MR URL to stdout. Same capture pattern.
-- **bitbucket:** the `curl -sf -X POST` response is JSON. `CREATED_PR_URL=$(echo "$CREATE_OUT" | jq -r '.links.html.href // empty' 2>/dev/null)`. Treat an empty result as failure.
+**Capture the result.** Run the **OP: Create PR/MR** command via the Bash tool and capture exit code and stderr separately so the URL extraction is unambiguous (gh/glab may print warnings or remote-suggestion URLs to stderr that would corrupt a `grep -Eo 'https://...'` over a combined buffer):
+- **github:** prefer the structured-output flag — `gh pr create` does not return JSON directly, but a two-step pattern is unambiguous: `CREATE_ERR=$(gh pr create --title "<title>" --base "<base>" --body "<body>" 2>&1 >/dev/null); CREATE_RC=$?`. On `CREATE_RC=0`: `CREATED_PR_URL=$(gh pr view --json url --jq '.url' 2>/dev/null)`. On `CREATE_RC≠0` or empty URL from `gh pr view`: set `CREATED_PR_URL=""` and `CREATED_PR_ERROR="$CREATE_ERR"`.
+- **gitlab:** similar pattern — `CREATE_ERR=$(glab mr create --title "<title>" --target-branch "<base>" --description "<body>" --no-editor 2>&1 >/dev/null); CREATE_RC=$?`. On RC=0: `CREATED_PR_URL=$(glab mr view --output json 2>/dev/null | jq -r '.web_url // empty')`. Empty/error → set CREATED_PR_URL="" and capture stderr.
+- **bitbucket:** the `curl -sf -X POST` response is JSON. `CREATE_OUT=$(curl ... 2>&1); CREATE_RC=$?`. On RC=0: `CREATED_PR_URL=$(echo "$CREATE_OUT" | jq -r '.links.html.href // empty' 2>/dev/null)`. Treat an empty result as failure and set `CREATED_PR_ERROR="$CREATE_OUT"`.
 
 If `CREATED_PR_URL` is empty after the command runs, do NOT report success in Phase 5. Report the failure plainly using `CREATED_PR_ERROR` (or "no URL returned by ${PROVIDER} API" if stderr was empty). Do not proceed to Phase 4b inline posting in this case — without a created PR/MR there is no target.
 
 **Post summary comment** (POST_SUMMARY): Before posting, display the full comment body to the user and ask: "Post this comment to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Post comment on PR/MR** with Block A as body. Use `## ${PR_TERM} Review Summary (Updated)` heading if summary already exists.
 
-**Capture the result.** Run the **OP: Post comment on PR/MR** command via the Bash tool with combined stdout/stderr capture (`2>&1`). Capture the provider-returned comment URL or identifier into `POSTED_COMMENT_REF`:
-- **github:** `COMMENT_OUT=$(gh pr comment <N> --body "<body>" 2>&1); COMMENT_RC=$?`. On `COMMENT_RC=0`: `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. If empty, treat as failure.
-- **gitlab:** `glab mr comment <N> --message "<body>"` prints a confirmation including the note URL; capture with the same `grep -Eo 'https://[^[:space:]]+'` pattern.
-- **bitbucket:** the JSON response from `curl -sf -X POST ...`; `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | jq -r '.links.html.href // .id // empty' 2>/dev/null)`. Treat an empty result as failure.
+**Capture the result.** Run the **OP: Post comment on PR/MR** command via the Bash tool. **Exit code is the primary success signal** — gh/glab versions vary in whether they print a URL to stdout, so an empty URL on a successful post is "posted but URL unavailable," not failure (treating it as failure would cause a false failure report and a duplicate comment on retry):
+- **github:** `COMMENT_OUT=$(gh pr comment <N> --body "<body>" 2>&1); COMMENT_RC=$?`. On `COMMENT_RC=0`: `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. If `COMMENT_RC=0` but `POSTED_COMMENT_REF` is empty: set `POSTED_COMMENT_REF="(posted; URL not reported by gh)"` so Phase 5 reports the post as successful while making the missing URL visible.
+- **gitlab:** `COMMENT_OUT=$(glab mr comment <N> --message "<body>" 2>&1); COMMENT_RC=$?`. Same fallback: `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | grep -Eo 'https://[^[:space:]]+' | tail -1)`; on RC=0 with empty URL, set `POSTED_COMMENT_REF="(posted; URL not reported by glab)"`.
+- **bitbucket:** the JSON response from `curl -sf -X POST ...`; `COMMENT_OUT=$(curl ... 2>&1); COMMENT_RC=$?`. On RC=0: `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | jq -r '.links.html.href // .id // empty' 2>/dev/null)`. On RC=0 with empty extraction, set `POSTED_COMMENT_REF="(posted; identifier not in response)"`.
 
-On non-zero exit or empty `POSTED_COMMENT_REF`: set `POSTED_COMMENT_REF=""` and `POSTED_COMMENT_ERROR="$COMMENT_OUT"`. Do NOT report a successful post in Phase 5; report the failure using `POSTED_COMMENT_ERROR`.
+Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `POSTED_COMMENT_ERROR="$COMMENT_OUT"`. Do NOT report a successful post in Phase 5 in that case; report the failure using `POSTED_COMMENT_ERROR`.
 
 ### Phase 4b: Post Findings as Inline Review
 
@@ -1280,8 +1280,8 @@ On non-zero exit or empty `POSTED_COMMENT_REF`: set `POSTED_COMMENT_REF=""` and 
 
 8. Once confirmed: **Submit** using **OP: Post inline review**, capturing provider-returned identifiers into named variables for Phase 5 citation. Initialize `POSTED_REVIEW_ID=""`, `POSTED_REVIEW_URL=""`, `INLINE_POSTED_COUNT=0`, `INLINE_FAILED_COUNT=0` before the call.
    - **GitHub:** `REVIEW_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file> 2>&1)`. On exit 0: `POSTED_REVIEW_ID=$(echo "$REVIEW_RESPONSE" | jq -r '.id // empty')` and `POSTED_REVIEW_URL=$(echo "$REVIEW_RESPONSE" | jq -r '.html_url // empty')`. If both are empty after a successful exit, treat as a partial failure — log "Warning: GitHub review API returned 200 but no review ID/URL — cannot confirm posting." On non-zero exit: capture stderr into `POSTED_REVIEW_ERROR`, leave both ID/URL empty, and skip inline posting (do not retry).
-     `INLINE_POSTED_COUNT` is the length of the `comments` array in the request when the review POST succeeded with a non-empty `POSTED_REVIEW_ID`; otherwise 0.
-   - **GitLab:** First post the review body as an MR comment via `BODY_RESPONSE=$(glab mr comment <N> --message "<review body>" 2>&1)`; capture into `POSTED_REVIEW_URL` (the comment URL line glab prints). Then, for each inline comment, run `THREAD_RESPONSE=$(glab api -X POST ... 2>&1)`. On exit 0 AND `echo "$THREAD_RESPONSE" | jq -r '.id // empty'` non-empty: increment `INLINE_POSTED_COUNT`. On non-zero exit OR empty `.id`: increment `INLINE_FAILED_COUNT` and log "Warning: Failed to post inline comment for <file>:<line> — <error or 'no thread ID returned'>."
+     **`INLINE_POSTED_COUNT` is parsed from the response, not the request:** GitHub silently drops inline comments whose target line is outside the diff hunk windows (despite the Phase 4b step 1 valid-line filter — GitHub's own validation is stricter and may differ for renamed files, large hunks, or trailing-newline edge cases). Set `INLINE_POSTED_COUNT=$(echo "$REVIEW_RESPONSE" | jq -r '(.comments // []) | length' 2>/dev/null || echo 0)` after a successful POST. If this value is less than the request comments-array length, log "Warning: GitHub accepted the review but dropped <N> inline comment(s) as outside the diff." For a failed POST, `INLINE_POSTED_COUNT=0`.
+   - **GitLab:** First post the review body as an MR comment via `BODY_RESPONSE=$(glab mr comment <N> --message "<review body>" 2>&1); BODY_RC=$?`; on RC=0 capture `POSTED_REVIEW_URL=$(echo "$BODY_RESPONSE" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. Then, for each inline comment, run `THREAD_RESPONSE=$(glab api -X POST ... 2>&1); THREAD_RC=$?`. On `THREAD_RC=0` AND non-empty thread ID (`THREAD_ID=$(echo "$THREAD_RESPONSE" | jq -r '.id // empty' 2>/dev/null)`): increment `INLINE_POSTED_COUNT`. Otherwise: increment `INLINE_FAILED_COUNT` and log the warning with the actual captured response — `printf 'Warning: Failed to post inline comment for %s:%s — %s\n' "$file" "$line" "${THREAD_RESPONSE:-no thread ID returned}"`. (Use the actual variable expansion rather than a literal `<error or 'no thread ID returned'>` placeholder so warnings carry diagnostic content.)
    - **Bitbucket:** N/A (handled in step 4 — that path uses **OP: Post comment on PR/MR** and must capture into `POSTED_COMMENT_REF` per the Phase 4 pattern above).
 
 9. **Cite the captured result for Phase 5.** Build the Phase 5 status string from the captured variables, not from the fact that the command was invoked:
@@ -1292,16 +1292,20 @@ On non-zero exit or empty `POSTED_COMMENT_REF`: set `POSTED_COMMENT_REF=""` and 
 
 ### Phase 5: Final Output
 
-**Cleanup:** `rm -f` all temp diff/slice files, including the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. If `--pr` mode: `git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true`, then verify removal:
+**Cleanup:** `rm -f` all temp diff/slice files, including the redaction-degraded sentinel: `rm -f /tmp/cr-redaction-degraded`. If `--pr` mode: capture stderr from `git worktree remove` so the actual failure reason is preserved, then verify removal:
 ```bash
-if [[ -n "$WORKTREE_PATH" && -e "$WORKTREE_PATH" ]]; then
-  WORKTREE_REMOVED=false
-  WORKTREE_CLEANUP_ERROR="path still exists at ${WORKTREE_PATH}"
-else
-  WORKTREE_REMOVED=true
+if [[ -n "$WORKTREE_PATH" ]]; then
+  WORKTREE_REMOVE_ERR=$(git worktree remove "$WORKTREE_PATH" --force 2>&1)
+  WORKTREE_REMOVE_RC=$?
+  if [[ -e "$WORKTREE_PATH" ]]; then
+    WORKTREE_REMOVED=false
+    WORKTREE_CLEANUP_ERROR="${WORKTREE_REMOVE_ERR:-path still exists at ${WORKTREE_PATH} (no error message captured)}"
+  else
+    WORKTREE_REMOVED=true
+  fi
 fi
 ```
-The terminal report below cites `WORKTREE_REMOVED` rather than asserting cleanup succeeded from the fact that `git worktree remove` was run.
+The terminal report below cites `WORKTREE_REMOVED` and (on failure) the captured `WORKTREE_REMOVE_ERR` rather than asserting cleanup succeeded from the fact that `git worktree remove` was run.
 
 **Store review summary to claude-mem** (skip if MEM_AVAILABLE is false, or mode is `--summary-only` or `--security-only`):
 
@@ -1315,16 +1319,22 @@ Use `jq` to safely construct the JSON body, avoiding injection from special char
 MEM_TITLE="Review: <REPO_SLUG> #<PR_NUMBER|branch_name> <YYYY-MM-DD>"
 MEM_BODY=$(jq -n --arg text "$MEM_SUMMARY" --arg title "$MEM_TITLE" --arg project "$REPO_SLUG" \
   '{text: $text, title: $title, project: $project}')
-MEM_RESPONSE_FILE=$(mktemp /tmp/cr-mem-response-XXXXXXXX.json)
+MEM_RESPONSE_FILE=$(mktemp /tmp/cr-mem-response-XXXXXXXX.json) || MEM_RESPONSE_FILE=/dev/null
 MEM_HTTP_STATUS=$(curl -s -o "$MEM_RESPONSE_FILE" -w '%{http_code}' \
   -X POST "http://127.0.0.1:${MEM_PORT}/api/memory/save" \
   -H "Content-Type: application/json" \
   -d "$MEM_BODY" 2>/dev/null || echo "000")
+# Read the response body BEFORE deleting the file, so it survives for diagnostics
+# when MEM_SAVED=false. Without this, server error bodies are lost permanently.
+MEM_RESPONSE_BODY=""
+if [[ "$MEM_RESPONSE_FILE" != "/dev/null" && -f "$MEM_RESPONSE_FILE" ]]; then
+  MEM_RESPONSE_BODY=$(cat "$MEM_RESPONSE_FILE" 2>/dev/null)
+  rm -f "$MEM_RESPONSE_FILE"
+fi
 MEM_SAVED=false
 if [[ "$MEM_HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
   MEM_SAVED=true
 fi
-rm -f "$MEM_RESPONSE_FILE"
 ```
 
 If `MEM_SAVED=true` (HTTP 2xx): note "Review summary stored to claude-mem (HTTP ${MEM_HTTP_STATUS})." in terminal output below. If `MEM_SAVED=false`: silently continue (do not surface the failure as an error — claude-mem is a best-effort optional integration), but do NOT print the success line. Never print "stored to claude-mem" without a verified 2xx status.
