@@ -104,7 +104,21 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
 ### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
-   - If `--help` is present, display the help text below and **stop immediately** — do not continue.
+   - If `--help` is present: locate and read `HELP.md` using this shell snippet, then display its contents and **stop immediately** — do not continue.
+     ```bash
+     HELP_FILE=""
+     for candidate in \
+       "${CLAUDE_PLUGIN_ROOT:-}/skills/comprehensive-review/HELP.md" \
+       "${CLAUDE_DIR:-}/skills/comprehensive-review/HELP.md" \
+       "$HOME/.claude/skills/comprehensive-review/HELP.md"; do
+       [[ -n "$candidate" && -r "$candidate" ]] && { HELP_FILE="$candidate"; break; }
+     done
+     if [[ -z "$HELP_FILE" ]]; then
+       _cr_fallback=$(ls -d "$HOME/.claude/plugins/cache/tag1consulting/comprehensive-review/"*/skills/comprehensive-review/HELP.md 2>/dev/null | sort -V -r | head -1)
+       [[ -n "$_cr_fallback" && -r "$_cr_fallback" ]] && HELP_FILE="$_cr_fallback"
+     fi
+     if [[ -n "$HELP_FILE" ]]; then cat "$HELP_FILE"; else echo "Help file not found. Run \`/plugins install comprehensive-review@tag1consulting\` to reinstall."; fi
+     ```
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
@@ -128,8 +142,6 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    - Validate port: `[[ "$MEM_PORT" =~ ^[0-9]+$ ]] && (( MEM_PORT >= 1 && MEM_PORT <= 65535 )) || MEM_PORT=37777`
    - Health check: `curl -sf --max-time 2 "http://127.0.0.1:${MEM_PORT}/api/health" >/dev/null 2>&1`
    - If the curl succeeds: set MEM_AVAILABLE=true. If it fails or `--no-mem` was passed: set MEM_AVAILABLE=false. No error message either way.
-
-**Help text:** Read and display `skills/comprehensive-review/HELP.md`, then stop. If the file is not found, display: "Help file not found. Run `/plugins install comprehensive-review@tag1consulting` to reinstall."
 
 2. **If `--pr <N>` was passed** (external review mode):
    a. Fetch PR/MR metadata using **OP: Fetch PR/MR metadata**. Map provider-specific fields to canonical names (number, title, baseRefName, headRefName, state, body).
