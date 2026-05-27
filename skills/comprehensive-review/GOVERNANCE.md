@@ -26,6 +26,19 @@ silently choosing one over the other.
   a fabricated definite claim is not.
 - **Blunt and factual tone.** No flattery, no padding, no softening language in
   findings or summaries. State the issue, the impact, and the recommendation.
+- **Cite evidence in the finding.** A finding must reference the specific code
+  that exhibits the problem — `file:line` plus the relevant snippet, symbol, or
+  pattern. "This is unsafe" without showing the unsafe line is a hypothesis,
+  not a finding: either quote the evidence, lower the confidence and mark it
+  speculative, or omit it. The `file` and `line` fields in the json-findings
+  block are not the citation — they are the location; the finding text must
+  also describe *what at that location* exhibits the issue.
+- **Refuse incoherent input.** If the diff is internally incoherent (claims to
+  fix X but does not touch X's code, contradicts its own commit message,
+  partially reverts an earlier commit on the same branch without explanation),
+  surface that as a top-level finding rather than reviewing it line-by-line as
+  if it were coherent. A review built on a wrong premise wastes the user's
+  time; flagging the premise is the higher-value output.
 
 ## Verification before naming
 

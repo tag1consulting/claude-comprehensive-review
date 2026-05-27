@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.11] - 2026-05-27
+
+### Added
+
+- New `GOVERNANCE.md` directive: **Cite evidence in the finding.** Findings must reference the specific code that exhibits the problem (snippet, symbol, or pattern at `file:line`) — the json-findings location fields are not the citation. Intended to reduce hallucinated structural findings; effectiveness has not been measured.
+- New `GOVERNANCE.md` directive: **Refuse incoherent input.** If a diff contradicts its own commit message or claims to fix something it doesn't touch, agents surface that as a top-level finding rather than reviewing line-by-line as if coherent.
+- New Orchestrator Governance directive in `SKILL.md`: **Cite the observed result, not the action taken.** Phase 4/4b/5 success claims reference the provider-returned URL, ID, or status — not just the fact that an API call was attempted.
+- Phase 4/4b/5 capture-variable wiring to back the new directive with mechanism rather than text. Phase 4 PR/MR creation captures provider stdout/exit into `CREATED_PR_URL`/`CREATED_PR_ERROR`; Phase 4 comment posting captures `POSTED_COMMENT_REF`/`POSTED_COMMENT_ERROR`; Phase 4b inline review posting captures `POSTED_REVIEW_URL`/`POSTED_REVIEW_ID`/`INLINE_POSTED_COUNT`/`INLINE_FAILED_COUNT`/`POSTED_REVIEW_ERROR`; Phase 5 worktree cleanup verifies removal via `[[ -e "$WORKTREE_PATH" ]]` and sets `WORKTREE_REMOVED`; Phase 5 claude-mem POST captures `MEM_HTTP_STATUS` via `curl -w '%{http_code}'` and only reports success on 2xx. Phase 5 terminal output cites these captured values rather than asserting success from the fact that an API call was invoked. Failure paths are reported plainly when capture variables are empty.
+- BLIND_HUNTER_NOTE extended to scope the new "Refuse incoherent input" directive to incoherence visible within the diff itself (e.g., a hunk that calls a symbol the same diff just deleted), preserving blind-hunter's zero-context constraint.
+
+### Fixed
+
+Robustness fixes to the Phase 4/4b/5 capture-variable patterns, addressing AI review findings on PR #79:
+
+- **`gh pr create` URL extraction:** initial fix replaced combined-stream `grep` with a two-step `gh pr create` (for exit code) → `gh pr view --json url --jq '.url'` pattern. Round-2 review correctly noted that `gh pr view` without an explicit branch argument can return the wrong PR if HEAD is detached. Final form: capture stdout into `CREATE_OUT` and stderr into a temp file separately (`gh pr create ... 2>"$CREATE_ERR_FILE"`), then extract the URL from stdout with a PR-path-specific regex `https://[^[:space:]]+/pull/[0-9]+`. `gh pr create` writes exactly the new PR URL to stdout on success, so this is unambiguous. Same separated-stream pattern applied to `glab mr create`, extracting against `merge_requests/[0-9]+`.
+- **`POSTED_COMMENT_REF` empty-on-success false-failure:** exit code is now the primary success signal for `gh pr comment` / `glab mr comment`. An empty URL on RC=0 is reported as `(posted; URL not reported by gh)` rather than treated as failure — preventing a false failure report and a duplicate comment on retry.
+- **`INLINE_POSTED_COUNT` parsed via follow-up GET, not from POST response:** GitHub silently drops inline comments whose target line is outside the diff (despite the Phase 4b step 1 valid-line filter — GitHub's own validation is stricter for renamed files, large hunks, etc.). The POST `/pulls/{N}/reviews` response does not include a `.comments` array — only the GET `/pulls/{N}/reviews/{review_id}/comments` endpoint does. After a successful POST, a follow-up GET retrieves the actual posted-comment count. A delta vs the request length triggers a "GitHub accepted the review but dropped <N> inline comment(s)" warning. (An earlier attempt parsed `(.comments // []) | length` of the POST response — which always evaluated to 0 because that field doesn't exist on POST. Fixed in the same PR before merge.)
+- **GitLab inline-warning placeholder:** the warning log now uses `printf` with `${THREAD_RESPONSE:-no thread ID returned}` instead of a literal `<error or ...>` placeholder, so warnings carry the actual response content.
+- **`git worktree remove` stderr capture:** previously used `2>/dev/null || true` and then synthesized `WORKTREE_CLEANUP_ERROR="path still exists at ..."` which never carried the actual git error. Now captures stderr into `WORKTREE_REMOVE_ERR` before the path-existence check; `WORKTREE_CLEANUP_ERROR` falls back to the captured stderr.
+- **`MEM_RESPONSE_FILE` mktemp guard + response body preserved:** `mktemp` now falls back to `/dev/null` on failure (preventing curl from writing to an empty-string path). The response body is read into `MEM_RESPONSE_BODY` before the file is deleted, so server error bodies survive for diagnostics when `MEM_SAVED=false`. Documented tradeoff: when mktemp falls back to `/dev/null`, the response body is unrecoverable — `MEM_RESPONSE_BODY` stays empty even on server-side failures. The HTTP status code is still captured via `curl -w '%{http_code}'`, so `MEM_SAVED` still works correctly; only the diagnostic body is lost. This is rare (mktemp /tmp failure is a system-level problem) and not worth a more elaborate fallback.
+
+### Changed
+
+- Aligned plugin governance with refactored `~/.claude/CLAUDE.md` (Outcome Verification, Disagreement & Alternatives sections). Items deemed out of scope for a per-run review tool (Session Self-Audit, Active Guardrails, Checkpoint Triggers list, Pre-Claim/Pre-Action Check) were intentionally not imported.
+- Updated `CLAUDE.md` Governance directives summary to enumerate the two new agent-side directives under the Honesty bullet and to reflect the extended BLIND_HUNTER_NOTE scope.
+
+---
+
 ## [1.8.10] - 2026-05-27
 
 ### Changed
