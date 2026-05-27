@@ -2,7 +2,7 @@
 name: comprehensive-review
 description: "Run a comprehensive PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR."
 argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--create-pr] [--depth deep] [--diagrams]"
-allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
+allowed-tools: ["Bash", "Read", "Write", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
 ---
 
 # Comprehensive PR Review
@@ -71,7 +71,7 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
    - GitLab/Bitbucket: `jq --version` must succeed **unless `--no-post`/`--local` was passed** (no JSON parsing needed in local mode). If not: "Error: jq is required for GitLab/Bitbucket repositories. Install: https://jqlang.org/"
    - Bitbucket: `curl --version` must succeed (should always be available). Also verify both `BITBUCKET_EMAIL` and `BITBUCKET_TOKEN` env vars are set **unless `--no-post`/`--local` was passed** (no API calls needed in local mode). If `BITBUCKET_APP_PASSWORD` is set but `BITBUCKET_TOKEN` is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If `BITBUCKET_TOKEN` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your Atlassian API token." If `BITBUCKET_EMAIL` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_EMAIL environment variable is required for Bitbucket repositories. Set BITBUCKET_EMAIL to your Atlassian account email address."
 
-Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only used when PROVIDER=github. For other providers, all operations use CLI tools (glab, curl) via Bash.
+Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in PROVIDERS.md). No `mcp__github-pat__*` tools are used. For GitLab and Bitbucket, all operations use CLI tools (glab, curl) via Bash.
 
 ### Provider Operations Reference
 

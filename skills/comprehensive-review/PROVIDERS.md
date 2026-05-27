@@ -38,7 +38,7 @@ command corresponding to the detected PROVIDER.
 
 ## OP: Post inline review (Phase 4b only)
 
-- **github:** `mcp__github-pat__create_pull_request_review` (owner, repo, pull_number, event, body, comments). Fallback: `gh api`. Supports REQUEST_CHANGES and COMMENT events.
+- **github:** `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews` with JSON body `{"event":"REQUEST_CHANGES"|"COMMENT","body":"<review body>","comments":[{"path":"<file>","line":<line>,"body":"<comment>"},...]}`. Use `REQUEST_CHANGES` when any finding is Medium or higher; use `COMMENT` when all findings are Low. Owner and repo are extracted from the git remote URL.
 - **gitlab:** Create a review via Draft Notes API or post individual discussion threads:
   For each inline comment (shell-escape all interpolated values — body, file path, line — to prevent injection via crafted filenames or review content): `glab api -X POST "projects/${PROJECT_ID}/merge_requests/<N>/discussions" -f "body=<body>" -f "position[base_sha]=<base_sha>" -f "position[head_sha]=<head_sha>" -f "position[start_sha]=<start_sha>" -f "position[position_type]=text" -f "position[new_path]=<file>" -f "position[new_line]=<line>"`.
   For the review body: `glab mr comment <N> --message "<review body>"`.
