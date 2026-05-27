@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.11] - 2026-05-27
+
+### Added
+
+- New `GOVERNANCE.md` directive: **Cite evidence in the finding.** Findings must reference the specific code that exhibits the problem (snippet, symbol, or pattern at `file:line`) — the json-findings location fields are not the citation. Reduces hallucinated structural findings.
+- New `GOVERNANCE.md` directive: **Refuse incoherent input.** If a diff contradicts its own commit message or claims to fix something it doesn't touch, agents surface that as a top-level finding rather than reviewing line-by-line as if coherent.
+- New Orchestrator Governance directive in `SKILL.md`: **Cite the observed result, not the action taken.** Phase 4/4b/5 success claims reference the provider-returned URL, ID, or status — not just the fact that an API call was attempted.
+
+### Changed
+
+- Aligned plugin governance with refactored `~/.claude/CLAUDE.md` (Outcome Verification, Disagreement & Alternatives sections). Items deemed out of scope for a per-run review tool (Session Self-Audit, Active Guardrails, Checkpoint Triggers list, Pre-Claim/Pre-Action Check) were intentionally not imported.
+
+---
+
 ## [1.8.10] - 2026-05-27
 
 ### Changed
