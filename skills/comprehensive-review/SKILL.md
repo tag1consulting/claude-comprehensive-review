@@ -806,9 +806,10 @@ if command -v semgrep &>/dev/null && [[ -x "$SCRIPTS_DIR/run-semgrep.sh" ]]; the
   (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-semgrep.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/semgrep.json" &
 fi
 
-# Trufflehog — secret scanning on diff
+# Trufflehog — secret scanning on changed files (per-file mode so findings
+# carry real repo paths and line numbers, not temp-diff coordinates)
 if command -v trufflehog &>/dev/null && [[ -x "$SCRIPTS_DIR/run-trufflehog.sh" ]]; then
-  (bash "$SCRIPTS_DIR/run-trufflehog.sh" "$DIFF_FILE" 2>/dev/null || echo '[]') > "$_TMPDIR/trufflehog.json" &
+  (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-trufflehog.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/trufflehog.json" &
 fi
 
 # Ruff — Python files

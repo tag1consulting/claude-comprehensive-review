@@ -6,11 +6,13 @@
 The following operations are referenced by name throughout Phases 4 and 4b. Use the
 command corresponding to the detected PROVIDER.
 
-## OP: Fetch PR/MR metadata (returns JSON with number, title, base branch, head branch, state)
+## OP: Fetch PR/MR metadata (returns JSON with number, title, base branch, head branch, state, body)
 
-- **github:** `gh pr view <N> --json number,title,baseRefName,headRefName,state`
-- **gitlab:** `glab mr view <N> --output json` (fields: iid, title, source_branch, target_branch, state). Map: iid→number, target_branch→baseRefName, source_branch→headRefName. State values: "opened"→OPEN, "closed"→CLOSED, "merged"→MERGED. If state is unrecognized, warn "Unrecognized MR state '<value>' — proceeding as OPEN." and treat as OPEN.
-- **bitbucket:** `curl -sf --user "${BITBUCKET_EMAIL}:${BITBUCKET_TOKEN}" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>"`. Map: id→number, destination.branch.name→baseRefName, source.branch.name→headRefName. State values: "OPEN", "DECLINED"→CLOSED, "MERGED".
+- **github:** `gh pr view <N> --json number,title,baseRefName,headRefName,state,body`. Map `body` to canonical `body`.
+- **gitlab:** `glab mr view <N> --output json` (fields: iid, title, source_branch, target_branch, state, description). Map: iid→number, target_branch→baseRefName, source_branch→headRefName, description→body. State values: "opened"→OPEN, "closed"→CLOSED, "merged"→MERGED. If state is unrecognized, warn "Unrecognized MR state '<value>' — proceeding as OPEN." and treat as OPEN.
+- **bitbucket:** `curl -sf --user "${BITBUCKET_EMAIL}:${BITBUCKET_TOKEN}" "https://api.bitbucket.org/2.0/repositories/${REPO_SLUG}/pullrequests/<N>"`. Map: id→number, destination.branch.name→baseRefName, source.branch.name→headRefName, description→body. State values: "OPEN", "DECLINED"→CLOSED, "MERGED".
+
+If the provider response does not include a body/description field or the value is null/empty, set `body=""` (empty string). Do not error.
 
 ## OP: Checkout PR/MR branch into current worktree
 
