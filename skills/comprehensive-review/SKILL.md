@@ -36,7 +36,7 @@ The orchestrator is a software-engineering actor: it spawns subagents, calls pro
 - **External communication is gated by explicit flags.** Posting to a PR/MR (Phase 4 `--post-summary`, Phase 4b `--post-findings`) and creating a PR/MR (Phase 4 `--create-pr`) require the user to pass the corresponding flag. The flag itself is the user's authorization checkpoint. The orchestrator does not infer additional posting beyond what was requested, does not auto-enable `--post-findings` in `--pr` mode, and does not promote a `--post-summary` to a `--post-findings` run. When in doubt, do less.
 - **No `--create-pr` from a default branch.** Phase 4 must refuse `--create-pr` when the local `HEAD` matches the provider's default branch (or one of `main`/`master`/`develop` as a conservative fallback when the provider lookup fails). This is a hard refuse — exit non-zero, print a clear error directing the user to check out a feature branch. There is no override flag.
 - **User-confirmation prompts are not optional.** Phase 4 (`--create-pr`, `--post-summary`) and Phase 4b (`--post-findings`) display the proposed body and ask for confirmation before any external write. This is the orchestrator's equivalent of a Checkpoint Trigger pause. Do not collapse multiple confirmations into one for "convenience."
-- **Secret-redaction defense in depth.** Phase 2 step 2f redacts known-pattern secrets from finding text and Block A summary before any external posting. This is a backstop for the agent-level redaction in `GOVERNANCE.md`, not a replacement.
+- **Secret-redaction defense in depth.** Phase 2 step 2g redacts known-pattern secrets from finding text and Block A summary before any external posting. This is a backstop for the agent-level redaction in `GOVERNANCE.md`, not a replacement.
 - **Cite the observed result, not the action taken.** When reporting that a Phase 4 post, Phase 4b inline review, or Phase 4 PR creation succeeded, cite the specific evidence the orchestrator observed — the comment URL, review ID, PR URL, or HTTP response code returned by the provider API. "Posted Block A" without a returned URL is a claim the action was attempted, not that it succeeded. If the API call returned an error or no identifier, report the failure plainly rather than reasserting success. This applies equally to Phase 5 cleanup ("removed worktree at `<path>`" — verify the path is gone) and claude-mem `/api/memory/save` (cite the response status, not the fact that the request was sent).
 - **Reference for agent-level rules.** Subagent governance (harm prioritization, no self-preservation, verify before naming, don't reinvent the wheel, named rejected alternatives, surfaced counter-arguments, non-destructive remediations) lives in `skills/comprehensive-review/GOVERNANCE.md`. Do not duplicate those rules here; instead update `GOVERNANCE.md` and re-run.
 
@@ -955,7 +955,24 @@ Group findings by file. Within each file, sort by line number. Cluster findings 
 - Annotate the kept finding: "(also flagged by: [source2, source3])" if sources has more than one entry.
 - Same file without a line number → deduplicate by `file + category` (using the structured `category` field, not the bracketed prose label).
 
-**Step 2f — Secret redaction (defense-in-depth):**
+**Step 2f — Novelty pass (skip if PRIOR_REVIEW_CONTEXT is empty, or `--no-mem` was passed, or `--quick`/`--security-only`/`--summary-only` mode is active):**
+
+Compare current Low and Medium findings against recurring patterns in PRIOR_REVIEW_CONTEXT. A finding is a novelty candidate when:
+- Its severity is Low or Medium (never demote Critical or High).
+- Its `category + file` fingerprint appears in at least one prior review summary in PRIOR_REVIEW_CONTEXT.
+- The changed diff lines do not contain a *new* occurrence of the pattern (the finding would exist even without the current PR).
+
+For each novelty candidate, annotate the finding's `finding` field with: `[recurring — appeared in prior reviews]`. Do NOT delete the finding; do NOT change the severity. Track the count of annotated findings as NOVELTY_DEMOTED_COUNT.
+
+**Safeguards:**
+- Never apply novelty annotation to `Critical` or `High` findings (enforced before the loop).
+- Never apply novelty annotation to `dependency-check` findings (CVEs require explicit suppression, not annotation).
+- If PRIOR_REVIEW_CONTEXT contains fewer than 2 prior review entries, skip the novelty pass entirely (one prior run is insufficient for "recurring" judgment).
+- `--no-suppress` flag also disables the novelty pass (treat as equivalent to suppression bypass).
+
+NOVELTY_DEMOTED_COUNT is reported in Phase 5 if > 0.
+
+**Step 2g — Secret redaction (defense-in-depth):**
 
 Agents are told via `GOVERNANCE.md` to redact secrets at source, but a missed redaction in finding text would land verbatim in PR/MR comments via Phase 4/4b. Apply a hardcoded redaction pass to the `finding` and `remediation` fields of every finding in `ALL_FINDINGS`, and to the assembled Block A summary text (built in Phase 3) before any external posting.
 
@@ -1080,7 +1097,7 @@ If `GOVERNANCE_DEGRADED=true` (set in Phase 0 step 9 when GOVERNANCE.md could no
 > ⚠️ **Review ran in degraded mode — `GOVERNANCE.md` not found.** The shared governance directives (harm prioritization, verify-before-naming, secret redaction at source, etc.) were not inlined into agent task descriptions. Findings may be lower-quality than a normal run, and agent self-redaction was not enforced. Reinstall the plugin (`/plugins install comprehensive-review@tag1consulting`) or report this to the plugin maintainer.
 ```
 
-If `REDACTION_DEGRADED=true` (set in Phase 2 step 2f when `perl` was unavailable on the host and the secret-redaction backstop ran in pass-through mode):
+If `REDACTION_DEGRADED=true` (set in Phase 2 step 2g when `perl` was unavailable on the host and the secret-redaction backstop ran in pass-through mode):
 ```markdown
 > ⚠️ **Secret redaction was skipped — `perl` not found on this host.** The defense-in-depth redaction pass that strips known token patterns from finding text and Block A was not executed. Agent-level redaction (per `GOVERNANCE.md`) is the only line of defense in this run. Scan finding text for credential leaks before approving any post.
 ```
@@ -1351,6 +1368,7 @@ Note in terminal: "Review written to <path>"
    If CVE_CHECK_FAILED=true → "⚠ CVE check did not run (script not found or execution failed) — dependency vulnerabilities not scanned." Show this even when CVE_JSON is [] so the user knows the empty result means 'check skipped', not 'no vulnerabilities'.
    If `--no-suppress` was passed → note "Suppression rules disabled (--no-suppress)." in terminal output.
    If MIN_CONFIDENCE > 0 → note "Confidence filter: ≥ <N> (dropped <M> findings below threshold)."
+   If NOVELTY_DEMOTED_COUNT > 0 → note "Novelty pass: annotated <N> repeated low-value finding(s) from prior reviews."
 10. No findings + no failures → "No significant issues found. Ready for review."
 11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
 

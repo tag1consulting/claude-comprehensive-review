@@ -88,6 +88,17 @@ teardown() {
   grep -q "Auto-cheap: LOW_RISK_CONFIG" "$SKILL_MD"
 }
 
+@test "SKILL.md: novelty pass defined and only applies to Low/Medium findings" {
+  grep -q "Novelty pass\|NOVELTY_DEMOTED_COUNT\|novelty candidate\|recurring" "$SKILL_MD"
+  # Critical and High must be explicitly protected
+  grep -q "never.*Critical.*High\|Critical.*High.*never" "$SKILL_MD"
+}
+
+@test "SKILL.md: novelty pass skipped when --no-mem or insufficient prior reviews" {
+  grep -q "no-mem\|no.mem" "$SKILL_MD"
+  grep -q "fewer than 2 prior review\|insufficient\|skip.*novelty" "$SKILL_MD"
+}
+
 # ---------------------------------------------------------------------------
 # SEVERITY.md: json-findings contract documented
 # ---------------------------------------------------------------------------
