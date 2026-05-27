@@ -197,9 +197,10 @@ the test fixtures could be mistakenly copied into production use.
 
 After your markdown output, emit a JSON block fenced with ` ```json-findings `:
 ```json-findings
-[{"severity":"High","confidence":90,"file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"security-reviewer"}]
+[{"severity":"High","confidence":90,"category":"injection","file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"security-reviewer"}]
 ```
 `severity` must be exactly one of: `Critical`, `High`, `Medium`, `Low`.
 `confidence` must be an integer 0–100. Only include findings with confidence ≥ 75.
+`category` must be exactly one of: `authz`, `injection`, `dependency-cve`, `secret`, `architecture-coupling`, `test-gap`, `edge-case`, `observability`, `docs`, `lint`, `other`. Choose the most specific category that fits; use `other` only when none apply.
 `source` must be exactly `"security-reviewer"`.
 If no findings, emit an empty array: `[]`

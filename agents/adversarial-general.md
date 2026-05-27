@@ -175,10 +175,11 @@ Omit any severity section that has no findings.
 
 After your markdown output, emit a JSON block fenced with ` ```json-findings `:
 ```json-findings
-[{"severity":"High","confidence":85,"file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"adversarial-general"}]
+[{"severity":"High","confidence":85,"category":"observability","file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"adversarial-general"}]
 ```
 `severity` must be exactly one of: `Critical`, `High`, `Medium`, `Low`.
 `confidence` must be an integer 0–100. Only include findings with confidence ≥ 75.
+`category` must be exactly one of: `authz`, `injection`, `dependency-cve`, `secret`, `architecture-coupling`, `test-gap`, `edge-case`, `observability`, `docs`, `lint`, `other`. Choose the most specific category that fits; use `other` only when none apply.
 `source` must be exactly `"adversarial-general"`.
 If no findings, emit an empty array: `[]`
 

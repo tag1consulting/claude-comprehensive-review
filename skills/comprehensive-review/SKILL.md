@@ -894,13 +894,19 @@ extract_findings() {
       echo "[]"; return
     fi
   fi
-  # Validate each object; drop malformed ones individually
-  echo "$json_block" | jq --arg agent "$agent_name" '
+  # Validate each object; drop malformed ones individually.
+  # Normalize category: accept the fixed taxonomy; default missing/unknown to "other".
+  local _VALID_CATS="authz|injection|dependency-cve|secret|architecture-coupling|test-gap|edge-case|observability|docs|lint|other"
+  echo "$json_block" | jq --arg agent "$agent_name" --arg valid_cats "$_VALID_CATS" '
     [.[] | select(
       (.severity | test("^(Critical|High|Medium|Low)$")) and
       (.finding | type == "string") and
       (.file | type == "string")
-    ) | . + {source: (if .source then .source else $agent end)}]
+    ) | . + {
+      source: (if .source then .source else $agent end),
+      category: (if (.category | type == "string") and (.category | test($valid_cats))
+                 then .category else "other" end)
+    }]
   ' 2>/dev/null || echo "[]"
 }
 ```
@@ -949,7 +955,7 @@ Group findings by file. Within each file, sort by line number. Cluster findings 
 - Within a cluster: keep the highest-severity finding; accumulate a `sources[]` array from all findings in the cluster.
 - When a `dependency-check` finding and an LLM agent finding are in the same cluster, prefer the `dependency-check` entry (it carries the authoritative CVE/GHSA ID).
 - Annotate the kept finding: "(also flagged by: [source2, source3])" if sources has more than one entry.
-- Same file without a line number → deduplicate by file + category (the bracketed label in finding text, lowercased).
+- Same file without a line number → deduplicate by `file + category` (using the structured `category` field, not the bracketed prose label).
 
 **Step 2f — Secret redaction (defense-in-depth):**
 

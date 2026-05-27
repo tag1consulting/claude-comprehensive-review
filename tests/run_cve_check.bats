@@ -82,13 +82,14 @@ teardown() {
 # End-to-end with OSV batch mock
 # ---------------------------------------------------------------------------
 
-@test "cve-check: go.mod with critical CVE produces Critical finding" {
+@test "cve-check: go.mod with critical CVE produces Critical finding with dependency-cve category" {
   cp "$CVE_FIX/go.mod.replace-before-require" "$WORK/go.mod"
   OSV_MOCK_FILE="$CVE_FIX/osv-batch-critical.json" run --separate-stderr "$SCRIPT" "$WORK/go.mod"
   [ "$status" -eq 0 ]
   echo "$output" | jq -e 'type == "array" and length > 0' >/dev/null
   echo "$output" | jq -e '.[0].severity == "Critical"' >/dev/null
   echo "$output" | jq -e '.[0].agent == "dependency-check"' >/dev/null
+  echo "$output" | jq -e '.[0].category == "dependency-cve"' >/dev/null
   echo "$output" | jq -e '.[0].file | endswith("go.mod")' >/dev/null
 }
 
