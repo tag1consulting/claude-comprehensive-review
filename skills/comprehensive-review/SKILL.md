@@ -7,9 +7,9 @@ allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem
 
 # Comprehensive PR Review
 
-**Arguments:** `$ARGUMENTS`
+Run a full CodeRabbit-style review of all changes on the current branch (or a specified PR/MR). If `$ARGUMENTS` contains `--help`, respond with exactly: `Use /comprehensive-review-help for usage information.` and stop. Otherwise, execute the review workflow below.
 
-**If `$ARGUMENTS` is exactly `--help` or contains `--help` as the first token:** respond with exactly this single line and nothing else: `Use /comprehensive-review-help for usage information.`
+**Arguments:** `$ARGUMENTS`
 
 ## Orchestrator Model Recommendation
 
