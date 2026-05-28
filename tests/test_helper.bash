@@ -15,10 +15,11 @@ FIXTURES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/fixtures" && pwd)"
 # current shell, so it can be tested in isolation without sourcing the whole
 # script (which would trigger the orchestration `set -euo pipefail` main loop).
 #
-# Brace-depth tracking ignores braces inside single-quoted strings (the awk
-# bodies in these scripts are single-quoted), which is sufficient for the
-# functions under test. It does NOT handle braces inside double-quoted strings
-# or heredocs — keep extracted functions free of those.
+# Brace-depth tracking skips content inside single-quoted strings (in_sq toggle),
+# which handles the embedded awk programs in these scripts — their { } characters
+# are at the top level of the single-quoted awk body, not inside bash single-quotes.
+# Constraint: do NOT use this helper on functions containing { } inside bash
+# double-quoted strings or heredocs, as those would miscount depth.
 #
 # Usage: load_function <script_path> <function_name>
 load_function() {
@@ -44,5 +45,8 @@ load_function() {
     echo "ERROR: Could not extract function '${func_name}' from ${script}" >&2
     return 1
   fi
-  eval "$func_body"
+  if ! eval "$func_body"; then
+    echo "ERROR: eval failed for function '${func_name}' from ${script}" >&2
+    return 1
+  fi
 }

@@ -51,6 +51,7 @@ teardown() {
 }
 
 @test "trufflehog: no changed files returns empty array" {
+  unset TRUFFLEHOG_MOCK_FILE
   run --separate-stderr "$SCRIPT" ""
   # Skips gracefully when trufflehog is not installed (TRUFFLEHOG_MOCK_FILE unset)
   [ "$status" -eq 0 ]

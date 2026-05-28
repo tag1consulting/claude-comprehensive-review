@@ -35,12 +35,12 @@ fi
 # Gate: has_error_patterns — fires silent-failure-hunter
 GATE_ERROR_PATTERNS=false
 grep -qE 'catch\b|if err|try \{|rescue\b|Result<|unwrap\b|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE" \
-  && GATE_ERROR_PATTERNS=true
+  && GATE_ERROR_PATTERNS=true || true
 
 # Gate: has_control_flow — fires edge-case-hunter (added lines only via + prefix filter)
 GATE_CONTROL_FLOW=false
 grep -E '^\+' "$DIFF_FILE" | grep -qE '\b(if|elif|else|for|while|do|case|switch|match|try|catch|except|rescue|unless|when|loop|break|continue|return|goto|defer|finally)\b' \
-  && GATE_CONTROL_FLOW=true
+  && GATE_CONTROL_FLOW=true || true
 
 # Gate: has_security_patterns — fires security-reviewer even on small/medium diffs
 GATE_SECURITY_PATTERNS=false
