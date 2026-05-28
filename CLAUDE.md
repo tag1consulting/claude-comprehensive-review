@@ -189,8 +189,7 @@ Plugin versions use semver without the `v` prefix (e.g., `1.0.0`). Git tags use 
 ```
 .claude-plugin/plugin.json                                   ← plugin manifest (name, version, author, keywords)
 skills/comprehensive-review/SKILL.md                         ← orchestrator: phases 0–5, all workflow logic
-skills/comprehensive-review/HELP.md                          ← usage reference (not currently surfaced by a skill; see README)
-skills/comprehensive-review-help/SKILL.md                    ← placeholder skill (help display not yet implemented)
+skills/comprehensive-review/HELP.md                          ← usage reference (see README)
 skills/comprehensive-review/SEVERITY.md                      ← severity normalization + confidence scale
 skills/comprehensive-review/GOVERNANCE.md                    ← shared governance directives inlined into every custom agent's task description
 skills/comprehensive-review/suppressions.json                ← global suppression rules (trimmed per-run by verify checks)
@@ -238,7 +237,7 @@ agents/adversarial-general.md                                ← holistic comple
 - The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
 - When modifying `--quick` or `--diagrams` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and `HELP.md`.
 - When adding a new flag, update: the flags parse block in `SKILL.md` (Phase 0, L32–46 area), the mode table in `SKILL.md` (Phase 1 L242–250 area), the flags table in `README.md`, and `HELP.md`.
-- **`HELP.md`** is the reference documentation for all flags. It is not currently surfaced by a skill — users can read it directly or via the README. Do not add a `--help` flag handler inside `SKILL.md`; that approach was tried repeatedly in v1.8.1–1.8.9 and all variations failed (the LLM cannot reliably stop mid-document, and `disable-model-invocation: true` suppresses all output in Claude Code 2.1.152).
+- **`HELP.md`** is the reference documentation for all flags. Users can read it directly or via the README. Do not add a `--help` flag handler inside `SKILL.md` or a dedicated help skill — both approaches have been tried and failed (the LLM cannot reliably stop mid-document, `disable-model-invocation: true` suppresses all output, and a verbatim-output skill produces blank output in Claude Code).
 - **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
 - When modifying provider-specific behavior, update the Provider Operations Reference block, all three provider branches (github/gitlab/bitbucket) within Phases 0, 4, and 4b, and the provider support matrix in README.md.
 - **BMAD attribution**: `blind-hunter`, `edge-case-hunter`, and `adversarial-general` were adapted from BMAD-METHOD (MIT License, BMad Code LLC). Attribution is present in all three agent files and in README.md. Do not remove attribution when editing these agents.
