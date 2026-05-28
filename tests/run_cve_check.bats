@@ -56,6 +56,15 @@ teardown() {
   [[ "$output" != *"local"* ]]
 }
 
+@test "parse_go_mod: unclosed replace block does not skip require entries in pass 2" {
+  load_function "$SCRIPT" parse_go_mod
+  run parse_go_mod "$CVE_FIX/go.mod.unclosed-replace"
+  [ "$status" -eq 0 ]
+  # in_replace state must be reset at the pass-2 boundary; if it leaks,
+  # all require lines in pass 2 are treated as replace lines and silently skipped.
+  [[ "$output" == *"Go	example.com/safe	2.0.0"* ]]
+}
+
 # ---------------------------------------------------------------------------
 # No-op paths
 # ---------------------------------------------------------------------------

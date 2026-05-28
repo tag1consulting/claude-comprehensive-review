@@ -710,7 +710,19 @@ GATE_CONTROL_FLOW=true
 GATE_SECURITY_PATTERNS=true
 GATE_CODE_OR_INFRA=true
 if [[ -x "${SCRIPTS_DIR}/evaluate-gates.sh" ]]; then
-  source <(DIFF_FILE="$DIFF_FILE" DIFF_PATHS="$DIFF_PATHS" bash "${SCRIPTS_DIR}/evaluate-gates.sh" 2>/dev/null) || true
+  _gates_tmp=$(mktemp /tmp/cr-gates-XXXXXXXX.txt)
+  if DIFF_FILE="$DIFF_FILE" DIFF_PATHS="$DIFF_PATHS" bash "${SCRIPTS_DIR}/evaluate-gates.sh" > "$_gates_tmp" 2>/dev/null; then
+    # Validate all four gate assignments are present before sourcing.
+    # A partial execution would leave gates in a mixed true/false state.
+    if grep -qE '^GATE_ERROR_PATTERNS=' "$_gates_tmp" && \
+       grep -qE '^GATE_CONTROL_FLOW=' "$_gates_tmp" && \
+       grep -qE '^GATE_SECURITY_PATTERNS=' "$_gates_tmp" && \
+       grep -qE '^GATE_CODE_OR_INFRA=' "$_gates_tmp"; then
+      source "$_gates_tmp"
+    fi
+    # If validation fails, the pre-set true defaults remain in effect (conservative).
+  fi
+  rm -f "$_gates_tmp"
 fi
 ```
 
