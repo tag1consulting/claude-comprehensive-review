@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-05-28
+
+### Removed
+
+- **`/comprehensive-review-help` skill** (#81): Removed — the verbatim-output skill approach produces blank output in Claude Code. Users can access the full flag reference via `HELP.md` directly or via the README.
+
+---
+
 ## [1.9.0] - 2026-05-27
 
 ### Added
