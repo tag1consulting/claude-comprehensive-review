@@ -2,7 +2,7 @@
 name: comprehensive-review
 description: "Run a comprehensive PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR."
 argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--create-pr] [--depth deep] [--diagrams]"
-allowed-tools: ["Bash", "Read", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
+allowed-tools: ["Bash", "Read", "Write", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
 ---
 
 # Comprehensive PR Review
@@ -36,7 +36,7 @@ The orchestrator is a software-engineering actor: it spawns subagents, calls pro
 - **External communication is gated by explicit flags.** Posting to a PR/MR (Phase 4 `--post-summary`, Phase 4b `--post-findings`) and creating a PR/MR (Phase 4 `--create-pr`) require the user to pass the corresponding flag. The flag itself is the user's authorization checkpoint. The orchestrator does not infer additional posting beyond what was requested, does not auto-enable `--post-findings` in `--pr` mode, and does not promote a `--post-summary` to a `--post-findings` run. When in doubt, do less.
 - **No `--create-pr` from a default branch.** Phase 4 must refuse `--create-pr` when the local `HEAD` matches the provider's default branch (or one of `main`/`master`/`develop` as a conservative fallback when the provider lookup fails). This is a hard refuse — exit non-zero, print a clear error directing the user to check out a feature branch. There is no override flag.
 - **User-confirmation prompts are not optional.** Phase 4 (`--create-pr`, `--post-summary`) and Phase 4b (`--post-findings`) display the proposed body and ask for confirmation before any external write. This is the orchestrator's equivalent of a Checkpoint Trigger pause. Do not collapse multiple confirmations into one for "convenience."
-- **Secret-redaction defense in depth.** Phase 2 step 2f redacts known-pattern secrets from finding text and Block A summary before any external posting. This is a backstop for the agent-level redaction in `GOVERNANCE.md`, not a replacement.
+- **Secret-redaction defense in depth.** Phase 2 step 2g redacts known-pattern secrets from finding text and Block A summary before any external posting. This is a backstop for the agent-level redaction in `GOVERNANCE.md`, not a replacement.
 - **Cite the observed result, not the action taken.** When reporting that a Phase 4 post, Phase 4b inline review, or Phase 4 PR creation succeeded, cite the specific evidence the orchestrator observed — the comment URL, review ID, PR URL, or HTTP response code returned by the provider API. "Posted Block A" without a returned URL is a claim the action was attempted, not that it succeeded. If the API call returned an error or no identifier, report the failure plainly rather than reasserting success. This applies equally to Phase 5 cleanup ("removed worktree at `<path>`" — verify the path is gone) and claude-mem `/api/memory/save` (cite the response status, not the fact that the request was sent).
 - **Reference for agent-level rules.** Subagent governance (harm prioritization, no self-preservation, verify before naming, don't reinvent the wheel, named rejected alternatives, surfaced counter-arguments, non-destructive remediations) lives in `skills/comprehensive-review/GOVERNANCE.md`. Do not duplicate those rules here; instead update `GOVERNANCE.md` and re-run.
 
@@ -71,7 +71,7 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
    - GitLab/Bitbucket: `jq --version` must succeed **unless `--no-post`/`--local` was passed** (no JSON parsing needed in local mode). If not: "Error: jq is required for GitLab/Bitbucket repositories. Install: https://jqlang.org/"
    - Bitbucket: `curl --version` must succeed (should always be available). Also verify both `BITBUCKET_EMAIL` and `BITBUCKET_TOKEN` env vars are set **unless `--no-post`/`--local` was passed** (no API calls needed in local mode). If `BITBUCKET_APP_PASSWORD` is set but `BITBUCKET_TOKEN` is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If `BITBUCKET_TOKEN` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your Atlassian API token." If `BITBUCKET_EMAIL` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_EMAIL environment variable is required for Bitbucket repositories. Set BITBUCKET_EMAIL to your Atlassian account email address."
 
-Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only used when PROVIDER=github. For other providers, all operations use CLI tools (glab, curl) via Bash.
+Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in PROVIDERS.md). No `mcp__github-pat__*` tools are used. For GitLab and Bitbucket, all operations use CLI tools (glab, curl) via Bash.
 
 ### Provider Operations Reference
 
@@ -410,7 +410,35 @@ Note: The `mcp__github-pat__*` tools in the `allowed-tools` frontmatter are only
    These triggers only apply at TIER=tiny; at TIER=small or TIER=medium they are ignored.
    Surface both flags in Phase 5 metadata (e.g., `TIER=tiny — architecture-reviewer promoted by infra trigger`).
 
-8. Determine which agents to run (see Phase 1).
+8. **Classify diff type for auto-cheap routing** (skip if `--quick`, `--depth deep`, `--security-only`, or `--summary-only` already active — those modes have explicit cost contracts):
+
+   ```bash
+   # DOCS_ONLY=true when every changed file is a documentation or meta file.
+   # Reuses GATE_CODE_OR_INFRA which is already computed above: if it is false,
+   # the diff has no code, infra, or CI content.
+   DOCS_ONLY=false
+   [[ "$GATE_CODE_OR_INFRA" == "false" ]] && DOCS_ONLY=true
+
+   # LOW_RISK_CONFIG=true when the diff contains config/YAML/TOML but none of the
+   # high-risk triggers (CI pipelines, auth, secrets, dependency manifests).
+   LOW_RISK_CONFIG=false
+   if [[ "$DOCS_ONLY" == "false" && "$GATE_SECURITY_PATTERNS" == "false" ]]; then
+     if echo "$DIFF_PATHS" | grep -qiE '\.(ya?ml|toml|ini|conf|cfg|env\.example)$'; then
+       LOW_RISK_CONFIG=true
+     fi
+   fi
+   ```
+
+   **Auto-cheap rules (applied in Phase 1 agent dispatch):**
+
+   - **DOCS_ONLY=true**: run pr-summarizer + code-reviewer only. Skip architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker, adversarial-general. Silent-failure-hunter and pr-test-analyzer still trigger on their patterns (rare for docs-only, but correct). CVE check still runs if manifest files changed. Phase 5 reports: `Auto-cheap: DOCS_ONLY — Opus agents skipped (no code/infra in diff).`
+
+   - **LOW_RISK_CONFIG=true**: run deterministic checks first. Run pr-summarizer + code-reviewer. Promote security-reviewer if `GATE_SECURITY_PATTERNS=true` (yes, by definition false here, but re-checked in Phase 1 after CVE results for safety). Skip blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer. Phase 5 reports: `Auto-cheap: LOW_RISK_CONFIG — specialist agents skipped (no security patterns in diff).`
+
+   **NOT cheap (auto-cheap is never applied when):**
+   - CI/infra/workflow files are in the diff (`GATE_CODE_OR_INFRA=true` from a `.github/workflows/` path)
+   - `GATE_SECURITY_PATTERNS=true` (auth, credential, dependency manifest paths)
+   - `--depth deep` was passed (user explicitly requested full coverage)
 
 9. **Load governance directives** — read `GOVERNANCE.md` once for inlining into agent task descriptions in Phase 1. The file is co-located with this SKILL.md in `skills/comprehensive-review/`. Resolve via the same fallback chain used for `run-cve-check.sh`:
 
@@ -558,6 +586,8 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 |------|-----------------|
 | (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) + CVE check if manifest files changed + static analyzers if binaries available |
 | `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer + CVE check if manifest files changed |
+| `DOCS_ONLY` (auto, no code/infra in diff) | pr-summarizer + code-reviewer + triggered silent-failure-hunter/pr-test-analyzer + CVE check; Opus agents skipped. Overridden by `--depth deep`, `--quick`, `--security-only`, `--summary-only`. Phase 5 reports auto-cheap reason. |
+| `LOW_RISK_CONFIG` (auto, config-only with no security patterns) | pr-summarizer + code-reviewer + deterministic checks; specialist Opus agents skipped. Phase 5 reports auto-cheap reason. |
 | `--no-post` / `--local` (explicit flag) | Same as default but also skips issue-linker; all Phase 4 operations suppressed |
 | `--security-only` | security-reviewer + CVE check (if manifest files changed) |
 | `--summary-only` | pr-summarizer only |
@@ -672,48 +702,28 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
 
 **Gate evaluation — run before all conditional agent dispatch:**
 
-Evaluate these gates once using the diff file and the file path list. Gates are cheap boolean checks; all greps run against `$DIFF_FILE` (never read its content into the conversation). All gate evaluations run in parallel. Store results as boolean flags for the agent dispatch logic below.
-
-**Important:** when the diff includes SKILL.md itself, exclude SKILL.md lines from the gate patterns to avoid false positives from the grep command strings embedded in this file.
+Evaluate these gates once using the diff file and the file path list. All gate logic lives in `$SCRIPTS_DIR/evaluate-gates.sh` — source its output to set the four boolean flags. When the script is unavailable, fall back to `true` for all gates (conservative — avoids silently skipping agents).
 
 ```bash
-# Gate: has_error_patterns — fires silent-failure-hunter
-GATE_ERROR_PATTERNS=false
-grep -qE 'catch\b|if err|try \{|rescue\b|Result<|unwrap\b|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE" \
-  && GATE_ERROR_PATTERNS=true
-
-# Gate: has_control_flow — fires edge-case-hunter (added lines only via + prefix filter)
-GATE_CONTROL_FLOW=false
-grep -E '^\+' "$DIFF_FILE" | grep -qE '\b(if|elif|else|for|while|do|case|switch|match|try|catch|except|rescue|unless|when|loop|break|continue|return|goto|defer|finally)\b' \
-  && GATE_CONTROL_FLOW=true
-
-# Gate: has_security_patterns — ensures security-reviewer runs even at TIER=small/medium when security-relevant changes are present
-GATE_SECURITY_PATTERNS=false
-if grep -qiE 'auth|token|secret|password|crypt|hash|\bsign\b|verify|exec\b|eval\b|sql|sanitize|escape|xss|csrf|cors|header|redirect|deserialize|cookie|session|jwt|oauth|ldap|saml|rbac|acl|permission|privilege|sudo|chmod|chown|setuid|x509|tls|ssl|cert|certificate|keystore|nonce|salt|hmac|aes|rsa|ecdsa|pbkdf2|bcrypt|scrypt|curl\b|wget\b|\bsource\b|\bIFS\b|LD_PRELOAD|\$\{\{' "$DIFF_FILE"; then
-  GATE_SECURITY_PATTERNS=true
+GATE_ERROR_PATTERNS=true
+GATE_CONTROL_FLOW=true
+GATE_SECURITY_PATTERNS=true
+GATE_CODE_OR_INFRA=true
+if [[ -x "${SCRIPTS_DIR}/evaluate-gates.sh" ]]; then
+  _gates_tmp=$(mktemp /tmp/cr-gates-XXXXXXXX.txt)
+  if DIFF_FILE="$DIFF_FILE" DIFF_PATHS="$DIFF_PATHS" bash "${SCRIPTS_DIR}/evaluate-gates.sh" > "$_gates_tmp" 2>/dev/null; then
+    # Validate all four gate assignments are present before sourcing.
+    # A partial execution would leave gates in a mixed true/false state.
+    if grep -qE '^GATE_ERROR_PATTERNS=' "$_gates_tmp" && \
+       grep -qE '^GATE_CONTROL_FLOW=' "$_gates_tmp" && \
+       grep -qE '^GATE_SECURITY_PATTERNS=' "$_gates_tmp" && \
+       grep -qE '^GATE_CODE_OR_INFRA=' "$_gates_tmp"; then
+      source "$_gates_tmp"
+    fi
+    # If validation fails, the pre-set true defaults remain in effect (conservative).
+  fi
+  rm -f "$_gates_tmp"
 fi
-# Also check file paths for security-relevant patterns
-if echo "$DIFF_PATHS" | grep -qiE '(auth|passwords?|credentials?|tokens?|secrets?)|(^|/)(?:api|routes?)/|(^|/)(?:package\.json|package-lock\.json|go\.mod|go\.sum|composer\.json|composer\.lock|requirements[^/]*\.txt|pyproject\.toml|Pipfile(?:\.lock)?|Gemfile(?:\.lock)?|[Cc]argo\.(?:toml|lock)|yarn\.lock|pnpm-lock\.yaml)$|(^|/)\.env|(^|/)settings\.(py|ya?ml|json|toml)$|(^|/)(?:Dockerfile|Containerfile)$|\.(?:sh|bash)$|(^|/)\.github/workflows/'; then
-  GATE_SECURITY_PATTERNS=true
-fi
-
-# Gate: has_code_or_infra — ensures architecture-reviewer skips pure docs/meta-only PRs
-# Fires when ANY changed file is code, config, or infra (including .github/workflows/).
-# Docs-only (.md, .rst, .txt, .adoc), meta dirs (docs/, memory-bank/, .claude/), and meta
-# filenames (CHANGELOG, README, LICENSE) are excluded.
-GATE_CODE_OR_INFRA=false
-for f in $DIFF_PATHS; do
-  # Workflow files always count as infra
-  echo "$f" | grep -qE '(^|/)\.github/workflows/' && { GATE_CODE_OR_INFRA=true; break; }
-  # Pure doc extensions → skip
-  echo "$f" | grep -qE '\.(md|markdown|txt|rst|adoc)$' && continue
-  # Meta directories → skip
-  echo "$f" | grep -qE '(^|/)(docs|memory-bank|\.github|\.claude)/' && continue
-  # Meta filenames → skip
-  echo "$f" | grep -qiE '(^|/)(CHANGELOG|README|LICENSE|NOTICE|AUTHORS|CONTRIBUTING|CODEOWNERS|CODE_OF_CONDUCT)(\..+)?$' && continue
-  # Anything else is code or infra
-  GATE_CODE_OR_INFRA=true; break
-done
 ```
 
 **Effect of gates at TIER=small and TIER=medium:**
@@ -806,9 +816,10 @@ if command -v semgrep &>/dev/null && [[ -x "$SCRIPTS_DIR/run-semgrep.sh" ]]; the
   (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-semgrep.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/semgrep.json" &
 fi
 
-# Trufflehog — secret scanning on diff
+# Trufflehog — secret scanning on changed files (per-file mode so findings
+# carry real repo paths and line numbers, not temp-diff coordinates)
 if command -v trufflehog &>/dev/null && [[ -x "$SCRIPTS_DIR/run-trufflehog.sh" ]]; then
-  (bash "$SCRIPTS_DIR/run-trufflehog.sh" "$DIFF_FILE" 2>/dev/null || echo '[]') > "$_TMPDIR/trufflehog.json" &
+  (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-trufflehog.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/trufflehog.json" &
 fi
 
 # Ruff — Python files
@@ -893,13 +904,19 @@ extract_findings() {
       echo "[]"; return
     fi
   fi
-  # Validate each object; drop malformed ones individually
-  echo "$json_block" | jq --arg agent "$agent_name" '
+  # Validate each object; drop malformed ones individually.
+  # Normalize category: accept the fixed taxonomy; default missing/unknown to "other".
+  local _VALID_CATS="authz|injection|dependency-cve|secret|architecture-coupling|test-gap|edge-case|observability|docs|lint|other"
+  echo "$json_block" | jq --arg agent "$agent_name" --arg valid_cats "$_VALID_CATS" '
     [.[] | select(
       (.severity | test("^(Critical|High|Medium|Low)$")) and
       (.finding | type == "string") and
       (.file | type == "string")
-    ) | . + {source: (if .source then .source else $agent end)}]
+    ) | . + {
+      source: (if .source then .source else $agent end),
+      category: (if (.category | type == "string") and (.category | test($valid_cats))
+                 then .category else "other" end)
+    }]
   ' 2>/dev/null || echo "[]"
 }
 ```
@@ -948,9 +965,26 @@ Group findings by file. Within each file, sort by line number. Cluster findings 
 - Within a cluster: keep the highest-severity finding; accumulate a `sources[]` array from all findings in the cluster.
 - When a `dependency-check` finding and an LLM agent finding are in the same cluster, prefer the `dependency-check` entry (it carries the authoritative CVE/GHSA ID).
 - Annotate the kept finding: "(also flagged by: [source2, source3])" if sources has more than one entry.
-- Same file without a line number → deduplicate by file + category (the bracketed label in finding text, lowercased).
+- Same file without a line number → deduplicate by `file + category` (using the structured `category` field, not the bracketed prose label).
 
-**Step 2f — Secret redaction (defense-in-depth):**
+**Step 2f — Novelty pass (skip if PRIOR_REVIEW_CONTEXT is empty, or `--no-mem` was passed, or `--quick`/`--security-only`/`--summary-only` mode is active):**
+
+Compare current Low and Medium findings against recurring patterns in PRIOR_REVIEW_CONTEXT. A finding is a novelty candidate when:
+- Its severity is Low or Medium (never demote Critical or High).
+- Its `category + file` fingerprint appears in at least one prior review summary in PRIOR_REVIEW_CONTEXT.
+- The changed diff lines do not contain a *new* occurrence of the pattern (the finding would exist even without the current PR).
+
+For each novelty candidate, annotate the finding's `finding` field with: `[recurring — appeared in prior reviews]`. Do NOT delete the finding; do NOT change the severity. Track the count of annotated findings as NOVELTY_DEMOTED_COUNT.
+
+**Safeguards:**
+- Never apply novelty annotation to `Critical` or `High` findings (enforced before the loop).
+- Never apply novelty annotation to `dependency-check` findings (CVEs require explicit suppression, not annotation).
+- If PRIOR_REVIEW_CONTEXT contains fewer than 2 prior review entries, skip the novelty pass entirely (one prior run is insufficient for "recurring" judgment).
+- `--no-suppress` flag also disables the novelty pass (treat as equivalent to suppression bypass).
+
+NOVELTY_DEMOTED_COUNT is reported in Phase 5 if > 0.
+
+**Step 2g — Secret redaction (defense-in-depth):**
 
 Agents are told via `GOVERNANCE.md` to redact secrets at source, but a missed redaction in finding text would land verbatim in PR/MR comments via Phase 4/4b. Apply a hardcoded redaction pass to the `finding` and `remediation` fields of every finding in `ALL_FINDINGS`, and to the assembled Block A summary text (built in Phase 3) before any external posting.
 
@@ -1075,7 +1109,7 @@ If `GOVERNANCE_DEGRADED=true` (set in Phase 0 step 9 when GOVERNANCE.md could no
 > ⚠️ **Review ran in degraded mode — `GOVERNANCE.md` not found.** The shared governance directives (harm prioritization, verify-before-naming, secret redaction at source, etc.) were not inlined into agent task descriptions. Findings may be lower-quality than a normal run, and agent self-redaction was not enforced. Reinstall the plugin (`/plugins install comprehensive-review@tag1consulting`) or report this to the plugin maintainer.
 ```
 
-If `REDACTION_DEGRADED=true` (set in Phase 2 step 2f when `perl` was unavailable on the host and the secret-redaction backstop ran in pass-through mode):
+If `REDACTION_DEGRADED=true` (set in Phase 2 step 2g when `perl` was unavailable on the host and the secret-redaction backstop ran in pass-through mode):
 ```markdown
 > ⚠️ **Secret redaction was skipped — `perl` not found on this host.** The defense-in-depth redaction pass that strips known token patterns from finding text and Block A was not executed. Agent-level redaction (per `GOVERNANCE.md`) is the only line of defense in this run. Scan finding text for credential leaks before approving any post.
 ```
@@ -1376,7 +1410,7 @@ Note in terminal: "Review written to <path>"
    - `MEM_SAVED=true` → "Review summary stored to claude-mem (HTTP ${MEM_HTTP_STATUS})."
    - `MEM_SAVED=false` → omit the line entirely (best-effort integration; do not report failure).
 4. Always display Block B (findings).
-5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ..."
+5. Report skipped agents: "--quick mode skipped: ..." and "Skipped (no patterns): ...". If DOCS_ONLY=true, also report: `"Auto-cheap: DOCS_ONLY — Opus agents skipped (no code/infra in diff)."` If LOW_RISK_CONFIG=true, also report: `"Auto-cheap: LOW_RISK_CONFIG — specialist agents skipped (no security patterns in diff)."`
 6. Report diff tier and Opus agent tool-call usage:
    - `"Diff tier: <tiny|small|medium>  (<N> lines, <M> files)"` — if TIER=tiny, also show which agents were promoted or skipped, e.g.: `"TIER=tiny — architecture-reviewer: promoted (infra trigger) | security-reviewer: skipped | blind-hunter: skipped | edge-case-hunter: skipped"`
    - `"Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)"` — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time. Omit any agent that was skipped.
@@ -1411,6 +1445,7 @@ Note in terminal: "Review written to <path>"
    If CVE_CHECK_FAILED=true → "⚠ CVE check did not run (script not found or execution failed) — dependency vulnerabilities not scanned." Show this even when CVE_JSON is [] so the user knows the empty result means 'check skipped', not 'no vulnerabilities'.
    If `--no-suppress` was passed → note "Suppression rules disabled (--no-suppress)." in terminal output.
    If MIN_CONFIDENCE > 0 → note "Confidence filter: ≥ <N> (dropped <M> findings below threshold)."
+   If NOVELTY_DEMOTED_COUNT > 0 → note "Novelty pass: annotated <N> repeated low-value finding(s) from prior reviews."
 10. No findings + no failures → "No significant issues found. Ready for review."
 11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
 

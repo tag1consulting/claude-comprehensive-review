@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-05-27
+
+### Added
+
+- **Structured `category` field in `json-findings` contract** (#76): All custom agents (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, adversarial-general) and the CVE dependency check now emit a required `category` field with a fixed taxonomy (`authz`, `injection`, `dependency-cve`, `secret`, `architecture-coupling`, `test-gap`, `edge-case`, `observability`, `docs`, `lint`, `other`). Phase 2 normalization validates and normalizes the field. `SEVERITY.md` documents the full contract. This enables structured filtering and deduplication.
+- **Gate evaluation extracted to `evaluate-gates.sh`** (#72): The four agent-dispatch gate checks (`GATE_ERROR_PATTERNS`, `GATE_CONTROL_FLOW`, `GATE_SECURITY_PATTERNS`, `GATE_CODE_OR_INFRA`) are now a standalone script at `skills/comprehensive-review/scripts/evaluate-gates.sh`. Inputs: `DIFF_FILE` and `DIFF_PATHS` env vars. Output: sourceable `key=value` pairs. Conservative fallback: all gates default to `true` when inputs are missing. Makes gate logic independently testable.
+- **Auto-cheap routing for docs-only and low-risk-config diffs** (#78): When all changed files are documentation/meta (`DOCS_ONLY=true`), Opus agents are automatically skipped without requiring `--quick`, reducing cost by ~60%. When the diff contains only config/YAML/TOML with no security-sensitive patterns (`LOW_RISK_CONFIG=true`), specialist agents are skipped. Both modes still run pr-summarizer, code-reviewer, and triggered conditionals. Phase 5 reports the auto-cheap reason. `HELP.md` documents both modes.
+- **Novelty pass for repeated low-value findings** (#77): After deduplication (new Phase 2f), Low and Medium findings whose `category+file` fingerprint appeared in ≥2 prior reviews in `PRIOR_REVIEW_CONTEXT` are annotated with `[recurring — appeared in prior reviews]`. Findings are never deleted or severity-demoted. Critical/High findings and `dependency-check` CVE findings are excluded. Requires `--no-mem` to disable; skipped when `--quick`, `--security-only`, or `--summary-only` mode is active, or when fewer than 2 prior review entries exist.
+- **`/comprehensive-review-help` skill** (#73): Replaced the dead-end placeholder with a functional skill that outputs the full `HELP.md` content verbatim.
+- **PR/MR body included in `PR_NARRATIVE`** (#70): All three providers (GitHub, GitLab, Bitbucket) now fetch the `body`/`description` field when collecting PR/MR metadata in `--pr <N>` mode. GitLab `description` and Bitbucket `description` are mapped to `body`. This reduces false positives by giving agents the author's intent statement.
+- **`bats` test suite with 54 tests** (#74, #75): Added `tests/` directory with four test files:
+  - `run_cve_check.bats` — 10 tests: `parse_go_mod` replace-directive ordering (covers #67 bug), no-op paths, and end-to-end OSV batch mock tests including CVSS v4 conservative fallback.
+  - `run_trufflehog.bats` — 5 tests: verified/unverified secret demotions, empty mock, no changed files.
+  - `evaluate_gates.bats` — 15 tests: all four gates with positive/negative cases and fallback behavior.
+  - `orchestration_contracts.bats` — 24 golden tests: SKILL.md structural integrity, SEVERITY.md contract, PROVIDERS.md correctness, gate fixture decisions, and CVE category field.
+
+### Fixed
+
+- **Go `replace` directive ordering bug in CVE check** (#67): `parse_go_mod()` in `run-cve-check.sh` rewritten as two-pass awk using the `FNR == NR` idiom. The original single-pass code missed replace directives when `require` appeared before `replace` (the standard go.mod layout). Both orderings now resolve correctly; local-path replacements keep the original module.
+- **`Write` tool missing from `allowed-tools` frontmatter** (#68): The `Write` tool is now listed in `SKILL.md`'s `allowed-tools` frontmatter, enabling `--output-file` functionality that was silently failing.
+- **GitHub inline review incorrectly documented as using MCP tool** (#69): `SKILL.md` and `PROVIDERS.md` updated to reflect the actual `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews` invocation. `mcp__github-pat__create_pull_request_review` was never the implementation and is no longer referenced.
+- **TruffleHog scanning wrong input** (#71): Phase 1b now pipes `$DIFF_PATHS` to `run-trufflehog.sh` instead of passing `$DIFF_FILE`. This lets TruffleHog scan live files at their real paths (for accurate detector matching and file:line attribution) rather than scanning a combined diff text blob.
+
+### Changed
+
+- **Secret redaction step renumbered** from 2f to 2g to accommodate the new novelty pass (2f).
+- **Step 2e deduplication** now uses the structured `category` field for file-level deduplication, not the informal bracketed prose label.
+- **PROVIDERS.md**: GitHub inline review section rewritten to show actual `gh api` invocation; `body` field documented for all three providers' metadata fetch commands.
+- **SEVERITY.md**: New "json-findings field contract" section with the full field table and category taxonomy.
+
+---
+
 ## [1.8.11] - 2026-05-27
 
 ### Added

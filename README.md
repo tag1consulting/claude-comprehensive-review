@@ -143,6 +143,8 @@ Run from any git repository, on the branch you want to review:
 | `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
 | `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. Roughly 60–80% cheaper depending on diff composition. When the diff is also tiny (<50 lines, ≤3 files), auto-selected TIER=tiny further demotes pr-summarizer to Haiku. No flag needed. |
 | *(auto)* TIER=tiny | Automatically applied when the diff is under 50 lines AND ≤3 files. Routes pr-summarizer to Haiku; skips blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally; skips architecture-reviewer and security-reviewer unless triggered by infra/CI paths or auth/credential/dep-manifest paths respectively. Roughly 60–70% cheaper than `--quick` on tiny diffs (~$1 → ~$0.30). |
+| *(auto)* DOCS_ONLY | Automatically applied when all changed files are documentation/markdown/meta (no code or infra). Runs pr-summarizer + code-reviewer + triggered conditionals. Skips all Opus agents and blind/edge-case/comment/type agents. Phase 5 reports the reason. Overridden by `--depth deep`, `--quick`, `--security-only`, `--summary-only`. |
+| *(auto)* LOW_RISK_CONFIG | Automatically applied when the diff contains only config/YAML/TOML with no security-sensitive patterns and no dep manifests/CI files. Runs pr-summarizer + code-reviewer + deterministic checks. Skips specialist Opus agents and blind/edge-case agents. Phase 5 reports the reason. |
 | `--diagrams` | Include Mermaid sequence diagrams in Block A. Default is omitted (saves hundreds of output tokens). Always omitted in `--quick`. |
 | `--security-only` | Run security-reviewer + CVE check on changed dependency manifests only |
 | `--depth <tier>` | Agent depth: `normal` (default) or `deep`. In `deep` mode, blind-hunter and edge-case-hunter run on the `opus` alias, Opus agents use extended step-by-step reasoning, and a CVE reachability triage pass annotates which vulnerabilities are reachable in the diff. |
@@ -348,7 +350,7 @@ Each custom findings agent appends a structured JSON block to its output:
 
 ````
 ```json-findings
-[{"severity":"High","confidence":85,"file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"agent-name"}]
+[{"severity":"High","confidence":85,"category":"injection","file":"path/to/file","line":42,"finding":"description","remediation":"how to fix","source":"agent-name"}]
 ```
 ````
 
@@ -473,6 +475,20 @@ No configuration needed. Use `--no-mem` to opt out.
 | **Total overhead per run** | **~750–1,000 tokens** |
 
 Break-even: if the prior-review context helps architecture-reviewer or security-reviewer skip ~1,000 tokens of re-analysis on a recurring pattern, the integration pays for itself. On a typical full run (50K–200K tokens), this is a rounding error. The value is qualitative: recurring issues are more likely to be flagged and labeled as patterns rather than isolated findings.
+
+## Contributing
+
+The deterministic bash helpers in `skills/comprehensive-review/scripts/` and `tests/` have a [bats](https://github.com/bats-core/bats-core) test suite:
+
+```bash
+# Install bats (macOS)
+brew install bats-core
+
+# Run all tests
+bats tests/*.bats
+```
+
+Tests cover: `parse_go_mod` replace-directive ordering, TruffleHog invocation modes, gate evaluation logic, and golden orchestration contracts (SKILL.md structural integrity, PROVIDERS.md correctness, SEVERITY.md contract). All 54 tests are offline (no network, no Claude invocation).
 
 ## Acknowledgments
 

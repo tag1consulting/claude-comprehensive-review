@@ -21,6 +21,25 @@ unified Critical/High/Medium/Low scale.
 | golangci-lint | all findings | Medium |
 | checkov | CKV2_*/CKV_SECRET_* vs others | High / Medium |
 
+## json-findings field contract
+
+All custom agents (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter,
+adversarial-general) and deterministic scripts (dependency-check) emit a `json-findings`
+block. Required fields:
+
+| Field | Type | Values |
+|-------|------|--------|
+| `severity` | string | `Critical`, `High`, `Medium`, `Low` |
+| `confidence` | integer | 0–100 (see scale below) |
+| `category` | string | `authz`, `injection`, `dependency-cve`, `secret`, `architecture-coupling`, `test-gap`, `edge-case`, `observability`, `docs`, `lint`, `other` |
+| `file` | string | repo-relative path |
+| `line` | integer | 1-based; 0 when unknown |
+| `finding` | string | description of the issue |
+| `remediation` | string | concrete fix |
+| `source` | string | agent/script name |
+
+Phase 2 step 2a normalizes missing or unrecognized `category` values to `"other"`.
+
 ## Confidence Scale (0–100)
 
 Custom agents (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter,
