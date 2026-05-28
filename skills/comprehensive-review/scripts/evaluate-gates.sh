@@ -44,7 +44,9 @@ if [[ $_rc -eq 0 ]]; then GATE_ERROR_PATTERNS=true; fi
 # The first grep (extract + lines) may legitimately exit 1 (no added lines); treat that as false.
 # The second grep exits 2 only on I/O error, which we abort on.
 GATE_CONTROL_FLOW=false
-_added_lines=$(grep -E '^\+' "$DIFF_FILE" || true)
+_rc=0
+_added_lines=$(grep -E '^\+' "$DIFF_FILE") || _rc=$?
+if [[ $_rc -eq 2 ]]; then echo "ERROR: grep failed reading $DIFF_FILE" >&2; exit 1; fi
 if [[ -n "$_added_lines" ]]; then
   _rc=0
   echo "$_added_lines" | grep -qE '\b(if|elif|else|for|while|do|case|switch|match|try|catch|except|rescue|unless|when|loop|break|continue|return|goto|defer|finally)\b' || _rc=$?
