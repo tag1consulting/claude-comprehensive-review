@@ -33,14 +33,24 @@ if [[ -z "$DIFF_FILE" || ! -f "$DIFF_FILE" || -z "$DIFF_PATHS" ]]; then
 fi
 
 # Gate: has_error_patterns — fires silent-failure-hunter
+# Exit 0 = match → set gate true; exit 1 = no match → leave false; exit 2 = I/O error → abort.
 GATE_ERROR_PATTERNS=false
-grep -qE 'catch\b|if err|try \{|rescue\b|Result<|unwrap\b|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE" \
-  && GATE_ERROR_PATTERNS=true || true
+_rc=0
+grep -qE 'catch\b|if err|try \{|rescue\b|Result<|unwrap\b|\.error\(|\.expect\(|runCatching|guard\b|throws\b' "$DIFF_FILE" || _rc=$?
+if [[ $_rc -eq 2 ]]; then echo "ERROR: grep failed reading $DIFF_FILE" >&2; exit 1; fi
+if [[ $_rc -eq 0 ]]; then GATE_ERROR_PATTERNS=true; fi
 
 # Gate: has_control_flow — fires edge-case-hunter (added lines only via + prefix filter)
+# The first grep (extract + lines) may legitimately exit 1 (no added lines); treat that as false.
+# The second grep exits 2 only on I/O error, which we abort on.
 GATE_CONTROL_FLOW=false
-grep -E '^\+' "$DIFF_FILE" | grep -qE '\b(if|elif|else|for|while|do|case|switch|match|try|catch|except|rescue|unless|when|loop|break|continue|return|goto|defer|finally)\b' \
-  && GATE_CONTROL_FLOW=true || true
+_added_lines=$(grep -E '^\+' "$DIFF_FILE" || true)
+if [[ -n "$_added_lines" ]]; then
+  _rc=0
+  echo "$_added_lines" | grep -qE '\b(if|elif|else|for|while|do|case|switch|match|try|catch|except|rescue|unless|when|loop|break|continue|return|goto|defer|finally)\b' || _rc=$?
+  if [[ $_rc -eq 2 ]]; then echo "ERROR: grep failed on added lines" >&2; exit 1; fi
+  if [[ $_rc -eq 0 ]]; then GATE_CONTROL_FLOW=true; fi
+fi
 
 # Gate: has_security_patterns — fires security-reviewer even on small/medium diffs
 GATE_SECURITY_PATTERNS=false

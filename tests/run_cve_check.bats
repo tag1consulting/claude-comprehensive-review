@@ -122,5 +122,6 @@ teardown() {
   [ "$status" -eq 0 ]
   echo "$output" | jq -e 'length > 0' >/dev/null
   echo "$output" | jq -e '.[0].severity == "High"' >/dev/null
-  echo "$output" | jq -e '.[0].category == "dependency-cve"' >/dev/null
+  echo "$output" | jq -e '.[0].category == "dependency-cve"' \
+    || { echo "Actual category: $(echo "$output" | jq -r '.[0].category')" >&2; false; }
 }
