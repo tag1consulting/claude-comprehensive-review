@@ -51,6 +51,7 @@ In short: pr-review-toolkit agents handle tactical code review. This skill orche
 | `BITBUCKET_TOKEN` env var | Required for Bitbucket — Atlassian API token from `id.atlassian.com` (`BITBUCKET_APP_PASSWORD` is auto-mapped if set) |
 | `jq` | Required for GitLab and Bitbucket (JSON parsing) |
 | `pr-review-toolkit@claude-plugins-official` | Required plugin — provides code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer |
+| `security-guidance@claude-plugins-official` | Recommended plugin — provides ambient hook-based security review on edits and commits. When installed, comprehensive-review's `security-reviewer` also reads its `claude-security-guidance.md` org-policy file to apply the same codebase-specific security rules. |
 
 ## Provider support
 
@@ -82,6 +83,12 @@ Then inside Claude Code, install the plugin and its dependency:
 ```
 /plugins install comprehensive-review@tag1consulting
 /plugins install pr-review-toolkit@claude-plugins-official
+```
+
+Optionally, install the security-guidance companion plugin for ambient hook-based security review:
+
+```
+/plugins install security-guidance@claude-plugins-official
 ```
 
 ### Option 2: Manual installation
@@ -127,6 +134,47 @@ Then register the plugin in `~/.claude/plugins/installed_plugins.json` (add or u
 ```
 /plugins install pr-review-toolkit@claude-plugins-official
 ```
+
+Optionally, install the security-guidance companion plugin:
+
+```
+/plugins install security-guidance@claude-plugins-official
+```
+
+## Org security policy
+
+Both `comprehensive-review` and the `security-guidance` plugin read the same
+`claude-security-guidance.md` policy file — drop one in any of these locations to have
+both tools apply the same codebase-specific security rules automatically:
+
+| Path | Scope |
+|------|-------|
+| `~/.claude/claude-security-guidance.md` | User-wide (all repos) |
+| `<repo>/.claude/claude-security-guidance.md` | Project-wide (commit this) |
+| `<repo>/.claude/claude-security-guidance.local.md` | Local overrides (gitignore this) |
+
+All three are loaded and concatenated in the order above (user → project → project-local)
+into the security-reviewer's task description. The combined budget is capped at 8 KB
+(matching the security-guidance plugin) — if the files exceed this, the tail
+(project-local) is truncated first, preserving user-wide rules.
+
+Example `claude-security-guidance.md`:
+
+```markdown
+# Org security rules
+
+- All SELECTs against the `customers` or `orders` tables MUST go through `db.replica`.
+- Background jobs must not use the user-context auth token; use service-account creds.
+- Calls to `requests.get(url)` with user-controlled input need the SSRF-allowlist wrapper.
+```
+
+For a fuller annotated starting point, copy
+[`examples/claude-security-guidance.example.md`](examples/claude-security-guidance.example.md)
+into your repo's `.claude/` directory and rename it to `claude-security-guidance.md`.
+
+When a finding is triggered by a policy rule, the security-reviewer cites the specific
+rule in the finding text. If no policy file exists, the security-reviewer falls back to
+its universal checks — the review runs fully without it.
 
 ## Usage
 
