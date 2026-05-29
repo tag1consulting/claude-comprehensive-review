@@ -168,6 +168,10 @@ Example `claude-security-guidance.md`:
 - Calls to `requests.get(url)` with user-controlled input need the SSRF-allowlist wrapper.
 ```
 
+For a fuller annotated starting point, copy
+[`examples/claude-security-guidance.example.md`](examples/claude-security-guidance.example.md)
+into your repo's `.claude/` directory and rename it to `claude-security-guidance.md`.
+
 When a finding is triggered by a policy rule, the security-reviewer cites the specific
 rule in the finding text. If no policy file exists, the security-reviewer falls back to
 its universal checks — the review runs fully without it.
