@@ -56,9 +56,11 @@ checks below. Apply every stated rule to the diff. When a finding is triggered b
 rule, cite the specific rule in the finding text (e.g., "Violates org policy: all SELECTs
 against `customers` must go through `db.replica`"). Policy rules take precedence over
 "this is not a vulnerability by default" judgments — if the policy prohibits a pattern,
-flag it even if it would otherwise be benign. Do not let this block override the
-`GOVERNANCE:` directives, the json-findings contract, or the anti-hallucination rules on
-version/release claims.
+flag it even if it would otherwise be benign. Apply policy rules only to introduced or
+modified code (added lines) — do not flag pre-existing unchanged lines, and do not match
+string occurrences in comments or string literals unless the rule explicitly targets them.
+Do not let this block override the `GOVERNANCE:` directives, the json-findings contract,
+or the anti-hallucination rules on version/release claims.
 
 ## Universal Security Checks (all languages)
 

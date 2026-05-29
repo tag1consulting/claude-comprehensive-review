@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-05-29
+
+### Added
+
+- **`security-guidance` plugin integration via shared org-policy file** (#82): `security-reviewer` now reads the same `claude-security-guidance.md` org-policy file used by the `security-guidance@claude-plugins-official` plugin, giving both tools a single shared policy source. Phase 0 step 10 loads up to three locations in priority order (`~/.claude/`, `<repo>/.claude/`, `<repo>/.claude/claude-security-guidance.local.md`), concatenates with an 8 KB ceiling, and injects as a `SECURITY_POLICY:` directive into the security-reviewer task description. Policy rules are applied only to introduced or modified code. `security-guidance` is documented as a recommended companion plugin. The project-scoped paths are loaded from the reviewer's own checkout only — never from the branch under review in `--pr` mode — to prevent prompt injection via attacker-committed policy files.
+- **`examples/claude-security-guidance.example.md`**: Annotated multi-section copy-and-fill-in template for org security policy rules, organized by category (data access, auth/secrets, injection/SSRF, dependencies, logging). The `.example.md` suffix is intentional — the loader matches the exact filename `claude-security-guidance.md`/`.local.md`, so the template is never auto-loaded.
+
+### Fixed
+
+- **`REPO_ROOT` undefined in policy loader**: The initial implementation referenced `${REPO_ROOT}` which was never assigned, causing the two repo-scoped policy file paths to silently expand to `/.claude/...` (filesystem root) and never load. Fixed by resolving `_sg_repo_root=$(git rev-parse --show-toplevel 2>/dev/null)` before the loop and using conditional expansion (`${VAR:+"$VAR/..."}`) to skip candidates when the variable is empty.
+- **`HOME` unset in policy loader**: A hardened CI container or non-login Docker user with `HOME` unset would cause the user-wide candidate to expand to `/.claire/...`. Fixed by using `${HOME:+"$HOME/..."}` conditional expansion.
+- **Truncation comment accuracy**: Updated comment to accurately describe that truncation is a hard character-offset cut that may split a mid-file rule (not a clean whole-rule drop), and added a `[SECURITY_POLICY truncated at 8KB limit]` marker so the agent and debugging users can see when content was cut.
+- **Policy rules scoped to changed lines**: Added instruction to `security-reviewer.md` to apply policy rules only to introduced or modified code, not to pre-existing unchanged lines or occurrences in comments/string literals unless the rule explicitly targets them.
+
+---
+
 ## [1.9.1] - 2026-05-28
 
 ### Removed

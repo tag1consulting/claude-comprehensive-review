@@ -495,23 +495,27 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
     ```bash
     SECURITY_POLICY_BLOCK=""
     _sg_separator=""
+    # Resolve the repo root once (invocation-dir checkout, NOT $WORKTREE_PATH).
+    # In --pr mode this deliberately loads the reviewer's own policy, never the
+    # branch-under-review's policy, to prevent a PR author from injecting content
+    # into the security-reviewer's authoritative SECURITY_POLICY block.
+    _sg_repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
     for _sg_candidate in \
-      "$HOME/.claude/claude-security-guidance.md" \
-      "${REPO_ROOT}/.claude/claude-security-guidance.md" \
-      "${REPO_ROOT}/.claude/claude-security-guidance.local.md"; do
-      if [[ -r "$_sg_candidate" ]]; then
-        _sg_content=$(cat "$_sg_candidate" 2>/dev/null)
-        if [[ -n "$_sg_content" ]]; then
-          SECURITY_POLICY_BLOCK="${SECURITY_POLICY_BLOCK}${_sg_separator}${_sg_content}"
-          _sg_separator=$'\n\n'
-        fi
+      ${HOME:+"$HOME/.claude/claude-security-guidance.md"} \
+      ${_sg_repo_root:+"${_sg_repo_root}/.claude/claude-security-guidance.md"} \
+      ${_sg_repo_root:+"${_sg_repo_root}/.claude/claude-security-guidance.local.md"}; do
+      [[ -n "$_sg_candidate" && -r "$_sg_candidate" ]] || continue
+      _sg_content=$(cat "$_sg_candidate" 2>/dev/null)
+      if [[ -n "$_sg_content" ]]; then
+        SECURITY_POLICY_BLOCK="${SECURITY_POLICY_BLOCK}${_sg_separator}${_sg_content}"
+        _sg_separator=$'\n\n'
       fi
     done
     # Enforce an 8 KB ceiling (matches the security-guidance plugin's own budget).
-    # Truncate from the tail: user-wide rules (head) survive; project-local rules
-    # (tail) are dropped first — same priority order the plugin uses.
+    # Truncation is a hard character-offset cut that may split a mid-file rule;
+    # user-wide rules appear first and are more likely to survive.
     if [[ ${#SECURITY_POLICY_BLOCK} -gt 8192 ]]; then
-      SECURITY_POLICY_BLOCK="${SECURITY_POLICY_BLOCK:0:8192}"
+      SECURITY_POLICY_BLOCK="${SECURITY_POLICY_BLOCK:0:8192}"$'\n\n''[SECURITY_POLICY truncated at 8KB limit]'
     fi
     ```
 
