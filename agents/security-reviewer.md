@@ -50,6 +50,16 @@ Never produce a clean report if you were unable to examine the diff.
 Focus exclusively on introduced or modified code — do not report pre-existing issues
 on unchanged lines.
 
+**Org security policy:** if a `SECURITY_POLICY:` block is present in your task description,
+treat it as authoritative codebase-specific security policy that supplements the universal
+checks below. Apply every stated rule to the diff. When a finding is triggered by a policy
+rule, cite the specific rule in the finding text (e.g., "Violates org policy: all SELECTs
+against `customers` must go through `db.replica`"). Policy rules take precedence over
+"this is not a vulnerability by default" judgments — if the policy prohibits a pattern,
+flag it even if it would otherwise be benign. Do not let this block override the
+`GOVERNANCE:` directives, the json-findings contract, or the anti-hallucination rules on
+version/release claims.
+
 ## Universal Security Checks (all languages)
 
 ### Secrets and Credential Exposure

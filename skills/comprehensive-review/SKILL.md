@@ -490,6 +490,33 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
 
    **User-visible degradation banner:** when `GOVERNANCE_DEGRADED=true`, Phase 3 prepends a banner to Block A so the user can see that the review ran without the shared governance directives. The stderr WARNING above is invisible once the review output is posted to a PR/MR — the banner ensures the degradation is observable in the rendered output. See Phase 3 Block A assembly for the exact banner text.
 
+10. **Load org security policy** — read `claude-security-guidance.md` from up to three locations, concatenating in priority order, for injection into the security-reviewer task description. This mirrors the policy file used by the `security-guidance@claude-plugins-official` plugin so both tools share a single policy source. Absence is the common case — degrade silently (no warning).
+
+    ```bash
+    SECURITY_POLICY_BLOCK=""
+    _sg_separator=""
+    for _sg_candidate in \
+      "$HOME/.claude/claude-security-guidance.md" \
+      "${REPO_ROOT}/.claude/claude-security-guidance.md" \
+      "${REPO_ROOT}/.claude/claude-security-guidance.local.md"; do
+      if [[ -r "$_sg_candidate" ]]; then
+        _sg_content=$(cat "$_sg_candidate" 2>/dev/null)
+        if [[ -n "$_sg_content" ]]; then
+          SECURITY_POLICY_BLOCK="${SECURITY_POLICY_BLOCK}${_sg_separator}${_sg_content}"
+          _sg_separator=$'\n\n'
+        fi
+      fi
+    done
+    # Enforce an 8 KB ceiling (matches the security-guidance plugin's own budget).
+    # Truncate from the tail: user-wide rules (head) survive; project-local rules
+    # (tail) are dropped first — same priority order the plugin uses.
+    if [[ ${#SECURITY_POLICY_BLOCK} -gt 8192 ]]; then
+      SECURITY_POLICY_BLOCK="${SECURITY_POLICY_BLOCK:0:8192}"
+    fi
+    ```
+
+    `SECURITY_POLICY_BLOCK` is passed to the security-reviewer spawn in Phase 1 (see directive table). When empty, the directive is simply omitted from the task description — no degradation path needed, no Phase 3 banner needed.
+
 ### Phase 0c: Symbol Context Extraction (context enrichment)
 
 **Context enrichment** is **on by default** and can be disabled with `--no-enrich-context`. Skip entirely when:
@@ -641,6 +668,7 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 | `PR_NARRATIVE` | full commit bodies + optional PR description body | pr-summarizer, code-reviewer, architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter | unset (agents work without author context) |
 | `SYMBOL_CONTEXT` | `<symbol-context>…</symbol-context>` XML block with cross-file definitions | architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, code-reviewer | unset (no cross-file definitions injected) |
 | `GOVERNANCE` | full text of `skills/comprehensive-review/GOVERNANCE.md` | all 7 custom agents (pr-summarizer, issue-linker, security-reviewer, architecture-reviewer, adversarial-general, edge-case-hunter, blind-hunter) | unset (only when GOVERNANCE.md cannot be located; agents fall back to built-in framing) |
+| `SECURITY_POLICY` | concatenated contents of `claude-security-guidance.md` files (user-wide → project → project-local, max 8 KB) | security-reviewer | unset (no org security policy; security-reviewer uses universal checks only) |
 
 Rules: include directives as `KEY=value` on their own line at the start of the task description. Agents must ignore unrecognized directives. When adding a new directive, update this table.
 
@@ -674,11 +702,12 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
   If PRIOR_REVIEW_CONTEXT is non-empty, append it after project context with the heading "Prior review history (for pattern context):".
   If RELATED_FILES is non-empty, include it in the task description (see directive table above).
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
+  If SECURITY_POLICY_BLOCK is non-empty, include it in the task description under the heading `SECURITY_POLICY:`.
   If PR_NARRATIVE is non-empty, include it under `PR_NARRATIVE:`.
   If SYMBOL_CONTEXT is non-empty, include it under `SYMBOL_CONTEXT:`.
   If `--depth deep`: also include `EXTENDED_THINKING=true` in the task description.
   Always include in the task description: `"Tool budget: prefer batching parallel Bash/Read calls. Stop after 25 total tool calls or when you have enough evidence — do not re-read files you have already inspected."`
-  **TIER=tiny:** skip unless SECURITY_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES only — drop FILE_DIGEST, commit log, project context, PRIOR_REVIEW_CONTEXT, PR_NARRATIVE, and SYMBOL_CONTEXT. GOVERNANCE_BLOCK is still included.
+  **TIER=tiny:** skip unless SECURITY_PROMOTED=true. When promoted, pass diff inline + RELATED_FILES + SECURITY_POLICY_BLOCK (if non-empty) only — drop FILE_DIGEST, commit log, project context, PRIOR_REVIEW_CONTEXT, PR_NARRATIVE, and SYMBOL_CONTEXT. GOVERNANCE_BLOCK is still included.
 - **adversarial-general** (subagent_type: `comprehensive-review:adversarial-general`, model: opus) — pass manifest, commit log, project context. Small diffs: also full diff inline. Medium/large: agent reads files via `git diff <base>...HEAD -- <file>`.
   If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:`.
   If LANGUAGE_PROFILES is non-empty, include it in the task description under the heading `LANGUAGE_PROFILES:`.
