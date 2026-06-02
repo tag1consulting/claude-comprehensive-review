@@ -873,13 +873,55 @@ if command -v checkov &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(tf|tfvars
   (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-checkov.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/checkov.json" &
 fi
 
+# ESLint — JS/TS files
+if command -v npx &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(js|jsx|ts|tsx|mjs|cjs)$' \
+   && [[ -x "$SCRIPTS_DIR/run-eslint.sh" ]]; then
+  (echo "$DIFF_PATHS" | grep -E '\.(js|jsx|ts|tsx|mjs|cjs)$' | bash "$SCRIPTS_DIR/run-eslint.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/eslint.json" &
+fi
+
+# hadolint — Dockerfiles
+if command -v hadolint &>/dev/null && echo "$DIFF_PATHS" | grep -qE '(^|/)Dockerfile(\.|$)|\.dockerfile$' \
+   && [[ -x "$SCRIPTS_DIR/run-hadolint.sh" ]]; then
+  (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-hadolint.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/hadolint.json" &
+fi
+
+# kube-linter — Kubernetes YAML manifests (content-sniff guard inside the script)
+if command -v kube-linter &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(yaml|yml)$' \
+   && [[ -x "$SCRIPTS_DIR/run-kube-linter.sh" ]]; then
+  (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-kube-linter.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/kubelinter.json" &
+fi
+
+# phpcs — PHP files
+if command -v phpcs &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(php|module|inc|theme|install|profile)$' \
+   && [[ -x "$SCRIPTS_DIR/run-phpcs.sh" ]]; then
+  (echo "$DIFF_PATHS" | grep -E '\.(php|module|inc|theme|install|profile)$' | bash "$SCRIPTS_DIR/run-phpcs.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/phpcs.json" &
+fi
+
+# phpstan — PHP files
+if command -v phpstan &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(php|module|inc|theme|install|profile)$' \
+   && [[ -x "$SCRIPTS_DIR/run-phpstan.sh" ]]; then
+  (echo "$DIFF_PATHS" | grep -E '\.(php|module|inc|theme|install|profile)$' | bash "$SCRIPTS_DIR/run-phpstan.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/phpstan.json" &
+fi
+
+# tflint — Terraform files
+if command -v tflint &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(tf|tfvars)$' \
+   && [[ -x "$SCRIPTS_DIR/run-tflint.sh" ]]; then
+  (echo "$DIFF_PATHS" | grep -E '\.(tf|tfvars)$' | bash "$SCRIPTS_DIR/run-tflint.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/tflint.json" &
+fi
+
 wait  # wait for all background analyzer subshells
-SHELLCHECK_JSON=$(cat "$_TMPDIR/shellcheck.json" 2>/dev/null || echo '[]')
-SEMGREP_JSON=$(cat "$_TMPDIR/semgrep.json"    2>/dev/null || echo '[]')
-TRUFFLEHOG_JSON=$(cat "$_TMPDIR/trufflehog.json" 2>/dev/null || echo '[]')
-RUFF_JSON=$(cat "$_TMPDIR/ruff.json"          2>/dev/null || echo '[]')
-GOLANGCI_JSON=$(cat "$_TMPDIR/golangci.json"  2>/dev/null || echo '[]')
-CHECKOV_JSON=$(cat "$_TMPDIR/checkov.json"    2>/dev/null || echo '[]')
+SHELLCHECK_JSON=$(cat "$_TMPDIR/shellcheck.json"   2>/dev/null || echo '[]')
+SEMGREP_JSON=$(cat "$_TMPDIR/semgrep.json"         2>/dev/null || echo '[]')
+TRUFFLEHOG_JSON=$(cat "$_TMPDIR/trufflehog.json"   2>/dev/null || echo '[]')
+RUFF_JSON=$(cat "$_TMPDIR/ruff.json"               2>/dev/null || echo '[]')
+GOLANGCI_JSON=$(cat "$_TMPDIR/golangci.json"       2>/dev/null || echo '[]')
+CHECKOV_JSON=$(cat "$_TMPDIR/checkov.json"         2>/dev/null || echo '[]')
+ESLINT_JSON=$(cat "$_TMPDIR/eslint.json"           2>/dev/null || echo '[]')
+HADOLINT_JSON=$(cat "$_TMPDIR/hadolint.json"       2>/dev/null || echo '[]')
+KUBELINTER_JSON=$(cat "$_TMPDIR/kubelinter.json"   2>/dev/null || echo '[]')
+PHPCS_JSON=$(cat "$_TMPDIR/phpcs.json"             2>/dev/null || echo '[]')
+PHPSTAN_JSON=$(cat "$_TMPDIR/phpstan.json"         2>/dev/null || echo '[]')
+TFLINT_JSON=$(cat "$_TMPDIR/tflint.json"           2>/dev/null || echo '[]')
 rm -rf "$_TMPDIR"
 ```
 
@@ -956,7 +998,7 @@ extract_findings() {
 
 Apply `extract_findings` to each custom agent output (architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, adversarial-general). For external toolkit agents that don't emit json-findings, continue using the existing markdown normalization from SEVERITY.md.
 
-Merge all extracted findings plus CVE_JSON and static analyzer JSON (SHELLCHECK_JSON, SEMGREP_JSON, TRUFFLEHOG_JSON, RUFF_JSON, GOLANGCI_JSON, CHECKOV_JSON) into a unified `ALL_FINDINGS` list.
+Merge all extracted findings plus CVE_JSON and static analyzer JSON (SHELLCHECK_JSON, SEMGREP_JSON, TRUFFLEHOG_JSON, RUFF_JSON, GOLANGCI_JSON, CHECKOV_JSON, ESLINT_JSON, HADOLINT_JSON, KUBELINTER_JSON, PHPCS_JSON, PHPSTAN_JSON, TFLINT_JSON) into a unified `ALL_FINDINGS` list.
 
 **Step 2b — Severity normalization:**
 

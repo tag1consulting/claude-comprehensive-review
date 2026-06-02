@@ -1,0 +1,16 @@
+{
+  "totals": {"errors": 1, "file_errors": 1},
+  "files": {
+    "/repo/web/modules/custom/my_module/src/MyService.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "message": "Parameter #1 $node of method Drupal\\node\\NodeInterface::getTitle() expects Drupal\\node\\NodeInterface, string given.",
+          "line": 55,
+          "ignorable": true
+        }
+      ]
+    }
+  },
+  "errors": []
+}

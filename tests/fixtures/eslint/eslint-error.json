@@ -1,0 +1,19 @@
+[
+  {
+    "filePath": "/repo/src/components/Button.tsx",
+    "messages": [
+      {
+        "ruleId": "no-unused-vars",
+        "severity": 2,
+        "message": "'onClick' is defined but never used.",
+        "line": 8,
+        "column": 10,
+        "nodeType": "Identifier"
+      }
+    ],
+    "errorCount": 1,
+    "warningCount": 0,
+    "fixableErrorCount": 0,
+    "fixableWarningCount": 0
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "issues": [
+    {
+      "rule": {
+        "name": "terraform_deprecated_interpolation",
+        "severity": "warning",
+        "link": "https://github.com/terraform-linters/tflint/blob/v0.50.3/docs/rules/terraform_deprecated_interpolation.md"
+      },
+      "message": "Interpolation-only expressions are deprecated in Terraform v0.12.14",
+      "range": {
+        "filename": "variables.tf",
+        "start": {"line": 14, "column": 15},
+        "end": {"line": 14, "column": 30}
+      }
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,8 @@
+---
+# This is a plain YAML config file, not a Kubernetes manifest
+database:
+  host: localhost
+  port: 5432
+  name: mydb
+cache:
+  ttl: 3600

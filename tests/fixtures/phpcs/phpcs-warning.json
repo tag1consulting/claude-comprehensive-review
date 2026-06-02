@@ -1,0 +1,20 @@
+{
+  "totals": {"errors": 0, "warnings": 1, "fixable": 0},
+  "files": {
+    "/repo/web/modules/custom/my_module/my_module.module": {
+      "errors": 0,
+      "warnings": 1,
+      "messages": [
+        {
+          "message": "Line exceeds 80 characters; contains 95 characters",
+          "source": "Generic.Files.LineLength.TooLong",
+          "severity": 5,
+          "type": "WARNING",
+          "line": 15,
+          "column": 81,
+          "fixable": false
+        }
+      ]
+    }
+  }
+}
