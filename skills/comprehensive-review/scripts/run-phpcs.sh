@@ -103,7 +103,7 @@ fi
 # Severity mapping:
 #   type == "ERROR"   -> High
 #   type == "WARNING" -> Medium
-FINDINGS=$(echo "$PHPCS_OUTPUT" | jq -r --arg root "$PWD" '
+FINDINGS=$(echo "$PHPCS_OUTPUT" | jq -r --arg root "$PWD" --arg standard "$PHPCS_STANDARD" '
   [
     .files // {} |
     to_entries[] |
@@ -117,7 +117,7 @@ FINDINGS=$(echo "$PHPCS_OUTPUT" | jq -r --arg root "$PWD" '
       line: (.line // 1),
       finding: ("\(.source): \(.message)"),
       remediation: (
-        "See https://www.drupal.org/docs/develop/standards or fix with: phpcs --standard=Drupal \($entry.key)"
+        "Run: phpcs --standard=\($standard) \($entry.key)"
       )
     }
   ]

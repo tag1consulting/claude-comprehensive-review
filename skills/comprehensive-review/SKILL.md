@@ -885,8 +885,8 @@ if command -v hadolint &>/dev/null && echo "$DIFF_PATHS" | grep -qE '(^|/)Docker
   (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-hadolint.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/hadolint.json" &
 fi
 
-# kube-linter — Kubernetes YAML manifests (content-sniff guard inside the script)
-if command -v kube-linter &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(yaml|yml)$' \
+# kube-linter — Kubernetes YAML/JSON manifests (content-sniff guard inside the script)
+if command -v kube-linter &>/dev/null && echo "$DIFF_PATHS" | grep -qE '\.(yaml|yml|json)$' \
    && [[ -x "$SCRIPTS_DIR/run-kube-linter.sh" ]]; then
   (echo "$DIFF_PATHS" | bash "$SCRIPTS_DIR/run-kube-linter.sh" 2>/dev/null || echo '[]') > "$_TMPDIR/kubelinter.json" &
 fi
