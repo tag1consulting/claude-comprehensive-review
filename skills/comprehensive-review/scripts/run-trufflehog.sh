@@ -53,10 +53,10 @@ _build_allowlist_json() {
   # items, exit on next top-level key.
   local paths
   paths=$(awk '
-    /^allowlist:[[:space:]]*$/ || /^allowlist:[[:space:]]/ { in_al=1; next }
-    in_al && /^[a-zA-Z]/ { in_al=0; in_paths=0 }
-    in_al && /^[[:space:]]+paths:[[:space:]]*$/ || (in_al && /^[[:space:]]+paths:[[:space:]]/) { in_paths=1; next }
-    in_paths && /^[[:space:]]+[a-zA-Z]/ { in_paths=0 }
+    /^allowlist:/ { in_al=1; next }
+    in_al && /^[^[:space:]]/ { in_al=0; in_paths=0 }
+    in_al && /^[[:space:]]+paths:/ { in_paths=1; next }
+    in_paths && /^[[:space:]]+[^[:space:]-]/ { in_paths=0 }
     in_paths && /^[[:space:]]*-/ {
       val = $0
       gsub(/^[[:space:]]*-[[:space:]]*/, "", val)
