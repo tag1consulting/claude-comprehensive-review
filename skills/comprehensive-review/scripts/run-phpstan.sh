@@ -85,8 +85,10 @@ else
     # Also verify vendor/autoload.php actually exists: passing a nonexistent
     # autoload file would make phpstan hard-fail into the exit-code->=2 branch,
     # which masks a broken install as "no findings".
-    if [[ -d vendor/mglaman/phpstan-drupal ]] && [[ -f vendor/autoload.php ]]; then
-      PHPSTAN_ARGS+=(--autoload-file=vendor/autoload.php)
+    # Resolve vendor paths relative to repo root, not script CWD
+    REPO_ROOT="${GITHUB_WORKSPACE:-$PWD}"
+    if [[ -d "${REPO_ROOT}/vendor/mglaman/phpstan-drupal" ]] && [[ -f "${REPO_ROOT}/vendor/autoload.php" ]]; then
+      PHPSTAN_ARGS+=(--autoload-file="${REPO_ROOT}/vendor/autoload.php")
     fi
   fi
 

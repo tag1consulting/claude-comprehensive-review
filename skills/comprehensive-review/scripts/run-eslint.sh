@@ -50,16 +50,18 @@ if [[ -z "${ESLINT_MOCK_FILE:-}" ]]; then
     exit 0
   fi
 
-  # --no-warn-ignored was added in ESLint 8.x; guard against older versions
-  if "${ESLINT_BIN[@]}" --no-warn-ignored --version >/dev/null 2>&1; then
+  # --no-warn-ignored was added in ESLint 8.x; guard against older versions by
+  # inspecting --help output, which is more reliable than probing with --version
+  # (--version short-circuits arg parsing and can return 0 regardless of the flag).
+  if "${ESLINT_BIN[@]}" --help 2>&1 | grep -q -- '--no-warn-ignored'; then
     ESLINT_SUPPORTS_NO_WARN_IGNORED=true
   fi
 
   # Only run if a config file is present — avoids polluting repos without ESLint.
-  # Check CWD, GITHUB_WORKSPACE, and the directory of the first changed JS file.
+  # Use GITHUB_WORKSPACE (repo root in CI) as primary; fall back to PWD for local runs.
   ESLINT_CONFIG_FOUND=false
-  SEARCH_DIRS=(".")
-  [[ -n "${GITHUB_WORKSPACE:-}" ]] && SEARCH_DIRS+=("$GITHUB_WORKSPACE")
+  SEARCH_DIRS=("${GITHUB_WORKSPACE:-$PWD}")
+  [[ -n "${GITHUB_WORKSPACE:-}" && "$GITHUB_WORKSPACE" != "$PWD" ]] && SEARCH_DIRS+=("$PWD")
   for cfg in eslint.config.js eslint.config.mjs eslint.config.cjs \
              .eslintrc.js .eslintrc.cjs .eslintrc.yaml .eslintrc.yml .eslintrc.json .eslintrc; do
     for dir in "${SEARCH_DIRS[@]}"; do
