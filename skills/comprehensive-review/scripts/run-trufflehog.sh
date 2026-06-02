@@ -39,15 +39,53 @@ fi
 # regardless of where it appears).
 _TEST_FILE_PATTERN='(^|/)(tests?|__tests__|spec|fixtures?|testdata|test_data|mocks?|stubs?|fakes?|examples?|samples?)/|_test\.[a-z]+$|\.test\.[a-z]+$|\.spec\.[a-z]+$|\.bats$|^test_[^/]+\.[a-z]+$|(^|/)test_[^/]+\.[a-z]+$'
 
+# Build a JSON array of allowlisted paths from .trufflehog.yml if present.
+# Trufflehog's --config allowlist only applies when scanning git history, not
+# filesystem mode, so we post-filter findings by exact file path here.
+_build_allowlist_json() {
+  if [[ ! -f ".trufflehog.yml" ]]; then
+    echo "[]"
+    return
+  fi
+  # Extract the paths: list from the allowlist: block, handling all valid YAML
+  # list-item forms: double-quoted, single-quoted, and unquoted.
+  # awk state machine: enter allowlist: block, enter paths: sub-block, collect
+  # items, exit on next top-level key.
+  local paths
+  paths=$(awk '
+    /^allowlist:/ { in_al=1; next }
+    in_al && /^[^[:space:]]/ { in_al=0; in_paths=0 }
+    in_al && /^[[:space:]]+paths:/ { in_paths=1; next }
+    in_paths && /^[[:space:]]+[^[:space:]-]/ { in_paths=0 }
+    in_paths && /^[[:space:]]*-/ {
+      val = $0
+      gsub(/^[[:space:]]*-[[:space:]]*/, "", val)
+      gsub(/^"/, "", val); gsub(/"[[:space:]]*$/, "", val)
+      gsub(/^'"'"'/, "", val); gsub(/'"'"'[[:space:]]*$/, "", val)
+      gsub(/[[:space:]]+$/, "", val)
+      if (val != "" && substr(val,1,1) != "#") print val
+    }
+  ' ".trufflehog.yml")
+  if [[ -z "$paths" ]]; then
+    echo "[]"
+    return
+  fi
+  # Emit a JSON array of exact path strings (jq -R/-s handles quoting/escaping)
+  echo "$paths" | jq -R . | jq -s .
+}
+
 # jq filter to convert trufflehog NDJSON into findings array
 _th_transform() {
   local test_pattern="${_TEST_FILE_PATTERN}"
-  jq -Rs --arg test_pat "$test_pattern" '
+  local allowlist_json
+  allowlist_json=$(_build_allowlist_json)
+  jq -Rs --arg test_pat "$test_pattern" --argjson allowlist "$allowlist_json" '
     split("\n") | map(select(length > 0)) |
     map(
       (. | fromjson? // null) |
       select(. != null) |
       (.SourceMetadata.Data.Filesystem.file? // "unknown") as $file |
+      select($allowlist | map(. == $file) | any | not) |
       (.Verified) as $verified |
       (if ($verified | not) and ($file | test($test_pat)) then true else false end) as $is_test_fp |
       {
@@ -102,7 +140,11 @@ fi
 # Otherwise treat $1 (or stdin) as a newline-separated changed-files list.
 if [[ -n "${1:-}" && -f "$1" ]]; then
   # Diff-file mode (called as: run-trufflehog.sh "$DIFF_FILE")
-  TH_OUTPUT=$(trufflehog filesystem --json --no-update "$1" 2>/dev/null || true)
+  TH_CONFIG_ARGS=()
+  if [[ -f ".trufflehog.yml" ]]; then
+    TH_CONFIG_ARGS=(--config ".trufflehog.yml")
+  fi
+  TH_OUTPUT=$(trufflehog filesystem --json --no-update "${TH_CONFIG_ARGS[@]}" "$1" 2>/dev/null || true)
   if [[ -z "$TH_OUTPUT" ]]; then
     echo "[]"
     exit 0
@@ -139,7 +181,11 @@ fi
 # ai-pr-review production). On PRs touching many files this avoids N-1 process
 # startups. Capture exit code to distinguish "no secrets" from "tool failed".
 TH_EC=0
-TH_OUTPUT=$(trufflehog filesystem --json --no-update "${TARGET_FILES[@]}" 2>/dev/null) || TH_EC=$?
+TH_CONFIG_ARGS=()
+if [[ -f ".trufflehog.yml" ]]; then
+  TH_CONFIG_ARGS=(--config ".trufflehog.yml")
+fi
+TH_OUTPUT=$(trufflehog filesystem --json --no-update "${TH_CONFIG_ARGS[@]}" "${TARGET_FILES[@]}" 2>/dev/null) || TH_EC=$?
 if [[ "$TH_EC" -ne 0 ]]; then
   echo "WARNING: trufflehog exited with code ${TH_EC}; trufflehog findings may be incomplete." >&2
 fi

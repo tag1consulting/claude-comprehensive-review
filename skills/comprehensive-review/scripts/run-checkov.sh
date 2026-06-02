@@ -113,6 +113,7 @@ else
     "${CHECKOV_FILE_ARGS[@]}" \
     --output json \
     --quiet \
+    --compact \
     2>/dev/null) || CHECKOV_EC=$?
   if [[ "$CHECKOV_EC" -ge 2 ]]; then
     echo "WARNING: checkov exited with error code ${CHECKOV_EC}; checkov may not be installed correctly." >&2

@@ -57,3 +57,40 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
 }
+
+@test "trufflehog: finding at allowlisted path is suppressed when .trufflehog.yml exists" {
+  # Copy the fixture allowlist config into $WORK so the script finds it in cwd
+  cp "$TH_FIX/.trufflehog.yml" "$WORK/.trufflehog.yml"
+  cd "$WORK"
+  TRUFFLEHOG_MOCK_FILE="$TH_FIX/allowlisted-path.ndjson" run --separate-stderr "$SCRIPT" ""
+  [ "$status" -eq 0 ]
+  # The finding at vendor/autoload.php must be suppressed (output is empty array)
+  echo "$output" | jq -e 'length == 0' >/dev/null
+}
+
+@test "trufflehog: finding at allowlisted path is NOT suppressed when .trufflehog.yml absent" {
+  # Run from $WORK which has no .trufflehog.yml
+  cd "$WORK"
+  TRUFFLEHOG_MOCK_FILE="$TH_FIX/allowlisted-path.ndjson" run --separate-stderr "$SCRIPT" ""
+  [ "$status" -eq 0 ]
+  # No allowlist active, so the finding should be present
+  echo "$output" | jq -e 'length == 1' >/dev/null
+  echo "$output" | jq -e '.[0].file == "vendor/autoload.php"' >/dev/null
+}
+
+@test "trufflehog: allowlist suppresses findings for single-quoted and unquoted paths" {
+  # Fixture .trufflehog.yml includes both single-quoted and unquoted list entries;
+  # verify that findings at those paths are suppressed just like double-quoted ones.
+  cp "$TH_FIX/.trufflehog.yml" "$WORK/.trufflehog.yml"
+  cd "$WORK"
+
+  # Single-quoted entry: - 'single-quoted/secret-mock.js'
+  TRUFFLEHOG_MOCK_FILE="$TH_FIX/allowlisted-path-singlequote.ndjson" run --separate-stderr "$SCRIPT" ""
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e 'length == 0' >/dev/null
+
+  # Unquoted entry: - unquoted/legacy-fixture.php
+  TRUFFLEHOG_MOCK_FILE="$TH_FIX/allowlisted-path-unquoted.ndjson" run --separate-stderr "$SCRIPT" ""
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e 'length == 0' >/dev/null
+}
