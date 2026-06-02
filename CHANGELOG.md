@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-06-02
+
+### Added
+
+- **6 new static analyzers** (#86): Ported from `ai-pr-review` and wired into Phase 1b orchestration. All are opportunistic (silently skipped when the binary is absent) and use mock-file-based offline bats tests (no real binary invoked in CI).
+  - **`run-eslint.sh`** — JavaScript/TypeScript linting via ESLint. Triggers on `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs` files; skips silently when no ESLint config is found in the repo root (`GITHUB_WORKSPACE`). Detects `--no-warn-ignored` support via `--help` (not `--version`, which short-circuits arg parsing). Severity mapping: `error` → High, `warning` → Medium.
+  - **`run-hadolint.sh`** — Dockerfile linting. Triggers on `Dockerfile`, `Dockerfile.*`, and `*.dockerfile` variants. Severity mapping: `error` → High, `warning` → Medium, `info`/`style` → Low.
+  - **`run-kube-linter.sh`** — Kubernetes manifest linting. Triggers on `.yaml`, `.yml`, and `.json` files that contain `apiVersion:` and `kind:` fields (content-sniff guard avoids running on non-K8s YAML). All findings mapped to Medium.
+  - **`run-phpcs.sh`** — PHP CodeSniffer. Triggers on `.php` files. Uses `Drupal`/`DrupalPractice` standard when phpstan-drupal is available, falls back to `PSR12`. Remediation string uses the active standard (not hardcoded). Severity mapping: `error` → High, `warning` → Medium.
+  - **`run-phpstan.sh`** — PHP static analysis. Triggers on `.php`, `.module`, `.inc`, `.install`, `.theme` files. Vendor paths (`phpstan-drupal`, `autoload.php`) resolved relative to `GITHUB_WORKSPACE` (repo root) rather than script CWD. All findings mapped to High.
+  - **`run-tflint.sh`** — Terraform linting. Triggers on `.tf` and `.tfvars` files; runs per-directory, prepending the directory prefix to bare filenames in output. Captures exit code explicitly (`DIR_EC`) to distinguish violations-found (exit 1) from fatal config errors (exit >= 2). Severity mapping: `error` → High, `warning` → Medium, `notice` → Low.
+- **96 new bats tests** (#86): Mock-file-driven test suites for all 6 new analyzers, covering no-op paths, schema conformance, severity mapping, stdin support, and tool-absent behavior. Total test suite grows from 54 to 150.
+
+### Fixed
+
+- **`checkov --compact` flag** (#87): Added `--compact` to the `checkov` invocation in `run-checkov.sh`. Without it, passing checks bloat the JSON output significantly, slowing processing and inflating context.
+- **Trufflehog allowlist: single-quoted and unquoted YAML path entries no longer silently dropped** (#87): `_build_allowlist_json()` previously only extracted double-quoted path entries from `.trufflehog.yml`. Entries in YAML bare form (`- path/to/file`) or single-quoted form (`- 'path/to/file'`) were silently ignored, leaving findings at allowlisted paths unsuppressed. Awk state machine rewritten to handle all three forms. Block-termination patterns broadened from `/^[a-zA-Z]/` to `/^[^[:space:]]/` to correctly stop at top-level YAML keys starting with digits or underscores.
+
+---
+
 ## [1.10.0] - 2026-05-29
 
 ### Added

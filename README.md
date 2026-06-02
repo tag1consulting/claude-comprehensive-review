@@ -319,8 +319,14 @@ In addition to LLM agents, the skill runs deterministic checks when relevant fil
 | **ruff** — Python linting | `.py` files changed | Yes | `ruff` |
 | **golangci-lint** — Go static analysis | `.go` files changed | Yes | `golangci-lint` |
 | **checkov** — IaC security scanning | `*.tf`, `*.tfvars`, `Dockerfile`, k8s YAML, CloudFormation, Azure ARM changed | Yes | `checkov` |
+| **eslint** — JavaScript/TypeScript linting | `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs` files changed; only runs when an ESLint config is present | No | `eslint` (via `npx` or `node_modules/.bin`) |
+| **hadolint** — Dockerfile linting | `Dockerfile`, `Dockerfile.*`, or `*.dockerfile` changed | No | `hadolint` |
+| **kube-linter** — Kubernetes manifest linting | `.yaml`, `.yml`, or `.json` files containing `apiVersion` and `kind` fields | No | `kube-linter` |
+| **phpcs** — PHP CodeSniffer | `.php` files changed; uses Drupal/DrupalPractice standard when available, falls back to PSR-12 | No | `phpcs` |
+| **phpstan** — PHP static analysis | `.php`, `.module`, `.inc`, `.install`, `.theme` files changed | No | `phpstan` |
+| **tflint** — Terraform linting | `.tf` or `.tfvars` files changed; runs per-directory | No | `tflint` |
 
-No API key required for any check. All static analyzers are **opportunistic** — if the binary is not installed, the check is silently skipped with no error. Install as needed: `brew install shellcheck`, `pip install semgrep ruff checkov`, `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`, [trufflehog releases](https://github.com/trufflesecurity/trufflehog/releases). Findings appear in Block B with the tool name as source (e.g., `[shellcheck]`, `[semgrep]`).
+No API key required for any check. All static analyzers are **opportunistic** — if the binary is not installed, the check is silently skipped with no error. Install as needed: `brew install shellcheck hadolint kube-linter tflint`, `pip install semgrep ruff checkov`, `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`, [trufflehog releases](https://github.com/trufflesecurity/trufflehog/releases), `npm install -g eslint`, `composer global require squizlabs/php_codesniffer phpstan/phpstan`. Findings appear in Block B with the tool name as source (e.g., `[shellcheck]`, `[eslint]`).
 
 ### `--quick` mode
 
@@ -536,7 +542,7 @@ brew install bats-core
 bats tests/*.bats
 ```
 
-Tests cover: `parse_go_mod` replace-directive ordering, TruffleHog invocation modes, gate evaluation logic, and golden orchestration contracts (SKILL.md structural integrity, PROVIDERS.md correctness, SEVERITY.md contract). All 54 tests are offline (no network, no Claude invocation).
+Tests cover: `parse_go_mod` replace-directive ordering, TruffleHog invocation modes (including allowlist suppression), gate evaluation logic, golden orchestration contracts (SKILL.md structural integrity, PROVIDERS.md correctness, SEVERITY.md contract), and all static analyzer scripts (eslint, hadolint, kube-linter, phpcs, phpstan, tflint). All 150 tests are offline (no network, no Claude invocation).
 
 ## Acknowledgments
 
