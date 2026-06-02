@@ -1,0 +1,24 @@
+{
+  "Reports": [
+    {
+      "Diagnostic": {
+        "Message": "container \"nginx\" does not have a read-only root file system"
+      },
+      "Check": "no-read-only-root-fs",
+      "Remediation": "Set readOnlyRootFilesystem to true in the container securityContext.",
+      "Object": {
+        "Metadata": {
+          "FilePath": "k8s/deployment.yaml",
+          "LineNumber": 22
+        },
+        "Type": {
+          "Group": "apps",
+          "Version": "v1",
+          "Kind": "Deployment"
+        },
+        "Name": "nginx-deployment"
+      }
+    }
+  ],
+  "Summary": {"ChecksStatus": "FAILED"}
+}

@@ -1,0 +1,18 @@
+{
+  "issues": [
+    {
+      "rule": {
+        "name": "aws_instance_invalid_type",
+        "severity": "error",
+        "link": "https://github.com/terraform-linters/tflint-ruleset-aws/blob/v0.28.0/docs/rules/aws_instance_invalid_type.md"
+      },
+      "message": "\"t4.nano\" is an invalid value as instance_type",
+      "range": {
+        "filename": "main.tf",
+        "start": {"line": 8, "column": 18},
+        "end": {"line": 8, "column": 28}
+      }
+    }
+  ],
+  "errors": []
+}

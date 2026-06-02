@@ -1,0 +1,20 @@
+{
+  "totals": {"errors": 1, "warnings": 0, "fixable": 0},
+  "files": {
+    "/repo/web/modules/custom/my_module/my_module.module": {
+      "errors": 1,
+      "warnings": 0,
+      "messages": [
+        {
+          "message": "TRUE, FALSE and NULL must be uppercase; expected \"TRUE\" but found \"true\"",
+          "source": "Generic.PHP.UpperCaseConstant",
+          "severity": 5,
+          "type": "ERROR",
+          "line": 42,
+          "column": 10,
+          "fixable": true
+        }
+      ]
+    }
+  }
+}

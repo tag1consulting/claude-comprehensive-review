@@ -1,0 +1,1 @@
+[{"file":"Dockerfile","line":3,"column":1,"level":"warning","code":"DL3009","message":"Delete the apt-get lists after installing something"}]
