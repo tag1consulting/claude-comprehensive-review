@@ -1,0 +1,4 @@
+allowlist:
+  paths:
+    - "vendor/autoload.php"
+    - "third-party/bundled-sdk.js"
