@@ -2,3 +2,5 @@ allowlist:
   paths:
     - "vendor/autoload.php"
     - "third-party/bundled-sdk.js"
+    - 'single-quoted/secret-mock.js'
+    - unquoted/legacy-fixture.php

@@ -47,19 +47,31 @@ _build_allowlist_json() {
     echo "[]"
     return
   fi
-  # Extract only the paths: block (stop at next top-level YAML key).
-  # Use POSIX character classes ([[:space:]]) for BSD/macOS sed compatibility.
+  # Extract the paths: list from the allowlist: block, handling all valid YAML
+  # list-item forms: double-quoted, single-quoted, and unquoted.
+  # awk state machine: enter allowlist: block, enter paths: sub-block, collect
+  # items, exit on next top-level key.
   local paths
-  paths=$(awk '/^[[:space:]]*paths:/{p=1;next} /^[a-zA-Z]/{p=0} p{print}' ".trufflehog.yml" \
-    | grep -E '^[[:space:]]*-[[:space:]]+"' \
-    | sed 's/^[[:space:]]*-[[:space:]]*"//; s/"[[:space:]]*$//' \
-    | grep -v '^#')
+  paths=$(awk '
+    /^allowlist:[[:space:]]*$/ || /^allowlist:[[:space:]]/ { in_al=1; next }
+    in_al && /^[a-zA-Z]/ { in_al=0; in_paths=0 }
+    in_al && /^[[:space:]]+paths:[[:space:]]*$/ || (in_al && /^[[:space:]]+paths:[[:space:]]/) { in_paths=1; next }
+    in_paths && /^[[:space:]]+[a-zA-Z]/ { in_paths=0 }
+    in_paths && /^[[:space:]]*-/ {
+      val = $0
+      gsub(/^[[:space:]]*-[[:space:]]*/, "", val)
+      gsub(/^"/, "", val); gsub(/"[[:space:]]*$/, "", val)
+      gsub(/^'"'"'/, "", val); gsub(/'"'"'[[:space:]]*$/, "", val)
+      gsub(/[[:space:]]+$/, "", val)
+      if (val != "" && substr(val,1,1) != "#") print val
+    }
+  ' ".trufflehog.yml")
   if [[ -z "$paths" ]]; then
     echo "[]"
     return
   fi
   # Emit a JSON array of exact path strings (jq -R/-s handles quoting/escaping)
-  echo "$paths" | jq -Rs 'split("\n") | map(select(length > 0))'
+  echo "$paths" | jq -R . | jq -s .
 }
 
 # jq filter to convert trufflehog NDJSON into findings array

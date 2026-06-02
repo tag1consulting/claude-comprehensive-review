@@ -77,3 +77,20 @@ teardown() {
   echo "$output" | jq -e 'length == 1' >/dev/null
   echo "$output" | jq -e '.[0].file == "vendor/autoload.php"' >/dev/null
 }
+
+@test "trufflehog: allowlist suppresses findings for single-quoted and unquoted paths" {
+  # Fixture .trufflehog.yml includes both single-quoted and unquoted list entries;
+  # verify that findings at those paths are suppressed just like double-quoted ones.
+  cp "$TH_FIX/.trufflehog.yml" "$WORK/.trufflehog.yml"
+  cd "$WORK"
+
+  # Single-quoted entry: - 'single-quoted/secret-mock.js'
+  TRUFFLEHOG_MOCK_FILE="$TH_FIX/allowlisted-path-singlequote.ndjson" run --separate-stderr "$SCRIPT" ""
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e 'length == 0' >/dev/null
+
+  # Unquoted entry: - unquoted/legacy-fixture.php
+  TRUFFLEHOG_MOCK_FILE="$TH_FIX/allowlisted-path-unquoted.ndjson" run --separate-stderr "$SCRIPT" ""
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e 'length == 0' >/dev/null
+}
