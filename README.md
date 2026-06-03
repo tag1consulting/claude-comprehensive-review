@@ -9,7 +9,7 @@ When you run `/comprehensive-review` on a branch, it:
 1. Launches specialized review agents **in parallel**, using token-efficient context passing
 2. Normalizes and deduplicates their findings into a unified severity ranking
 3. Assembles two output blocks:
-   - **Block A (informational)** — Summary, file walkthrough table, Mermaid sequence diagrams (opt-in via `--diagrams`), effort estimate, related issues/PRs
+   - **Block A (informational)** — Summary, file walkthrough table, effort estimate, related issues/PRs
    - **Block B (findings)** — Critical/High/Medium/Low findings, architectural insights, security analysis, recommended actions
 4. Posts Block A and/or Block B to the hosting provider based on the flags and scenario (see [Posting behavior](#posting-behavior))
 
@@ -29,7 +29,6 @@ The `pr-review-toolkit` plugin provides excellent code-level agents (bug detecti
 | **Context-free "fresh eyes" review** | No | Yes (blind-hunter, Sonnet) |
 | **Mechanical boundary-condition tracing** | No | Yes (edge-case-hunter, Sonnet) |
 | **PR summary + walkthrough table** | No | Yes (pr-summarizer) |
-| **Mermaid sequence diagrams** | No | Yes (pr-summarizer, opt-in via `--diagrams`) |
 | **Related issue/PR discovery** | No | Yes (issue-linker) |
 | **Unified severity ranking** | Per-agent only | Normalized across all agents, deduplicated |
 | **Inline PR/MR review posting** | No | Yes (`--post-findings`, `--pr`) |
@@ -193,7 +192,6 @@ Run from any git repository, on the branch you want to review:
 | *(auto)* TIER=tiny | Automatically applied when the diff is under 50 lines AND ≤3 files. Routes pr-summarizer to Haiku; skips blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally; skips architecture-reviewer and security-reviewer unless triggered by infra/CI paths or auth/credential/dep-manifest paths respectively. Roughly 60–70% cheaper than `--quick` on tiny diffs (~$1 → ~$0.30). |
 | *(auto)* DOCS_ONLY | Automatically applied when all changed files are documentation/markdown/meta (no code or infra). Runs pr-summarizer + code-reviewer + triggered conditionals. Skips all Opus agents and blind/edge-case/comment/type agents. Phase 5 reports the reason. Overridden by `--depth deep`, `--quick`, `--security-only`, `--summary-only`. |
 | *(auto)* LOW_RISK_CONFIG | Automatically applied when the diff contains only config/YAML/TOML with no security-sensitive patterns and no dep manifests/CI files. Runs pr-summarizer + code-reviewer + deterministic checks. Skips specialist Opus agents and blind/edge-case agents. Phase 5 reports the reason. |
-| `--diagrams` | Include Mermaid sequence diagrams in Block A. Default is omitted (saves hundreds of output tokens). Always omitted in `--quick`. |
 | `--security-only` | Run security-reviewer + CVE check on changed dependency manifests only |
 | `--depth <tier>` | Agent depth: `normal` (default) or `deep`. In `deep` mode, blind-hunter and edge-case-hunter run on the `opus` alias, Opus agents use extended step-by-step reasoning, and a CVE reachability triage pass annotates which vulnerabilities are reachable in the diff. |
 | `--summary-only` | Run only the pr-summarizer agent |
@@ -293,7 +291,7 @@ Opus agents (`architecture-reviewer`, `security-reviewer`) use the `opus` alias,
 
 | Agent | Model | Purpose | When it runs | Context |
 |-------|-------|---------|--------------|---------|
-| **pr-summarizer** | Sonnet | Summary, walkthrough table, Mermaid diagrams (opt-in), effort score | Always | Manifest + selective reads ² |
+| **pr-summarizer** | Sonnet | Summary, walkthrough table, effort score | Always | Manifest + selective reads ² |
 | **code-reviewer** ¹ | Sonnet | Tactical bugs, style violations, project conventions | Always | Full diff |
 | **architecture-reviewer** | Opus | System design, coupling, API design, technical debt | Full run only | Manifest + selective reads ² |
 | **security-reviewer** | Opus | OWASP-class security analysis, language-specific checks | Full run only | Manifest + selective reads ² |
@@ -331,7 +329,7 @@ No API key required for any check. All static analyzers are **opportunistic** �
 ### `--quick` mode
 
 Skips: architecture-reviewer, security-reviewer, blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer, issue-linker.
-Still runs: pr-summarizer (no diagrams), code-reviewer, triggered silent-failure-hunter / pr-test-analyzer, and the CVE check if manifest files changed.
+Still runs: pr-summarizer, code-reviewer, triggered silent-failure-hunter / pr-test-analyzer, and the CVE check if manifest files changed.
 
 ¹ From the `pr-review-toolkit@claude-plugins-official` plugin.
 ² For small diffs (under 300 lines), the full diff is passed inline instead.
@@ -439,7 +437,6 @@ PR/MR description (Block A only — no findings):
 ```
 ## Summary
 ## Walkthrough
-## Sequence Diagrams  (only with --diagrams)
 ## Related Issues & PRs
 ```
 

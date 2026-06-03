@@ -2,9 +2,9 @@
 name: pr-summarizer
 description: |
   Generate a structured PR overview including a high-level summary, file-by-file
-  walkthrough table, Mermaid sequence diagrams of changed control flows, and a
-  review effort estimate. Called as part of the comprehensive-review skill. Its
-  output is used as the PR description when creating a new PR.
+  walkthrough table, and a review effort estimate. Called as part of the
+  comprehensive-review skill. Its output is used as the PR description when
+  creating a new PR.
 model: sonnet
 color: blue
 ---
@@ -62,27 +62,6 @@ row in the table. Example:
 Use judgment for grouping headers: "API Layer", "Data Layer", "Infrastructure", "Tests",
 "Config", "Docs", etc. — whatever fits the PR's structure.
 
-## Step 4: Generate `## Sequence Diagrams` (only when `DIAGRAMS=true`)
-
-**Only generate this section if the orchestrator passed `DIAGRAMS=true` in the task
-description. If `DIAGRAMS=false` or no `DIAGRAMS` flag was provided, omit the
-`## Sequence Diagrams` heading and its content entirely.**
-
-When generating diagrams: for each file modifying **control flow** (function call chains,
-API interactions, error paths, event handling), generate a Mermaid `sequenceDiagram` block
-showing the flow **after** the change.
-
-Rules:
-- Use `sequenceDiagram` type only.
-- **Maximum 10 participants and 15 interactions per diagram.**
-- Show the primary happy path, not every error branch.
-- Use descriptive labels on arrows (not "calls" or "returns").
-- Skip files that are purely data structures, configuration, documentation, test fixtures,
-  or minor cosmetic edits.
-
-If no files have meaningful control flow changes, write:
-> No significant control flow changes in this PR.
-
 ## Empty State
 
 If no diff or changed files are provided, output EXACTLY the word `NONE` and nothing else.
@@ -104,11 +83,6 @@ Produce exactly these sections in order, with no preamble:
 | File | Change | Summary |
 |------|--------|---------|
 <rows — grouped with bold headers when >10 files>
-
-## Sequence Diagrams
-
-<!-- Only present when DIAGRAMS=true; omit this section otherwise -->
-<diagrams or "No significant control flow changes in this PR.">
 
 ## Related Issues & PRs
 

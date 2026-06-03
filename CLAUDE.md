@@ -92,7 +92,7 @@ The orchestrator itself is governed by a separate "Orchestrator Governance" sect
 
 The skill produces two distinct output blocks with different audiences:
 
-- **Block A** (informational) — summary, walkthrough table, Mermaid diagrams (opt-in via `--diagrams`), related issues. Contains no findings.
+- **Block A** (informational) — summary, walkthrough table, related issues. Contains no findings.
 - **Block B** (findings) — severity-ranked issues from all agents. Always displayed in the terminal.
 
 Both blocks are always shown locally. What gets posted to the hosting provider depends on context:
@@ -237,7 +237,7 @@ agents/adversarial-general.md                                ← holistic comple
 - **`README.md` and `CLAUDE.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
 - When adding a new agent to the skill, add it to: the agent roster table in `README.md`, the Phase 1 launch conditions in `SKILL.md`, and the severity normalization table in `SKILL.md` if it uses a non-standard scale.
 - The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
-- When modifying `--quick` or `--diagrams` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and `HELP.md`.
+- When modifying `--quick` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and `HELP.md`.
 - When adding a new flag, update: the flags parse block in `SKILL.md` (Phase 0, L32–46 area), the mode table in `SKILL.md` (Phase 1 L242–250 area), the flags table in `README.md`, and `HELP.md`.
 - **`HELP.md`** is the reference documentation for all flags. Users can read it directly or via the README. Do not add a `--help` flag handler inside `SKILL.md` or a dedicated help skill — both approaches have been tried and failed (the LLM cannot reliably stop mid-document, `disable-model-invocation: true` suppresses all output, and a verbatim-output skill produces blank output in Claude Code).
 - **blind-hunter** has a unique context constraint: it must receive ONLY the diff or plain file list — no manifest, no project context, no commit log. If you change the context-passing strategy in `SKILL.md`, verify blind-hunter's constraint is still enforced. The agent file itself also instructs the agent to ignore any extra context it receives.
