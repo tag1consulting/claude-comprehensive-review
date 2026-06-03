@@ -1,7 +1,7 @@
 ---
 name: comprehensive-review
 description: "Run a comprehensive PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR."
-argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--create-pr] [--depth deep] [--diagrams]"
+argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--create-pr] [--depth deep]"
 allowed-tools: ["Bash", "Read", "Write", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
 ---
 
@@ -85,7 +85,7 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
    - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
-   - Note mode flags: `--quick`, `--diagrams`, `--security-only`, `--summary-only`, `--create-pr`,
+   - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--create-pr`,
      `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--no-enrich-context`, `--no-mem`, `--no-suppress`
    - Extract `--output-file <path>` if present — set OUTPUT_FILE to the given path for Phase 5 file write
    - Extract `--depth <normal|deep>` if present; default DEPTH=`normal`. If value is not one of `{normal, deep}`, report "Error: Invalid --depth value '<value>'. Valid values are: normal, deep." and stop.
@@ -615,8 +615,8 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 | Flag | Agents that run |
 |------|-----------------|
-| (none) | All always-run + all triggered conditional agents (no diagrams unless `--diagrams` passed) + CVE check if manifest files changed + static analyzers if binaries available |
-| `--quick` | pr-summarizer (no diagrams) + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer + CVE check if manifest files changed |
+| (none) | All always-run + all triggered conditional agents + CVE check if manifest files changed + static analyzers if binaries available |
+| `--quick` | pr-summarizer + code-reviewer + triggered silent-failure-hunter and pr-test-analyzer + CVE check if manifest files changed |
 | `DOCS_ONLY` (auto, no code/infra in diff) | pr-summarizer + code-reviewer + triggered silent-failure-hunter/pr-test-analyzer + CVE check; Opus agents skipped. Overridden by `--depth deep`, `--quick`, `--security-only`, `--summary-only`. Phase 5 reports auto-cheap reason. |
 | `LOW_RISK_CONFIG` (auto, config-only with no security patterns) | pr-summarizer + code-reviewer + deterministic checks; specialist Opus agents skipped. Phase 5 reports auto-cheap reason. |
 | `--no-post` / `--local` (explicit flag) | Same as default but also skips issue-linker; all Phase 4 operations suppressed |
@@ -665,7 +665,6 @@ Produce slices via `mktemp /tmp/cr-slice-<agent>-XXXXXXXX.txt` and `git diff <ba
 
 | Directive | Value | Consumed by | Default when absent |
 |-----------|-------|-------------|---------------------|
-| `DIAGRAMS` | `true` / `false` | pr-summarizer | `false` (omit diagrams) |
 | `EXTENDED_THINKING` | `true` | architecture-reviewer, security-reviewer | not set (standard reasoning) |
 | `RELATED_FILES` | newline-separated file paths | architecture-reviewer, security-reviewer | unset (no pointer list) |
 | `LANGUAGE_PROFILES` | concatenated markdown context blocks | architecture-reviewer, security-reviewer, adversarial-general, edge-case-hunter, silent-failure-hunter, code-reviewer, pr-test-analyzer | unset (agents use built-in language guidance) |
@@ -682,7 +681,6 @@ Rules: include directives as `KEY=value` on their own line at the start of the t
 
 - **pr-summarizer** (subagent_type: `comprehensive-review:pr-summarizer`, model: sonnet) — pass manifest, commit log, project context. Small diffs: also full diff inline.
   If GOVERNANCE_BLOCK is non-empty, prepend it under `GOVERNANCE:` (always — applies even at TIER=tiny).
-  If `--diagrams` was passed (and not `--quick`): include `DIAGRAMS=true` in the task description. Otherwise: include `DIAGRAMS=false`.
   If PR_NARRATIVE is non-empty, include it under `PR_NARRATIVE:`.
   **TIER=tiny:** use haiku instead of sonnet; pass only diff + PR title (drop manifest, commit log, project context, PR_NARRATIVE). GOVERNANCE_BLOCK is still included.
 - **code-reviewer** (subagent_type: `pr-review-toolkit:code-reviewer`, model: sonnet) — always pass the full diff.
@@ -1174,7 +1172,6 @@ Build two separate output blocks:
 #### Block A — Informational (conditionally posted to hosting provider)
 
 Assemble the pr-summarizer and issue-linker outputs into this format.
-**Omit the `## Sequence Diagrams` section unless `--diagrams` was passed** (pr-summarizer was told not to generate it).
 If issue-linker returned NONE or was skipped, omit the `## Related Issues & PRs` section entirely.
 
 **Degraded-mode banners:** prepend banners to Block A (before the `## Summary` heading) for any of the following degradation flags. If multiple flags are set, render multiple banners stacked.
@@ -1202,10 +1199,6 @@ If `REDACTION_DEGRADED=true` (set in Phase 2 step 2g when `perl` was unavailable
 | File | Change | Summary |
 |------|--------|---------|
 <rows from pr-summarizer>
-
-## Sequence Diagrams
-
-<from pr-summarizer — include only if --diagrams was passed and not --quick>
 
 ## Related Issues & PRs
 
