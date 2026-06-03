@@ -1,3 +1,0 @@
-[submodule ".github/actions/ai-pr-review"]
-	path = .github/actions/ai-pr-review
-	url = https://github.com/tag1consulting/ai-pr-review.git
