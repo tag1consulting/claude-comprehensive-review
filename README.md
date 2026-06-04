@@ -496,7 +496,7 @@ The skill uses a tiered context-passing strategy to minimize token consumption:
 - **blind-hunter cost:** Particularly cheap — it receives only the raw diff or plain file list, with no project context passed at all.
 - **Per-file diff digest:** The orchestrator pre-computes a compact per-file summary (stat line + first changed hunk, ≤20 lines per file, capped at 200 total lines) and passes it to Opus agents upfront. This allows them to prioritize which files to investigate deeply without burning tool calls on discovery, reducing the cache-read multiplier that accumulates with every tool turn.
 - **Opus agent tool-call budget:** architecture-reviewer and security-reviewer are instructed to prefer parallel batched reads and stop at 25 tool calls. Phase 5 reports actual tool-call counts with a warning if the budget is exceeded, making regressions visible.
-- **Token utilization table:** Phase 5 always prints a per-agent breakdown of input/output/cache tokens and estimated USD cost, so you can see where budget is going without running `/cost`.
+- **Token utilization table:** Phase 5 always prints a per-agent breakdown of total tokens and estimated USD cost, so you can see where budget is going without running `/cost`.
 
 ## claude-mem integration (optional)
 

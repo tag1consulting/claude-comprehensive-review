@@ -17,11 +17,14 @@ The orchestrator performs template-filling, tool dispatch, and structured severi
 
 Haiku is not recommended: Phase 2 deduplication and severity normalization across 8 agent outputs benefits from Sonnet-tier instruction following.
 
-**Rough cost guidance on a medium PR (~1,700 lines, full run):**
-- Opus orchestrator: $60–80 total (orchestrator alone ≈ $30 due to 100k+ cached tokens × 100+ turns at Opus cache-read rates)
-- Sonnet orchestrator: $30–45 total (orchestrator ≈ $6)
-- `--quick` mode: saves ~60–80% by skipping the two Opus agents
-- **Tiny-tier PRs (<50 lines, ≤3 files):** auto-selected TIER=tiny saves ~60–70% on top of `--quick` by routing pr-summarizer to Haiku and skipping/conditionally-promoting Opus agents. Floor cost drops from ~$1 to ~$0.30.
+**Rough cost guidance (Sonnet orchestrator):**
+
+| Mode | Typical cost |
+|------|------------:|
+| `--quick` | **~$0.25** |
+| Full run | **~$0.50–$1.25** |
+
+- **Tiny-tier PRs (<50 lines, ≤3 files):** auto-selected TIER=tiny saves ~60–70% on top of `--quick` by routing pr-summarizer to Haiku and skipping/conditionally-promoting Opus agents. Floor cost drops from ~$0.25 to ~$0.10.
 
 ## Pre-flight Context
 
