@@ -1,0 +1,16 @@
+---
+layout: default
+---
+
+<div class="hero">
+  <div class="hero-content">
+    <h1>{{ page.hero_title | default: site.title }}</h1>
+    <p class="tagline">{{ page.hero_tagline | default: site.description }}</p>
+    <div class="hero-actions">
+      <a href="{{ '/getting-started' | relative_url }}" class="btn-hero">Get Started</a>
+      <a href="{{ site.aux_links['View on GitHub'][0] }}" class="btn-hero-secondary" target="_blank" rel="noopener">View on GitHub</a>
+    </div>
+  </div>
+</div>
+
+{{ content }}
