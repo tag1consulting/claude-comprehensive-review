@@ -1523,7 +1523,7 @@ Note in terminal: "Review written to <path>"
 ## Notes
 
 - Project-agnostic. Orchestrator reads CLAUDE.md at pre-flight and passes condensed context; agents should not read CLAUDE.md independently.
-- pr-review-toolkit agents are reused as-is. Remote writes use the provider-specific CLI (gh/glab/curl); reads may use CLI or MCP tools (GitHub only).
+- pr-review-toolkit agents are reused as-is. All remote operations use the provider-specific CLI (gh/glab/curl).
 - `--create-pr` is opt-in. Default is side-effect-free (no PR/MR created, no remote posts).
 - Findings posted to the hosting provider only via `--post-findings` (own PR/MR, GitHub/GitLab: inline review; Bitbucket: PR comment) or `--pr` mode (GitHub: `REQUEST_CHANGES` if Medium+, `COMMENT` if Low only; GitLab: discussion threads; Bitbucket: PR comment). `--create-pr` findings are local unless `--post-findings` also passed.
 - Inline comments capped at 25 per review (top findings by severity); overflow goes to review body.

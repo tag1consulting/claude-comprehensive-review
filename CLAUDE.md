@@ -171,7 +171,7 @@ Key provider differences:
 - GitLab uses "Merge Request" (MR) terminology; all user-facing output adapts via PR_TERM/PR_TERM_LONG variables
 - GitLab has no single-call "submit review" API; inline comments are posted as individual discussion threads
 - Bitbucket has no inline-on-diff-line comment API; findings are posted as a single PR comment
-- GitHub MCP tools (`mcp__github-pat__*`) are only used when PROVIDER=github
+
 
 ## Distribution
 
@@ -236,7 +236,7 @@ agents/adversarial-general.md                                ← holistic comple
 - **Agent files** define what each agent does and its scope boundaries. Agents reference each other only to delineate responsibility boundaries — coordination and context passing happens entirely in `SKILL.md`. Agent task descriptions reference the file-manifest protocol (receiving manifests, using `git diff <base>...HEAD -- <file>` for selective reads); changes to the context-passing strategy in `SKILL.md` require corresponding updates to agent task descriptions.
 - **`README.md` and `CLAUDE.md`** must stay in sync with `SKILL.md` — specifically the flags table, agent roster, and output structure sections.
 - When adding a new agent to the skill, add it to: the agent roster table in `README.md`, the Phase 1 launch conditions in `SKILL.md`, and the severity normalization table in `SKILL.md` if it uses a non-standard scale.
-- The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use. When adding GitHub write operations, add the corresponding `mcp__github-pat__*` tool there.
+- The `allowed-tools` frontmatter in `SKILL.md` controls which tools the orchestrator can use.
 - When modifying `--quick` behavior, update the mode flag table in Phase 1 of `SKILL.md`, the flags section at the top of `SKILL.md`, the flags table in `README.md`, and `HELP.md`.
 - When adding a new flag, update: the flags parse block in `SKILL.md` (Phase 0, L32–46 area), the mode table in `SKILL.md` (Phase 1 L242–250 area), the flags table in `README.md`, and `HELP.md`.
 - **`HELP.md`** is the reference documentation for all flags. Users can read it directly or via the README. Do not add a `--help` flag handler inside `SKILL.md` or a dedicated help skill — both approaches have been tried and failed (the LLM cannot reliably stop mid-document, `disable-model-invocation: true` suppresses all output, and a verbatim-output skill produces blank output in Claude Code).
