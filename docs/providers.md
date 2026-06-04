@@ -30,8 +30,6 @@ The skill auto-detects your git hosting provider from the remote URL. Use `--pro
 
 **CLI required:** [gh CLI](https://cli.github.com/)
 
-GitHub MCP tools (`mcp__github-pat__*`) are used for write operations when available. The skill uses `gh` for most operations.
-
 For GitHub Enterprise with a non-standard hostname, use:
 
 ```

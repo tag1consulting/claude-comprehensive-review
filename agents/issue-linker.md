@@ -4,7 +4,7 @@ description: |
   Discover related issues and PRs/MRs for the current branch changes, and assess
   whether issues referenced in commit messages or the branch name are actually resolved
   by the code changes. Currently GitHub-only; returns NONE for other providers.
-  Uses gh CLI and GitHub MCP tools for API access when on GitHub.
+  Uses gh CLI for API access when on GitHub.
 model: haiku
 color: cyan
 ---
@@ -38,7 +38,7 @@ Scan commit messages and the branch name for issue references:
 ## Step 2: Assess Linked Issue Resolution
 
 For each referenced issue:
-1. Fetch the issue using `gh issue view <number>` or the GitHub MCP tool
+1. Fetch the issue using `gh issue view <number>`
 2. Compare the issue's requirements against the file manifest and commit messages
 3. If you need to verify specific code changes, use `git diff <base>...HEAD -- <file>`
 4. Rate resolution: **Fully Resolved**, **Partially Resolved**, **Not Resolved**, or **Related Context**
