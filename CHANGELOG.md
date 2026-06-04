@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-06-04
+
+### Removed
+
+- **`--diagrams` flag and Mermaid sequence diagram output** (#93): The opt-in `--diagrams` flag and the `## Sequence Diagrams` section in Block A have been removed. The feature was default-off and never produced reliable enough output to keep. A stale `--diagrams` flag passed by existing users is silently ignored. Removed from `SKILL.md`, `HELP.md`, `README.md`, `CLAUDE.md`, and `agents/pr-summarizer.md`.
+- **`ai-pr-review` git submodule** (#89): Removed the stale `.gitmodules` entry and `.github/actions/ai-pr-review` submodule path left over from the earlier migration to the container action. No workflow logic changes.
+
+### Fixed
+
+- **Token utilization table: replaced unfillable In/Out/Cache columns with blended `Tokens` total** (#95): The Agent tool exposes only a single `subagent_tokens` combined total per agent — it does not provide an input/output/cache breakdown. The previous 8-column table had four permanently unfillable columns, causing inconsistent LLM output between runs. Replaced with a 5-column table (`Agent`, `Model`, `Tokens`, `Tools`, `Est. Cost`) using blended per-model rates (Opus ~$45/M, Sonnet ~$9/M, Haiku ~$0.8/M) with a `/cost` footnote for exact figures.
+- **`shell.md` language profile: correct `suppressions.json` path** (#94): The path reference now correctly reads `skills/comprehensive-review/suppressions.json` instead of the vague `suppressions.json` (the file is not at the repo root).
+
+---
+
 ## [1.11.0] - 2026-06-02
 
 ### Added

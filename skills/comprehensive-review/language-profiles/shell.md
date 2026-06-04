@@ -43,7 +43,7 @@ When reviewing shell scripts, pay particular attention to:
 ### Project-Accepted Patterns
 
 Finding suppressions for won't-fix items and false positives are managed
-declaratively in `suppressions.json`. Do not re-flag
+declaratively in `skills/comprehensive-review/suppressions.json`. Do not re-flag
 any pattern listed there. Current suppressions include:
 
 - `SC1072` on `run-shellcheck.sh` — shellcheck heredoc false positive; `bash -n` passes
