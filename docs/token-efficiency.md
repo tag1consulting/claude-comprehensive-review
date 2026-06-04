@@ -19,17 +19,12 @@ The skill uses a tiered context-passing strategy to minimize token consumption a
 
 ## Cost expectations
 
-**Orchestrator model matters most.** Run this skill on **Sonnet** for ~5× lower orchestrator cost. Opus is reserved for the internally-spawned `architecture-reviewer` and `security-reviewer` agents.
+Run this skill on **Sonnet** — the orchestrator does structured workflow coordination, not deep reasoning. Opus is reserved for the internally-spawned `architecture-reviewer` and `security-reviewer` agents.
 
-| Orchestrator model | Typical cost (medium PR, ~1,700 lines, full run) |
-|--------------------|------------------------------------------------:|
-| Opus 4.8 | **$60–80** |
-| Sonnet 4.6 (recommended) | **$30–45** |
-
-**Cost drivers:**
-- ~80% of cost comes from the two Opus specialist agents and the orchestrator itself when run on Opus
-- The orchestrator accumulates ~100k+ cached tokens over 100+ tool-call turns; at Opus cache-read rates ($1.50/M) this alone costs ~$15–30 per review
-- At Sonnet cache-read rates ($0.30/M) the same context costs ~$3–6
+| Mode | Typical cost |
+|------|------------:|
+| `--quick` | **~$0.25** |
+| Full run (Sonnet orchestrator) | **~$0.50–$1.25** |
 
 ## Cost-saving options
 
@@ -37,7 +32,7 @@ The skill uses a tiered context-passing strategy to minimize token consumption a
 
 **`--depth normal` (default):** Opus reserved for 2 agents. `--depth deep` promotes 2 more to Opus and roughly doubles cost.
 
-**`--output-file <path>`:** Writes the report to disk during the review session, avoiding a follow-up request that pays Opus rates against a large accumulated context. Saves ~$5–15 on large PRs.
+**`--output-file <path>`:** Writes the report to disk during the review session, avoiding a separate follow-up request against a large accumulated context.
 
 **Auto-cheap routing:** TIER=tiny, DOCS_ONLY, and LOW_RISK_CONFIG activate automatically — no flags needed. See [Usage & Flags](usage#auto-cheap-routing) for details.
 
