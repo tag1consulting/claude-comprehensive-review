@@ -206,7 +206,7 @@ Run from any git repository, on the branch you want to review:
 | `--no-mem` | Disable claude-mem integration (auto-detected when available) |
 | `--no-suppress` | Disable all suppression rules (useful for debugging / audit runs where you want to see every finding) |
 | `--min-confidence <N>` | Filter findings below this confidence threshold (0–100; default: 75; 0 disables filtering). Applied before suppression rules. |
-| `--output-file <path>` | Write Block A + Block B to a markdown file during Phase 5. Avoids re-running the review in a fresh session just to save the output — saves ~$5–15 on large PRs where the post-review context would otherwise force a new expensive session. |
+| `--output-file <path>` | Write Block A + Block B to a markdown file during Phase 5. Avoids re-running the review in a fresh session just to save the output. |
 
 ### Examples
 
@@ -472,22 +472,17 @@ The `pr-review-toolkit` plugin installs its agents to `~/.claude/plugins/` autom
 
 ## Cost expectations
 
-**Orchestrator model matters most.** The orchestrator coordinates workflow and normalizes findings — it does not need Opus-level reasoning. Run this skill on **Sonnet** for ~5× lower orchestrator cost. Opus is reserved for the internally-spawned `architecture-reviewer` and `security-reviewer` agents.
+Run this skill on **Sonnet** — the orchestrator does structured workflow coordination, not deep reasoning. Opus is reserved for the internally-spawned `architecture-reviewer` and `security-reviewer` agents.
 
-| Orchestrator model | Typical cost (medium PR, ~1,700 lines, full run) |
-|--------------------|------------------------------------------------:|
-| Opus 4.7 | **$60–80** |
-| Sonnet 4.6 (recommended) | **$30–45** |
-
-Cost drivers:
-- ~80% of cost comes from the two Opus specialist agents (architecture-reviewer, security-reviewer) and the orchestrator itself when run on Opus.
-- The orchestrator accumulates ~100k+ cached tokens over 100+ tool-call turns; at Opus cache-read rates ($1.50/M) this alone costs ~$15–30 per review.
-- At Sonnet cache-read rates ($0.30/M) the same context costs ~$3–6.
+| Mode | Typical cost |
+|------|------------:|
+| `--quick` | **~$0.25** |
+| Full run (Sonnet orchestrator) | **~$0.50–$1.25** |
 
 **Cost-saving options:**
 - `--quick`: skips architecture-reviewer, security-reviewer, and four other agents. Roughly 60–80% cheaper.
 - `--depth normal` (default): Opus reserved for 2 agents. `--depth deep` promotes 2 more to Opus and roughly doubles cost.
-- `--output-file <path>`: writes the report to disk during the review session, so you don't need a separate follow-up request that pays Opus rates against a large accumulated context.
+- `--output-file <path>`: writes the report to disk during the review session, avoiding a separate follow-up request against a large accumulated context.
 
 ## Token efficiency
 
