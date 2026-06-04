@@ -1482,32 +1482,35 @@ Note in terminal: "Review written to <path>"
 6. Report diff tier and Opus agent tool-call usage:
    - `"Diff tier: <tiny|small|medium>  (<N> lines, <M> files)"` — if TIER=tiny, also show which agents were promoted or skipped, e.g.: `"TIER=tiny — architecture-reviewer: promoted (infra trigger) | security-reviewer: skipped | blind-hunter: skipped | edge-case-hunter: skipped"`
    - `"Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)"` — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time. Omit any agent that was skipped.
-7. **Display a token utilization table** (always shown, even if no findings). **Always include both token counts AND the estimated cost — do not simplify to tools+cost only.** Include every agent that ran plus the orchestrator row as "orchestrator (this session)". Build the table from the agent task result metadata (tool-call counts are tracked per agent as each completes). Use these pricing constants: Opus input $15/M, Opus output $75/M, Opus cache_write $18.75/M, Opus cache_read $1.50/M; Sonnet input $3/M, Sonnet output $15/M, Sonnet cache_write $3.75/M, Sonnet cache_read $0.30/M. For the orchestrator row, use the actual tool-call counts from the session (tracked by TaskCreate/TaskUpdate overhead), and note that orchestrator cost is an estimate (exact figures require `/cost`):
+7. **Display a token utilization table** (always shown, even if no findings). Include every agent that ran plus the orchestrator row as "orchestrator (this session)". The Agent tool returns only a single combined token total (`subagent_tokens`) per agent — it does **not** expose an input/output/cache breakdown. Use that total with a blended per-model rate for cost estimation: Opus blended ~$45/M tokens, Sonnet blended ~$9/M, Haiku blended ~$0.8/M. For the orchestrator row, note that cost is an estimate (exact figures require `/cost`):
    ```
    Token utilization:
-   Agent                    Model    In     Out   Cache$W  Cache$R  Tools  Est. Cost
-   ─────────────────────────────────────────────────────────────────────────────────
-   pr-summarizer            Sonnet   284    1216   82754   308465    12    $0.42
-   code-reviewer            Sonnet   3792   4802  198488  2382070    30    $1.54
-   architecture-reviewer    Opus       84  10314  166228  5064120    47   $11.49 ⚠ tools>25
-   security-reviewer        Opus       92  14947  157681  6205412    57   $13.39 ⚠ tools>25
-   blind-hunter             Sonnet     53   3399  106531   305366     5    $0.54
-   edge-case-hunter         Sonnet   6789   3926  158657  1439329    24    $1.11
-   silent-failure-hunter    Sonnet    133   3916   47600   143559     5    $0.28
-   comment-analyzer         Sonnet   7951   1837  121272   705926    15    $0.72
-   ─────────────────────────────────────────────────────────────────────────────────
-   Agents total                                                           $29.49
-   Orchestrator (est.)      Opus             —        —        —         ~$30.72
-   ─────────────────────────────────────────────────────────────────────────────────
-   Session total (est.)                                                   ~$60.21
+   Agent                    Model    Tokens   Tools  Est. Cost
+   ────────────────────────────────────────────────────────────
+   pr-summarizer            Sonnet   28,832     0    ~$0.26
+   code-reviewer            Sonnet   39,985     0    ~$0.36
+   architecture-reviewer    Opus     41,141     1    ~$1.85
+   security-reviewer        Opus     56,338     2    ~$2.54
+   blind-hunter             Sonnet   36,491     0    ~$0.33
+   edge-case-hunter         Sonnet   38,161     1    ~$0.34
+   adversarial-general      Opus     44,692     3    ~$2.01
+   issue-linker             Haiku    30,249    14    ~$0.02
+   ────────────────────────────────────────────────────────────
+   Agents total                     ~316k            ~$7.71
+   Orchestrator (est.)      Sonnet   —         —      ~$0.25
+   ────────────────────────────────────────────────────────────
+   Session total (est.)                               ~$7.96
+   Note: costs are blended-rate estimates; run /cost for exact figures.
    Tip: Run on Sonnet instead of Opus for ~5× lower orchestrator cost.
    ```
    Notes on the table:
-   - **All seven columns (Agent, Model, In, Out, Cache$W, Cache$R, Tools, Est. Cost) are required** — never drop token-count columns even when counts are small or zero.
-   - Populate the "orchestrator (est.)" row only if you can derive approximate figures from the session; otherwise show "— see /cost" for that row.
+   - **All five columns (Agent, Model, Tokens, Tools, Est. Cost) are required** — never drop columns. Do not add In/Out/Cache$W/Cache$R columns; that data is not available from agent results.
+   - The `Tokens` column comes from the `subagent_tokens` value in each agent's `<usage>` block in the tool result. Read it directly. Show `—` only if an agent crashed before returning usage data.
+   - Cost = `(subagent_tokens / 1_000_000) × blended_rate`. Blended rates approximate the mix of input, output, and cache tokens in a typical agent run.
+   - Populate the "orchestrator (est.)" row only if you can derive approximate figures from the session; otherwise show `— see /cost`.
    - Always show the "Tip: Run on Sonnet..." line if the orchestrator model is Opus.
    - Omit skipped agents from the table.
-   - If token counts are unavailable for a specific agent (e.g., toolkit agents that don't expose metadata), show "—" for those cells.
+   - Flag `⚠ tools>25` on any agent whose Tools count exceeds 25.
 8. Critical/High findings → "⚠ Address Critical/High findings before requesting review."
 9. Agent failures → "⚠ Review incomplete — <N> agent(s) failed."
    If CVE_CHECK_FAILED=true → "⚠ CVE check did not run (script not found or execution failed) — dependency vulnerabilities not scanned." Show this even when CVE_JSON is [] so the user knows the empty result means 'check skipped', not 'no vulnerabilities'.
