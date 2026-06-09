@@ -1379,7 +1379,7 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
    <BODY findings, or "None — all findings are attached inline.">
    ```
 
-6. **Comments array:** each entry `{ "path", "line", "body": "**[Severity]** **[agent]** description.\n\n**Remediation:** ..." }`
+6. **Comments array:** each entry `{ "path", "line", "body": "**[Severity]** **[agent]** description.\n\n**Remediation:** ..." }`. **Build the array with `jq -n --arg`/`--arg` per field, never by string-concatenating the values into a JSON literal** — `path` and `body` may contain attacker-influenced content (file paths from the diff, finding text derived from PR/commit content) and a stray double-quote, backslash, or newline would break the literal and inject sibling fields. See PROVIDERS.md → "OP: Post inline review" → **github** for the full safe-construction pattern (a per-finding `findings.jsonl` built via `jq -n --arg`, then aggregated via `jq -s '.'`).
 
 7. **Confirm with user before submitting:** Display the review event type (`COMMENT` or `REQUEST_CHANGES`), the full review body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Post this review to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again.
 
