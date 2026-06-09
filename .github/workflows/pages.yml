@@ -25,7 +25,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        # Third-party (non-actions/*) action; pinned to a commit SHA per the
+        # policy in agents/security-reviewer.md L102. Renovate will manage
+        # SHA bumps via the existing tag1consulting/renovate-config.
+        uses: ruby/setup-ruby@12fd324f1d0b43274fdc8130f6980590a667c455  # v1.312.0
         with:
           ruby-version: '4.0.5'
           bundler-cache: true
