@@ -1384,7 +1384,7 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
    # Validate LINE is a positive integer before passing to --argjson; a non-numeric value
    # (e.g., "null", "N/A", or empty string from LLM output) causes jq to exit non-zero and
    # silently drop the finding.  Fall back to 1 rather than skipping the finding entirely.
-   [[ "$LINE" =~ ^[0-9]+$ ]] || LINE=1
+   [[ "$LINE" =~ ^[1-9][0-9]*$ ]] || LINE=1
    jq -n --arg path "$FILE" --argjson line "$LINE" --arg body "$BODY" \
      '{path: $path, line: $line, body: $body}' >> findings.jsonl
    ```
