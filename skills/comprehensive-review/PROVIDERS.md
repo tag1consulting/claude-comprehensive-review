@@ -83,7 +83,7 @@ SKILL.md for `jq -n --arg`). The OP templates below all follow it.
   # findings.jsonl contains one JSON object per inline finding:
   #   {"path": "<file>", "line": <line>, "body": "<comment>"}
   # Built upstream via jq from the structured findings (never via string interpolation).
-  touch findings.jsonl  # ensure file exists even when no inline findings were emitted
+  touch findings.jsonl  # mandatory guard: no inline findings is a valid state; jq -s '.' on an empty file yields []
   COMMENTS=$(jq -s '.' findings.jsonl) || { echo 'ERROR: failed to aggregate findings.jsonl'; exit 1; }  # array
   EVENT="REQUEST_CHANGES"               # or COMMENT, computed from severities
   REVIEW_BODY=$(jq -n \
