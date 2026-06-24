@@ -85,7 +85,8 @@ SKILL.md for `jq -n --arg`). The OP templates below all follow it.
   # Built upstream via jq from the structured findings (never via string interpolation).
   touch findings.jsonl  # mandatory: do not skip -- ensures jq -s '.' always has a file to read
   COMMENTS=$(jq -s '.' findings.jsonl) || { echo 'ERROR: jq failed aggregating findings.jsonl'; exit 1; }
-  [[ "$COMMENTS" == '[]' || "$COMMENTS" == '['* ]] || { echo 'ERROR: unexpected COMMENTS value'; exit 1; }
+  echo "$COMMENTS" | jq -e 'if type == "array" then . else error("COMMENTS is not a JSON array") end' > /dev/null \
+    || { echo 'ERROR: COMMENTS is not a JSON array after aggregation'; exit 1; }
   EVENT="REQUEST_CHANGES"               # or COMMENT, computed from severities
   REVIEW_BODY=$(jq -n \
     --arg event   "$EVENT" \
