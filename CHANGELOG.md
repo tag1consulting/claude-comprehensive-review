@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.2] - 2026-06-24
+
+### Fixed
+
+- **COMMENTS validation tightened; line 0 rejected** (#108): The inline review payload builder now rejects `LINE=0` values before constructing the `argjson` payload, preventing malformed GitHub API calls that would silently drop inline comments.
+- **`LINE` validated before `argjson` construction** (#108): Added explicit numeric validation of the `LINE` variable before it is used in `--argjson` to prevent jq parse errors from propagating to the API call.
+- **Prompt-injection guard centralized in `GOVERNANCE.md`** (#109): The canonical untrusted-input guard directive is now in `GOVERNANCE.md` (injected into every custom agent) rather than duplicated across individual agent prompts. Ensures new agents get the guard automatically.
+- **jq-based JSON payload construction mandated in `PROVIDERS.md`** (#109): Documented requirement to use `jq --arg`/`--argjson` for all provider API payloads; string interpolation into JSON is prohibited.
+- **SHA-pinned `ruby/setup-ruby` in `pages.yml`** (#110): The GitHub Pages CI action now pins `ruby/setup-ruby` to its full commit SHA rather than a floating tag, eliminating supply-chain risk on the docs build.
+
+### Changed
+
+- **AI review now runs on all PRs including renovate and dependabot** (#117): Removed the `github.actor != 'dependabot[bot]'` and `github.actor != 'renovate[bot]'` skip conditions from the dogfood workflow's `review` job. Every non-draft PR now receives a review. The `skip-ai-review` label remains as a per-PR escape hatch.
+- **`review-gate` wrapper job removed from dogfood workflow** (#117): Branch protection on `main` now requires the `review` job directly. The gate wrapper was only needed to pass branch protection when bots were skipped; it is no longer necessary.
+- **`fail-on-findings` wired into dogfood workflow** (#116): The dogfood `ai-pr-review.yml` passes `fail-on-findings: ${{ vars.AI_REVIEW_FAIL_ON_FINDINGS || 'false' }}` to the container action, enabling the CI automerge gate via the `AI_REVIEW_FAIL_ON_FINDINGS` repo variable.
+
+### Internal
+
+- **`plugin.json` version bump to `1.12.1`** (v1.12.1 release): Corrected inflated cost figures in `SKILL.md` ($30-80 replaced with measured ~$0.25 quick / ~$0.50-$1.25 full) and fixed token utilization table description in `README.md`.
+
+---
+
 ## [1.12.0] - 2026-06-04
 
 ### Removed
