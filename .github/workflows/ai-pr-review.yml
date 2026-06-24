@@ -17,8 +17,6 @@ jobs:
   review:
     if: >-
       github.event.pull_request.draft == false &&
-      github.actor != 'dependabot[bot]' &&
-      github.actor != 'renovate[bot]' &&
       !contains(github.event.pull_request.labels.*.name, 'skip-ai-review') &&
       (github.event.action != 'labeled' ||
        github.event.label.name == 'ai-review-full' ||
@@ -69,23 +67,8 @@ jobs:
           # entries from the ai-pr-review-bot branch (default false).
           feedback-loop: ${{ vars.AI_REVIEW_FEEDBACK_LOOP || 'false' }}
           # vars.AI_REVIEW_FAIL_ON_FINDINGS exits with code 2 when the review
-          # outcome is REQUEST_CHANGES or COMMENT, blocking CI gates until the
-          # bot approves.  Consumed by the review-gate job below.
+          # outcome is REQUEST_CHANGES or COMMENT, blocking automerge.
           fail-on-findings: ${{ vars.AI_REVIEW_FAIL_ON_FINDINGS || 'false' }}
-
-  review-gate:
-    name: review-gate
-    needs: review
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Gate on review outcome
-        run: |
-          if [ "${{ needs.review.result }}" = "failure" ]; then
-            echo "AI review failed — blocking merge." >&2
-            exit 1
-          fi
-          echo "AI review passed or was skipped."
 
   cleanup-rescan-label:
     needs: review
