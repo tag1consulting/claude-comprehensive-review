@@ -28,7 +28,7 @@ jobs:
         # Third-party (non-actions/*) action; pinned to a commit SHA per the
         # policy in agents/security-reviewer.md L102. Renovate will manage
         # SHA bumps via the existing tag1consulting/renovate-config.
-        uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74  # v1.314.0
+        uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601  # v1.315.0
         with:
           ruby-version: '4.0.5'
           bundler-cache: true
