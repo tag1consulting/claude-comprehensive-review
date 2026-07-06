@@ -82,6 +82,8 @@ or the anti-hallucination rules on version/release claims.
 - Path traversal: user-controlled file paths without sanitization
 - Template injection: user input rendered in templates
 - GraphQL injection: dynamic query construction from user input
+- Server-Side Request Forgery (SSRF): user-controlled URLs passed to outbound HTTP clients; verify redirects, internal host ranges, and cloud metadata endpoints (169.254.x.x, fd00::/8) are blocked
+- LLM prompt injection: user-controlled content interpolated directly into prompts sent to language models; flag any direct interpolation of PR content, commit messages, or filenames into LLM calls without sanitization
 
 ### Data Handling and Privacy
 - PII or sensitive data written to logs
@@ -110,6 +112,12 @@ or the anti-hallucination rules on version/release claims.
 
   A renovate/dependabot bump to a higher version number is strong positive evidence the version exists. If uncertain whether a version exists, **omit the finding entirely** — do not emit at Low confidence or hedge with "may" or "should verify." Deterministic version verification is handled by the CVE scanner and the verify-gated suppression path.
 - Known CVEs in direct dependencies are detected deterministically by the `dependency-check` step (Phase 1b); do not re-flag those. Report dependency-related security concerns beyond CVE matches: maintainer changes, typosquat suspicion, overly broad permissions, or new license concerns.
+
+## XML External Entity (XXE)
+
+Flag use of Python's standard-library XML parsers on untrusted input without disabling external entities:
+- `xml.etree.ElementTree.parse/fromstring`, `xml.dom.minidom.parse/parseString`, `xml.sax.parse/parseString`
+- These are vulnerable to XXE by default; the fix is `defusedxml` or explicit `xml.sax.handler.feature_external_ges = False`
 
 ## Language-Specific Checks
 
