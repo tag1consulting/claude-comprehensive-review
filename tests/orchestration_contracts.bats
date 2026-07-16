@@ -425,6 +425,31 @@ teardown() {
   echo "$READ_BACK_BLOCK" | grep -qi "doesn.t support appending\|only accepts comments at creation time\|would 422"
 }
 
+@test "SKILL.md: draft-mode success reporting includes a verify-in-web-UI caveat" {
+  # ai-pr-review CI finding (F5): PROVIDERS.md's rollback story acknowledges
+  # there is no runtime self-check confirming a created review is genuinely
+  # PENDING, but the success-reporting logic for a successful staging
+  # previously didn't carry any caveat reflecting that gap -- a
+  # silently-published draft would look identical to a successfully-staged
+  # one in the terminal output. Checked across the whole file since this
+  # reporting logic appears twice (Phase 4b step 9's per-provider citation
+  # block, and Phase 5's terminal-display summary) and both should carry it.
+  grep -c -i "draft-mode verify caveat" "$SKILL_MD" | grep -qE "^[2-9]|^[1-9][0-9]"
+  grep -qi "confirm it shows as Pending/draft in the web UI" "$SKILL_MD"
+}
+
+@test "SKILL.md: GitLab read-back net-new staging distinguishes a failed MR_VERSION re-fetch from a failed POST" {
+  # ai-pr-review CI finding (F4): the re-fetch fix added a re-fetch step but
+  # didn't say what happens if the re-fetch ITSELF fails -- falling through
+  # to the generic INLINE_FAILED_COUNT path (designed for a failed POST with
+  # valid SHAs) would misreport a fetch failure as a post failure with no
+  # diagnostic distinguishing the two.
+  STAGE_NET_NEW_BLOCK=$(awk '/\*\*Stage net-new findings only/,/Never delete or overwrite/' "$SKILL_MD")
+  GITLAB_STAGE_BULLET=$(echo "$STAGE_NET_NEW_BLOCK" | awk '/- \*\*GitLab:\*\*/,/- \*\*GitHub:\*\*/')
+  echo "$GITLAB_STAGE_BULLET" | grep -qi "if the re-fetch itself fails"
+  echo "$GITLAB_STAGE_BULLET" | grep -qi "do not.*let this fall through to the generic"
+}
+
 @test "SKILL.md: GitLab read-back net-new staging re-fetches MR_VERSION instead of reusing entry-time SHAs" {
   # edge-case-hunter finding: the SHAs used to stage net-new draft notes are
   # captured once at Phase 4b entry (step 0b), but the actual staging POST
