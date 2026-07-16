@@ -283,8 +283,18 @@ teardown() {
     echo "REGRESSION: literal <self> placeholder found in Read-Back Pass (never resolves to a real login)" >&2
     return 1
   fi
+  # gh api's --jq/-q flag takes exactly one jq query string -- it does not
+  # support jq's own --arg flag. A prior version of this spec wrote
+  # `gh api ... --jq --arg login "$SELF_LOGIN" '...'`, which is invalid: gh
+  # api consumes the literal string "--arg" as its entire query and the rest
+  # becomes stray positional arguments. The fix pipes to a standalone jq
+  # instead, where --arg is valid.
+  if echo "$READBACK_BLOCK" | grep -q -- '--jq --arg'; then
+    echo "REGRESSION: 'gh api --jq --arg' is invalid syntax -- gh api's --jq takes one query string and does not support jq's --arg flag" >&2
+    return 1
+  fi
   echo "$READBACK_BLOCK" | grep -q "SELF_LOGIN=\$(gh api user"
-  echo "$READBACK_BLOCK" | grep -q -- '--arg login "\$SELF_LOGIN"'
+  echo "$READBACK_BLOCK" | grep -q -- '| jq --arg login "\$SELF_LOGIN"'
 }
 
 @test "SKILL.md: Phase 4 skip gate includes --read-back (own-branch PR_NUMBER resolution)" {
