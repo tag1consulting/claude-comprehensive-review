@@ -243,6 +243,23 @@ teardown() {
   grep -qi "no draft.*found\|requires an existing draft" "$SKILL_MD"
 }
 
+@test "SKILL.md: GitHub read-back resolves SELF_LOGIN before filtering PENDING reviews" {
+  # Regression guard: the Read-Back Pass's GitHub PENDING-review filter needs the
+  # invoking user's login, but Phase 4b step 0c (the only other SELF_LOGIN
+  # resolution) is scoped to the staging path and does not run for --read-back.
+  # A prior version of this spec used a literal, never-resolved "<self>" placeholder
+  # in the jq filter, which meant .user.login=="<self>" could never match a real
+  # GitHub username -- every read-back run silently fell through to "no draft found"
+  # even when a pending review genuinely existed.
+  READBACK_BLOCK=$(awk '/\*\*Read-Back Pass\*\*/,0' "$SKILL_MD")
+  if echo "$READBACK_BLOCK" | grep -q '"<self>"'; then
+    echo "REGRESSION: literal <self> placeholder found in Read-Back Pass (never resolves to a real login)" >&2
+    return 1
+  fi
+  echo "$READBACK_BLOCK" | grep -q "SELF_LOGIN=\$(gh api user"
+  echo "$READBACK_BLOCK" | grep -q -- '--arg login "\$SELF_LOGIN"'
+}
+
 @test "SKILL.md: Phase 4 skip gate includes --read-back (own-branch PR_NUMBER resolution)" {
   # Regression guard: --read-back on an own-branch invocation needs Phase 4 to
   # run so PR_NUMBER gets resolved before Phase 4b's Read-Back Pass fires.
