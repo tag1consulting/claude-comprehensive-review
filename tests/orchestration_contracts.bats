@@ -238,6 +238,33 @@ teardown() {
   grep -q "Stage this as your draft review" "$SKILL_MD"
 }
 
+@test "SKILL.md: step 0c pre-check skips (not falsely clears) EXISTING_PENDING when SELF_LOGIN fails" {
+  # Regression guard: a prior version set SELF_LOGIN="" on lookup failure and then
+  # queried select(.user.login=="") — an empty string can never match a real GitHub
+  # login, so EXISTING_PENDING silently came back 0 even when a pending review
+  # genuinely existed. The pre-check must skip the query entirely on lookup
+  # failure, not run a query that is guaranteed to return a false "all clear".
+  STEP0C_BLOCK=$(awk '/0c\. \*\*GitHub pending-review pre-check\*\*/,/^1\. \*\*Parse valid comment targets\*\*/' "$SKILL_MD")
+  if echo "$STEP0C_BLOCK" | grep -q 'SELF_LOGIN=""$'; then
+    echo "REGRESSION: SELF_LOGIN reset to empty string before the EXISTING_PENDING query (would silently match nothing)" >&2
+    return 1
+  fi
+  echo "$STEP0C_BLOCK" | grep -q "EXISTING_PENDING=0"
+  echo "$STEP0C_BLOCK" | grep -q "Skipping the pre-check"
+}
+
+@test "SKILL.md: read-back fetch-failure message does not suggest --no-post (mutually exclusive)" {
+  # Regression guard: --read-back and --no-post/--local are mutually exclusive
+  # (Phase 0 flag-conflict check), so telling the user to pass --no-post to
+  # recover from a fetch failure sends them straight into a second, unrelated
+  # error instead of resolving anything.
+  READBACK_BLOCK=$(awk '/\*\*Read-Back Pass\*\*/,0' "$SKILL_MD")
+  if echo "$READBACK_BLOCK" | grep -q "Use --no-post to skip"; then
+    echo "REGRESSION: Read-Back Pass fetch-failure message suggests --no-post, which is mutually exclusive with --read-back" >&2
+    return 1
+  fi
+}
+
 @test "SKILL.md: --read-back is documented and requires an existing draft" {
   grep -q "\-\-read-back" "$SKILL_MD"
   grep -qi "no draft.*found\|requires an existing draft" "$SKILL_MD"

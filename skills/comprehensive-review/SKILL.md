@@ -1385,16 +1385,18 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
 0c. **GitHub pending-review pre-check** (GitHub, `POST_MODE=draft` only): before staging, check whether the invoking user already has a PENDING review on this PR, capturing exit codes so a query failure is visible rather than silently coalescing to "0 pending reviews":
     ```bash
     SELF_LOGIN=$(gh api user --jq .login 2>&1); SELF_LOGIN_RC=$?
+    EXISTING_PENDING=0
     if [[ $SELF_LOGIN_RC -ne 0 ]]; then
-      echo "Warning: Could not verify your GitHub login before the pending-review pre-check (${SELF_LOGIN}). Proceeding — if a pending review already exists, the create call below will fail with a 422 instead of the cleaner pre-check message." >&2
-      SELF_LOGIN=""
-    fi
-    EXISTING_PENDING=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews \
-      --jq "[.[] | select(.state==\"PENDING\" and .user.login==\"${SELF_LOGIN}\")] | length" 2>&1)
-    EXISTING_PENDING_RC=$?
-    if [[ $EXISTING_PENDING_RC -ne 0 ]]; then
-      echo "Warning: Could not check for an existing pending review (${EXISTING_PENDING}). Proceeding without the pre-check — a 422 below (if it occurs) means a pending review genuinely exists, not a bug." >&2
-      EXISTING_PENDING=0
+      echo "Warning: Could not verify your GitHub login before the pending-review pre-check (${SELF_LOGIN}). Skipping the pre-check — an empty login would silently match nothing and falsely report zero pending reviews. If a pending review already exists, the create call below will fail with a 422 instead of the cleaner pre-check message." >&2
+    else
+      EXISTING_PENDING_RAW=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews \
+        --jq "[.[] | select(.state==\"PENDING\" and .user.login==\"${SELF_LOGIN}\")] | length" 2>&1)
+      EXISTING_PENDING_RC=$?
+      if [[ $EXISTING_PENDING_RC -ne 0 ]]; then
+        echo "Warning: Could not check for an existing pending review (${EXISTING_PENDING_RAW}). Proceeding without the pre-check — a 422 below (if it occurs) means a pending review genuinely exists, not a bug." >&2
+      else
+        EXISTING_PENDING="$EXISTING_PENDING_RAW"
+      fi
     fi
     ```
     If `EXISTING_PENDING` is `1` or more: report "Error: You already have a pending review on ${PR_TERM} #<N>. Edit and submit it yourself in the web UI, or delete it there, then re-run." and skip the rest of Phase 4b. Do NOT create a second pending review and do NOT submit the existing one — GitHub allows only one pending review per PR per user (422 on a second create). If either query failed, this pre-check degrades to a no-op (proceed to the actual create call) rather than blocking the run — the create call's own non-zero-exit handling (step 8) is the backstop that still catches a genuine 422 in this case, just with a less-friendly error message than the pre-check would have given.
@@ -1471,7 +1473,7 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
 
 0. `PR_NUMBER` (GitHub/GitLab) is already resolved by Phase 4; `PROJECT_ID` (GitLab only) and the diff SHAs (`base_sha`/`head_sha`/`start_sha`, GitLab only) are already resolved by Phase 4b steps 0 and 0b above, both of which now run for `--read-back` per the Phase 4b entry point. Step 3 below (GitLab positioned draft notes) depends on those SHAs being fresh — do not skip step 0b for a read-back invocation. **GitHub only:** also resolve the invoking user's login here, since step 1's PENDING-review filter needs it and Phase 4b step 0c (the only other place this is computed) is scoped to the staging path and does not run for `--read-back`: `SELF_LOGIN=$(gh api user --jq .login 2>&1); SELF_LOGIN_RC=$?`. If `SELF_LOGIN_RC≠0`: report "Error: Could not verify your GitHub login for the read-back pass: ${SELF_LOGIN}. Retry once the API is reachable." and stop — do not proceed to step 1 with an unresolved login.
 1. **Fetch the human's current draft**, capturing exit code and stderr so an API failure is never confused with a genuinely empty draft:
-   - **GitHub:** `DRAFT_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --jq --arg login "$SELF_LOGIN" '[.[] | select(.state=="PENDING" and .user.login==$login)]' 2>&1); DRAFT_RC=$?`. On `DRAFT_RC≠0`: report "Error: Could not fetch your pending review from GitHub: ${DRAFT_RESPONSE}. Use --no-post to skip, or retry once the API is reachable." and stop — do NOT report "no draft found." On `DRAFT_RC=0`: parse the JSON array; if parsing fails (malformed response), treat as an error identically to `DRAFT_RC≠0`. If the array is genuinely empty, proceed to the "no draft" branch below. Otherwise fetch inline comments via `.../reviews/{id}/comments`.
+   - **GitHub:** `DRAFT_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --jq --arg login "$SELF_LOGIN" '[.[] | select(.state=="PENDING" and .user.login==$login)]' 2>&1); DRAFT_RC=$?`. On `DRAFT_RC≠0`: report "Error: Could not fetch your pending review from GitHub: ${DRAFT_RESPONSE}. Retry once the API is reachable, or omit --read-back to skip the read-back step." and stop — do NOT report "no draft found." (`--no-post`/`--local` is not a valid suggestion here: it is mutually exclusive with `--read-back` per the Phase 0 flag-conflict check.) On `DRAFT_RC=0`: parse the JSON array; if parsing fails (malformed response), treat as an error identically to `DRAFT_RC≠0`. If the array is genuinely empty, proceed to the "no draft" branch below. Otherwise fetch inline comments via `.../reviews/{id}/comments`.
    - **GitLab:** `DRAFT_RESPONSE=$(glab api "projects/${PROJECT_ID}/merge_requests/<N>/draft_notes" 2>&1); DRAFT_RC=$?`. Same RC/parse handling as GitHub.
    - **"No draft" branch** (only reached when the fetch succeeded AND the result is a genuinely empty array, never on a fetch failure): report "No draft review found on ${PR_TERM} #<N> that you authored — nothing to read back. Run --post-findings first to stage one, or confirm you're looking at the right ${PR_TERM_LONG} and account (drafts are visible only to the user who created them)." and stop; do not create a draft here.
 2. **Diff against this run's findings:** for each of this run's findings, check whether a semantically matching comment (same file, same/nearby line) still exists in the fetched draft. Report in the terminal (not posted anywhere) three groups: findings the human kept as-is, findings the human edited (text differs), findings the human removed. Also note any comments in the draft that don't correspond to an original finding (the human's own additions) — these are left untouched.
