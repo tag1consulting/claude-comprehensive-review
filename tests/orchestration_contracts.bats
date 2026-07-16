@@ -155,6 +155,45 @@ teardown() {
   grep -q "OP: Stage draft review" "$PROVIDERS_MD"
 }
 
+@test "PROVIDERS.md: Stage draft review OP documents a rollback story for provider API breakage" {
+  # adversarial-general finding: no documented recovery path if GitHub/GitLab
+  # change the provider behavior this OP depends on (event-omitted PENDING
+  # review, draft_notes endpoint staying unpublished). The safety guarantee
+  # the whole feature rests on needs a documented "what if it breaks" path.
+  DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
+  echo "$DRAFT_OP_BLOCK" | grep -qi "if draft mode misbehaves"
+  echo "$DRAFT_OP_BLOCK" | grep -q -- "--publish"
+}
+
+@test "PROVIDERS.md: documents lifecycle guidance for stale/abandoned drafts" {
+  # adversarial-general finding: a forgotten pending review silently blocks
+  # the next --post-findings run on GitHub with no in-tool way to discover
+  # or clear it, and no doc explains this can happen.
+  DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
+  echo "$DRAFT_OP_BLOCK" | grep -qi "managing your staged drafts"
+}
+
+@test "PROVIDERS.md: documents that GitLab draft/read-back staging is not live-E2E-validated" {
+  # adversarial-general finding: GitLab's read-back write path is asserted
+  # only by structural bats greps, never exercised end-to-end. This should
+  # be visible to a maintainer/user, not silently assumed equivalent to the
+  # GitHub path which was live-tested.
+  DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
+  echo "$DRAFT_OP_BLOCK" | grep -qi "known validation gap"
+  echo "$DRAFT_OP_BLOCK" | grep -qi "not.*been exercised against a live MR\|not.*live-tested"
+}
+
+@test "PROVIDERS.md: GitHub PENDING-review visibility claim is not overstated as a documented API guarantee" {
+  # Regression guard: security-reviewer found this file asserted "visible and
+  # editable only by its author" as GitHub REST-documented behavior, but
+  # GitHub's docs only confirm the PENDING/not-submitted state, not an
+  # access-control guarantee for who can see a PENDING review. The entire
+  # "Human in the Middle" design leans on this property, so overstating it
+  # as verified is a real assurance gap if the property doesn't hold.
+  GITHUB_DRAFT_BULLET=$(awk '/^- \*\*github:\*\* Create a PENDING review/,/^- \*\*gitlab:\*\*/' "$PROVIDERS_MD")
+  echo "$GITHUB_DRAFT_BULLET" | grep -qi "not.*explicitly document\|unverified"
+}
+
 @test "PROVIDERS.md: GitHub draft path omits event and never calls the submit endpoint" {
   # Isolate the github bullet of the Stage draft review OP specifically (not
   # the whole OP section, which also contains gitlab/bitbucket bullets and
@@ -220,6 +259,19 @@ teardown() {
   grep -qi "draft mode never publishes" "$SKILL_MD"
 }
 
+@test "SKILL.md: draft-never-publishes invariant documents that grep tests verify docs, not runtime behavior" {
+  # architecture-reviewer finding: three of five commits on this branch are
+  # fixes for the exact bug class (typo/degradation/logic error) that a
+  # compiler or type system would catch at edit time in a real language.
+  # This maintains the honesty of the safety claim by not letting a passing
+  # bats suite be mistaken for a runtime guarantee.
+  # Scope to the single governance bullet paragraph (from its bold lead-in to
+  # the next top-level "- **" bullet) rather than a same-string range match,
+  # since "no `--create-pr`" recurs later in the file and would over-capture.
+  GOVERNANCE_BULLET=$(awk '/^- \*\*Draft mode never publishes\.\*\*/{p=1} p{print; if (/^- \*\*/ && !/^- \*\*Draft mode never publishes/) {if (++n>1) exit}}' "$SKILL_MD")
+  echo "$GOVERNANCE_BULLET" | grep -qi "not a guarantee of runtime behavior"
+}
+
 @test "SKILL.md: --post-findings defaults to draft mode, --publish opts into publishing" {
   grep -q "\-\-publish" "$SKILL_MD"
   grep -q "\-\-draft" "$SKILL_MD"
@@ -230,8 +282,49 @@ teardown() {
   grep -q "\-\-publish and --draft are mutually exclusive" "$SKILL_MD"
 }
 
+@test "SKILL.md: --read-back and --publish/--draft are documented as mutually exclusive" {
+  grep -q "\-\-read-back and --publish are mutually exclusive" "$SKILL_MD"
+  grep -q "\-\-read-back and --draft are mutually exclusive" "$SKILL_MD"
+}
+
+@test "SKILL.md: --read-back + --publish check appears before the --draft/--publish + --post-findings check (avoids contradictory-advice loop)" {
+  # Regression guard: architecture-reviewer found that --read-back --publish
+  # tripped the "--draft/--publish modify how --post-findings posts; pass
+  # --post-findings" check first. Following that advice then trips the
+  # --read-back + --post-findings exclusion two checks later -- a
+  # contradictory-advice loop where fixing one error creates another. The
+  # --read-back + --publish/--draft check must be ordered before the
+  # --post-findings-requiring check so the correct, on-topic error fires first.
+  READBACK_PUBLISH_LINE=$(grep -n "\-\-read-back and --publish are mutually exclusive" "$SKILL_MD" | head -1 | cut -d: -f1)
+  POST_FINDINGS_REQUIRED_LINE=$(grep -n "modify how --post-findings posts; pass --post-findings" "$SKILL_MD" | head -1 | cut -d: -f1)
+  [[ -n "$READBACK_PUBLISH_LINE" && -n "$POST_FINDINGS_REQUIRED_LINE" ]]
+  [[ "$READBACK_PUBLISH_LINE" -lt "$POST_FINDINGS_REQUIRED_LINE" ]]
+}
+
+@test "SKILL.md: --read-back and --create-pr are documented as mutually exclusive" {
+  grep -q "\-\-read-back and --create-pr are mutually exclusive" "$SKILL_MD"
+}
+
 @test "SKILL.md: GitHub pending-review one-per-PR pre-check is documented" {
   grep -qi "already have a pending review" "$SKILL_MD"
+}
+
+@test "SKILL.md: bare --post-findings without --publish/--draft emits a runtime migration notice" {
+  # adversarial-general finding: the breaking-behavior-change note (pre-1.13.0
+  # --post-findings published immediately; now stages) lives only in passive
+  # docs. A returning CI script gets no distinct runtime signal that behavior
+  # changed -- just a different outcome with no diagnostic.
+  grep -qi "Migration notice for scripted/CI callers" "$SKILL_MD"
+  grep -qi "as of v1.13.0, --post-findings stages a draft" "$SKILL_MD"
+}
+
+@test "SKILL.md: --read-back prints a cost notice before running the full pipeline" {
+  # adversarial-general finding: --read-back re-runs the full analysis
+  # pipeline ("costs the same as a full review") but nothing warns at
+  # invocation time; a user reaching for a "just read my draft back" flag
+  # would reasonably expect a cheap operation.
+  grep -qi -- "read-back. cost notice" "$SKILL_MD"
+  grep -qi "costs the same as a full review" "$SKILL_MD"
 }
 
 @test "SKILL.md: draft staging confirmation prompt does not use 'post' language" {
@@ -306,6 +399,21 @@ teardown() {
   echo "$SKIP_GATE_LINE" | grep -q -- "--read-back"
 }
 
+@test "SKILL.md: Read-Back Pass step 0 names each of its three cross-phase preconditions" {
+  # architecture-reviewer finding: the Read-Back Pass depends on a 3-4 link
+  # precondition chain (Phase 4's widened skip-gate resolving PR_NUMBER,
+  # Phase 4b steps 0/0b resolving PROJECT_ID/SHAs, and its own SELF_LOGIN
+  # resolution because step 0c is scoped away from it) enforced only by
+  # prose. This test doesn't make the chain structurally enforced (not
+  # possible in a markdown orchestrator), but it does ensure step 0 keeps
+  # naming all three, so a future edit that silently drops one of these
+  # cross-references at least loses a grep match here.
+  STEP0_BLOCK=$(awk '/^\*\*Read-Back Pass\*\*/,/^1\. \*\*Fetch the human/' "$SKILL_MD")
+  echo "$STEP0_BLOCK" | grep -q "PR_NUMBER"
+  echo "$STEP0_BLOCK" | grep -q "PROJECT_ID"
+  echo "$STEP0_BLOCK" | grep -qi "SELF_LOGIN"
+}
+
 @test "SKILL.md: GitHub read-back does not re-attempt Stage draft review (would 422)" {
   # Regression guard: GitHub's pending-review create endpoint only accepts
   # comments at creation time (see PROVIDERS.md's "No append path" note). If
@@ -315,6 +423,18 @@ teardown() {
   READ_BACK_BLOCK=$(awk '/\*\*Read-Back Pass\*\*/,/### Phase 5/' "$SKILL_MD")
   echo "$READ_BACK_BLOCK" | grep -qi "terminal only\|do \*\*NOT\*\* attempt to stage"
   echo "$READ_BACK_BLOCK" | grep -qi "doesn.t support appending\|only accepts comments at creation time\|would 422"
+}
+
+@test "SKILL.md: GitLab read-back net-new staging re-fetches MR_VERSION instead of reusing entry-time SHAs" {
+  # edge-case-hunter finding: the SHAs used to stage net-new draft notes are
+  # captured once at Phase 4b entry (step 0b), but the actual staging POST
+  # happens after the full analysis pipeline reruns and a user confirmation
+  # prompt -- an arbitrarily long delay during which a new commit on the MR
+  # would make those SHAs stale, either failing the POST with a confusing
+  # generic warning or mispositioning the comment against a stale diff view.
+  STAGE_NET_NEW_BLOCK=$(awk '/\*\*Stage net-new findings only/,/Never delete or overwrite/' "$SKILL_MD")
+  GITLAB_STAGE_BULLET=$(echo "$STAGE_NET_NEW_BLOCK" | awk '/- \*\*GitLab:\*\*/,/- \*\*GitHub:\*\*/')
+  echo "$GITLAB_STAGE_BULLET" | grep -qi "re-fetch.*MR_VERSION\|re-run step 0b"
 }
 
 @test "SKILL.md: --post-summary alone is unaffected by draft mode (scope guard)" {
