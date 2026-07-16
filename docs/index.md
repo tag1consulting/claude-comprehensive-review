@@ -19,7 +19,7 @@ hero_tagline: "Comprehensive PR/MR review using parallel specialized agents. Pro
   </div>
   <div class="feature">
     <h3><span class="feature-icon">&#9670;</span> GitHub, GitLab, Bitbucket</h3>
-    <p>Auto-detects your git provider. Creates PRs, posts inline reviews, and supports external PR review by number. Works with GitHub Enterprise.</p>
+    <p>Auto-detects your git provider. Creates PRs, stages findings as an editable draft review by default (you submit it yourself), and supports external PR review by number. Works with GitHub Enterprise.</p>
   </div>
   <div class="feature">
     <h3><span class="feature-icon">&#9670;</span> Token-Efficient by Design</h3>
@@ -46,7 +46,7 @@ Then run on any branch:
 /comprehensive-review
 ```
 
-That's it — a full review runs locally with no PR created. Add `--create-pr` to open a PR with the summary as its description, or `--post-findings` to post inline findings on an existing PR.
+That's it — a full review runs locally with no PR created. Add `--create-pr` to open a PR with the summary as its description, or `--post-findings` to stage inline findings on an existing PR as an editable draft (GitHub pending review / GitLab draft notes) — nothing is published until you submit it yourself; add `--publish` to post immediately instead.
 
 ## Learn more
 

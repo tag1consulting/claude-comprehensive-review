@@ -1,7 +1,7 @@
 ---
 name: comprehensive-review
-description: "Run a comprehensive PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR."
-argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--create-pr] [--depth deep]"
+description: "Run a comprehensive PR/MR review using specialized agents. Supports GitHub, GitLab, and Bitbucket. Use --post-summary/--post-findings to post results, --create-pr to create a PR, --pr <N> to review an existing PR. --post-findings stages an editable draft review by default (GitHub pending review / GitLab draft notes) — add --publish to post immediately."
+argument-hint: "[--quick] [--pr <N>] [--post-summary] [--post-findings] [--publish] [--read-back] [--create-pr] [--depth deep]"
 allowed-tools: ["Bash", "Read", "Write", "Grep", "Glob", "Agent", "mcp__plugin_claude-mem_mcp-search__search", "mcp__plugin_claude-mem_mcp-search__get_observations"]
 ---
 
@@ -37,6 +37,9 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 The orchestrator is a software-engineering actor: it spawns subagents, calls provider APIs, creates branches/PRs, and posts comments. These rules govern its behavior. Spawned subagents receive their own `GOVERNANCE.md` block (see Phase 0 step 9 and Phase 1) — the rules below complement that, they do not replace it.
 
 - **External communication is gated by explicit flags.** Posting to a PR/MR (Phase 4 `--post-summary`, Phase 4b `--post-findings`) and creating a PR/MR (Phase 4 `--create-pr`) require the user to pass the corresponding flag. The flag itself is the user's authorization checkpoint. The orchestrator does not infer additional posting beyond what was requested, does not auto-enable `--post-findings` in `--pr` mode, and does not promote a `--post-summary` to a `--post-findings` run. When in doubt, do less.
+- **`--post-findings` stages a draft by default; publishing requires `--publish`.** Passing `--post-findings` alone never publishes anything — it stages an editable draft (GitHub pending review, GitLab draft notes) that only the invoking user can see and submit. Publishing immediately (today's pre-1.13.0 behavior) requires the additional `--publish` flag. This is a deliberate asymmetry with `--create-pr` (which has no draft equivalent and always requires its own confirmation): the default posture for findings is "stage, never publish without a second explicit flag."
+- **Draft mode never publishes.** When staging a draft (the `--post-findings` default, absent `--publish`), the orchestrator MUST NOT call any submit/publish endpoint — not `POST .../reviews/{id}/events` (GitHub review submission), not `POST .../draft_notes/bulk_publish` (GitLab), not any Bitbucket comment-publish call. It creates the draft and stops. Submitting is the human's action, performed in the provider's web UI under their own credentials, per Jeremy's "Human in the Middle" model. The Phase 4b confirmation prompt in draft mode authorizes staging only, never submission.
+  **Limitation of the automated test coverage for this invariant:** `tests/orchestration_contracts.bats` asserts this invariant by grepping this document's text for the absence of publish-trigger strings inside the draft OP block. That verifies the *documentation* is internally consistent — it cannot verify that the orchestrator LLM, at spawn time, actually refrains from emitting a call it wasn't instructed to make. There is no compiler, type system, or runtime harness enforcing this in a markdown-defined orchestrator; the tests are a strong regression guard against someone re-adding a publish call to the spec, not a guarantee of runtime behavior. Treat any change here as safety-critical and re-verify manually (as this branch's fix commits did, by injecting the exact target regression and confirming the test catches it) rather than trusting a passing suite alone.
 - **No `--create-pr` from a default branch.** Phase 4 must refuse `--create-pr` when the local `HEAD` matches the provider's default branch (or one of `main`/`master`/`develop` as a conservative fallback when the provider lookup fails). This is a hard refuse — exit non-zero, print a clear error directing the user to check out a feature branch. There is no override flag.
 - **User-confirmation prompts are not optional.** Phase 4 (`--create-pr`, `--post-summary`) and Phase 4b (`--post-findings`) display the proposed body and ask for confirmation before any external write. This is the orchestrator's equivalent of a Checkpoint Trigger pause. Do not collapse multiple confirmations into one for "convenience."
 - **Secret-redaction defense in depth.** Phase 2 step 2g redacts known-pattern secrets from finding text and Block A summary before any external posting. This is a backstop for the agent-level redaction in `GOVERNANCE.md`, not a replacement.
@@ -89,10 +92,11 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
    - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--create-pr`,
-     `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--no-enrich-context`, `--no-mem`, `--no-suppress`
+     `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--publish`, `--draft`, `--read-back`, `--no-enrich-context`, `--no-mem`, `--no-suppress`
    - Extract `--output-file <path>` if present — set OUTPUT_FILE to the given path for Phase 5 file write
    - Extract `--depth <normal|deep>` if present; default DEPTH=`normal`. If value is not one of `{normal, deep}`, report "Error: Invalid --depth value '<value>'. Valid values are: normal, deep." and stop.
    - Extract `--min-confidence <N>` if present; default MIN_CONFIDENCE=75. Validate: value must be an integer in [0,100]. If invalid, report "Error: Invalid --min-confidence value '<value>'. Must be an integer 0–100." and stop. A value of 0 disables confidence filtering.
+   - **Determine POST_MODE** (governs `--post-findings` only — irrelevant unless `--post-findings` is present, including in `--pr`-mode posting; `--post-summary` used alone always posts a plain comment and ignores POST_MODE, see Phase 4's "Post summary comment" scope note): `POST_MODE=draft` unless `--publish` is present, in which case `POST_MODE=publish`. `--draft` is accepted as an explicit no-op alias of the default, for symmetry with `--publish` and for scripts that want to pin the behavior against a future default change.
    - **Flag conflict checks:**
      - If both `--post-findings` and `--no-findings` are present, report
        "Error: --post-findings and --no-findings are mutually exclusive." and stop.
@@ -100,6 +104,28 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
        "Error: --create-pr and --no-post/--local are mutually exclusive." and stop.
      - If `--create-pr` and `--pr <N>` are both present, report
        "Error: --create-pr and --pr are mutually exclusive." and stop.
+     - If both `--publish` and `--draft` are present, report
+       "Error: --publish and --draft are mutually exclusive." and stop.
+     - If `--publish` and `--no-post`/`--local` are both present, report
+       "Error: --publish and --no-post/--local are mutually exclusive." and stop.
+     - If `--read-back` and `--publish` are both present, report
+       "Error: --read-back and --publish are mutually exclusive. --read-back reads back an existing draft; --publish controls how a new --post-findings run posts. They don't compose — run them in separate invocations." and stop. (This check must run before the `--draft`/`--publish` + `--post-findings` check below: without it, `--read-back --publish` would trip that check's "pass --post-findings" message, and following that advice would then trip the `--read-back`+`--post-findings` exclusion two checks down — a contradictory-advice loop.)
+     - If `--read-back` and `--draft` are both present, report
+       "Error: --read-back and --draft are mutually exclusive, for the same reason as --read-back and --publish above." and stop.
+     - If `--read-back` and `--create-pr` are both present, report
+       "Error: --read-back and --create-pr are mutually exclusive. --read-back reads back a draft from a PR/MR that must already exist; --create-pr creates a brand-new one, which cannot yet have a prior --post-findings draft on it. Create the PR first, run --post-findings to stage a draft, then use --read-back in a separate invocation." and stop. (Without this check, `--read-back --create-pr` on a branch with no existing PR/MR takes the `--create-pr` branch in Phase 4, creates a PR, and then Phase 4b's Read-Back Pass runs against a PR that by construction has no draft — falling through to the "no draft found" message instead of failing with a clear, on-topic error.)
+     - If `--draft` or `--publish` is present but `--post-findings` is not present (and not in `--pr <N> --post-findings` mode), report
+       "Error: --draft/--publish modify how --post-findings posts; pass --post-findings." and stop. (`--post-summary` alone is unaffected by drafting — see the scope note at the top of Phase 4's "Post summary comment" subsection — so it does not satisfy this check.)
+     - If `--read-back` and `--post-findings` are both present, report
+       "Error: --read-back and --post-findings are mutually exclusive. --read-back operates on an existing draft from a prior --post-findings run; run them in two separate invocations (stage first, edit in the web UI, then read back)." and stop. (Without this check, the Phase 4b entry point jumps straight to the Read-Back Pass and skips staging entirely, so `--post-findings` would silently do nothing — the same silent-flag-swallowing failure mode the GitHub/GitLab pending-review pre-checks elsewhere in this file exist to avoid.)
+     - If `--read-back` and `--no-post`/`--local` are both present, report
+       "Error: --read-back and --no-post/--local are mutually exclusive." and stop. (`--read-back` always performs at least a remote read, and on GitLab can perform a remote write when staging net-new draft notes — both are the class of remote operation `--no-post`/`--local` exists to suppress.)
+     - If `--read-back` and `--quick` are both present, report
+       "Error: --read-back and --quick are mutually exclusive. --read-back re-runs the full analysis pipeline to regenerate the findings it compares your draft against; a --quick run would compare against a smaller findings set than the one used to originally stage the draft, producing a misleading kept/edited/removed report." and stop.
+     - If `--read-back` and `--summary-only` are both present, report
+       "Error: --read-back and --summary-only are mutually exclusive. --summary-only produces no findings, so there would be nothing to compare your draft against." and stop.
+     - If `--read-back` is present without a prior `--post-findings` run having created a draft, this is only detectable at Phase 4b runtime (no draft found for this PR/MR) — see the Read-Back Pass step 1, and Phase 4's own-branch "no PR/MR exists" branch for the case where there is no PR/MR at all.
+   - **`--read-back` cost notice:** if `--read-back` is present (and passed all the conflict checks above), print to stderr before Phase 1 launches any agents: "Note: --read-back re-runs the full analysis pipeline to regenerate the findings it compares your draft against — this costs the same as a full review, not a lightweight read." A user reaching for a flag that sounds like "just read my draft back" would otherwise be surprised by full-review token cost with no warning before it's incurred.
 
 1a. **Pre-flight Context** — the repository, branch, and diff stats were injected above by the harness at skill load time. Use them directly.
 
@@ -1255,7 +1281,7 @@ If `REDACTION_DEGRADED=true` (set in Phase 2 step 2g when `perl` was unavailable
 
 ### Phase 4: PR/MR Operations
 
-**Skip entirely unless at least one of `--pr`, `--create-pr`, `--post-summary`, or `--post-findings` was explicitly passed.** (`--no-post`/`--local` is now the default; these flags are explicit aliases for the default behavior.)
+**Skip entirely unless at least one of `--pr`, `--create-pr`, `--post-summary`, `--post-findings`, or `--read-back` was explicitly passed.** (`--no-post`/`--local` is now the default; these flags are explicit aliases for the default behavior.) `--read-back` is included here specifically so its own-branch invocation (`/comprehensive-review --read-back`, with no other posting flag) still resolves a `PR_NUMBER` — without this, Phase 4 would be skipped entirely and Phase 4b's Read-Back Pass would have no PR to read from.
 
 Determine PR/MR state:
 - `--pr` mode: PR_NUMBER from arg. POST_SUMMARY = `--post-summary`. POST_FINDINGS = `--post-findings` was passed (NOT auto-enabled in `--pr` mode; must be explicit).
@@ -1265,10 +1291,11 @@ Determine PR/MR state:
     - GitLab: `glab mr list --source-branch "$(git branch --show-current)" --output json` returns empty array (`[]`)
     - Bitbucket: response JSON has `.size == 0` or `.values` is empty
     + `--create-pr`: create PR/MR. POST_FINDINGS = `--post-findings` was passed.
-    + No `--create-pr`: posting flags are no-ops (warn user if passed).
+    + `--read-back` with no PR/MR and no `--create-pr`: report "Error: --read-back requires an existing PR/MR — none found on this branch. Run --post-findings first to stage a draft, or use --pr <N> to target a specific PR/MR." and skip the rest of Phase 4/4b.
+    + No `--create-pr` and no `--read-back`: posting flags are no-ops (warn user if passed).
   - **Bitbucket API failure** — if `curl` exits non-zero or the response contains `"type":"error"`, treat as API failure (not "no PR found").
   - **Other failures** (auth, network): report "${PROVIDER} API error: <error>. Use --no-post to skip remote operations." and skip Phase 4.
-  - **Succeeds:** PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR/MR already exists.
+  - **Succeeds:** PR_NUMBER from output. POST_SUMMARY/POST_FINDINGS from flags. If `--create-pr` also passed, note PR/MR already exists. `--read-back` proceeds to Phase 4b's Read-Back Pass using this resolved PR_NUMBER.
 
 **Create PR/MR** (own-branch, `--create-pr`):
 
@@ -1332,7 +1359,12 @@ Once the pre-check passes: Before running the create operation, display the prop
 
 If `CREATED_PR_URL` is empty after the command runs, do NOT report success in Phase 5. Report the failure plainly using `CREATED_PR_ERROR` (or "no URL returned by ${PROVIDER} API" if stderr was empty). Do not proceed to Phase 4b inline posting in this case — without a created PR/MR there is no target.
 
-**Post summary comment** (POST_SUMMARY): Before posting, display the full comment body to the user and ask: "Post this comment to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Post comment on PR/MR** with Block A as body. Use `## ${PR_TERM} Review Summary (Updated)` heading if summary already exists.
+**Post summary comment** (POST_SUMMARY):
+
+**Scope note:** `POST_MODE=draft` (the default) governs `--post-findings` only. `--post-summary` used on its own is unaffected by this feature and always posts a plain comment, exactly as before — Block A has no draft/pending-review equivalent of its own, and inventing one for `--post-summary` alone would (a) exceed what `--draft`/`--publish` were scoped to control and (b) consume a GitHub PR's one-pending-review slot for a plain summary, which would then collide with a subsequent `--post-findings` and trip the step 0c pre-check for no reason. The one place drafting affects the summary is when `--post-summary` and `--post-findings` are used **together** in draft mode: Block A rides along inside the *same* pending review / draft notes that `--post-findings` is already staging, rather than creating a second, separate artifact.
+
+- **If `POST_MODE=draft` AND `POST_FINDINGS` is also true:** do NOT post a separate comment here. Block A is folded into the draft review body built in Phase 4b step 5 (prepended ahead of the findings body) so the human sees summary + findings in one editable draft. Skip the rest of this subsection; proceed to Phase 4b.
+- **Otherwise** (including `--post-summary` alone, regardless of `POST_MODE`): Before posting, display the full comment body to the user and ask: "Post this comment to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Post comment on PR/MR** with Block A as body. Use `## ${PR_TERM} Review Summary (Updated)` heading if summary already exists.
 
 **Capture the result.** Run the **OP: Post comment on PR/MR** command via the Bash tool. **Exit code is the primary success signal** — gh/glab versions vary in whether they print a URL to stdout, so an empty URL on a successful post is "posted but URL unavailable," not failure (treating it as failure would cause a false failure report and a duplicate comment on retry):
 - **github:** `COMMENT_OUT=$(gh pr comment <N> --body "<body>" 2>&1); COMMENT_RC=$?`. On `COMMENT_RC=0`: `POSTED_COMMENT_REF=$(echo "$COMMENT_OUT" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. If `COMMENT_RC=0` but `POSTED_COMMENT_REF` is empty: set `POSTED_COMMENT_REF="(posted; URL not reported by gh)"` so Phase 5 reports the post as successful while making the missing URL visible.
@@ -1343,7 +1375,9 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
 
 ### Phase 4b: Post Findings as Inline Review
 
-**Skip if POST_FINDINGS is false (i.e., `--post-findings` was not explicitly passed).**
+**Skip if POST_FINDINGS is false (i.e., `--post-findings` was not explicitly passed) AND `--read-back` was not passed.**
+
+**If `--read-back` was passed:** first check `PROVIDER`. If `PROVIDER=bitbucket`: report "Error: --read-back is not supported on Bitbucket — no draft-create path exists in the public REST API (see PROVIDERS.md 'OP: Stage draft review'), so there is nothing to read back." and skip the rest of Phase 4b. Otherwise (GitHub/GitLab): run step 0 below (GitLab PROJECT_ID resolution — needed to address `draft_notes`; GitHub doesn't need it) **and step 0b (GitLab MR diff SHA resolution — needed if step 3 stages a positioned draft note)**, then jump to the Read-Back Pass instead of steps 1–9. `--read-back` is independent of `POST_FINDINGS`/`POST_MODE` — it operates on an existing draft, not on this run's findings. `PR_NUMBER` is already resolved by Phase 4 (own-branch detection or `--pr <N>`) before Phase 4b runs — Phase 4's skip gate explicitly includes `--read-back` for this reason.
 
 0. **Resolve PROJECT_ID** (GitLab only): `glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" | jq -r '.id'`. If this fails, report "Error: Could not resolve GitLab project ID for '${REPO_SLUG}'. Inline comments will not be posted." and skip Phase 4b (Block B is still displayed in terminal).
 
@@ -1356,16 +1390,39 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
     ```
     If this call fails or any SHA is empty: report "Error: Could not fetch GitLab MR diff versions — inline comments cannot be posted." and fall back to posting Block B as a plain MR comment via `glab mr comment <N> --message "<Block B>"`. Skip steps 1–8.
 
+0c. **GitHub pending-review pre-check** (GitHub, `POST_MODE=draft` only): before staging, check whether the invoking user already has a PENDING review on this PR, capturing exit codes so a query failure is visible rather than silently coalescing to "0 pending reviews":
+    ```bash
+    SELF_LOGIN=$(gh api user --jq .login 2>&1); SELF_LOGIN_RC=$?
+    EXISTING_PENDING=0
+    if [[ $SELF_LOGIN_RC -ne 0 ]]; then
+      echo "Warning: Could not verify your GitHub login before the pending-review pre-check (${SELF_LOGIN}). Skipping the pre-check — an empty login would silently match nothing and falsely report zero pending reviews. If a pending review already exists, the create call below will fail with a 422 instead of the cleaner pre-check message." >&2
+    else
+      EXISTING_PENDING_RAW=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews \
+        --jq "[.[] | select(.state==\"PENDING\" and .user.login==\"${SELF_LOGIN}\")] | length" 2>&1)
+      EXISTING_PENDING_RC=$?
+      if [[ $EXISTING_PENDING_RC -ne 0 ]]; then
+        echo "Warning: Could not check for an existing pending review (${EXISTING_PENDING_RAW}). Proceeding without the pre-check — a 422 below (if it occurs) means a pending review genuinely exists, not a bug." >&2
+      else
+        EXISTING_PENDING="$EXISTING_PENDING_RAW"
+      fi
+    fi
+    ```
+    If `EXISTING_PENDING` is `1` or more: report "Error: You already have a pending review on ${PR_TERM} #<N>. Edit and submit it yourself in the web UI, or delete it there, then re-run." and skip the rest of Phase 4b. Do NOT create a second pending review and do NOT submit the existing one — GitHub allows only one pending review per PR per user (422 on a second create). If either query failed, this pre-check degrades to a no-op (proceed to the actual create call) rather than blocking the run — the create call's own non-zero-exit handling (step 8) is the backstop that still catches a genuine 422 in this case, just with a less-friendly error message than the pre-check would have given.
+
 1. **Parse valid comment targets** from DIFF_FILE. For each hunk `@@ -a,b +c,d @@`, lines `c` through `c+d-1` are valid. Build lookup: `{file → set of valid lines}`.
 
 2. **Partition findings:** INLINE (file + line both set and line is in valid set) vs BODY (everything else).
 
 3. **Cap at 25 inline comments** sorted by severity. Overflow moves to BODY.
 
-4. **Review event:**
+4. **Review event** (`POST_MODE=publish` only — draft mode has no event, see 4a):
    - **GitHub:** Own PR → "COMMENT". External PR (`--pr`) → "REQUEST_CHANGES" if Medium+ findings, "COMMENT" if Low only.
    - **GitLab:** Always post as discussion comments (GitLab has no review event model). Severity noted in comment text.
    - **Bitbucket:** Inline reviews not supported. Post Block B as a single PR comment using **OP: Post comment on PR/MR**. Skip steps 5–7.
+
+4a. **Draft mode branch** (`POST_MODE=draft`): skip event selection entirely — a pending review/draft note carries no event; the human chooses approve/request-changes/comment when they submit it themselves.
+   - **GitHub, GitLab:** proceed to steps 5–9 using **OP: Stage draft review** in step 8 instead of **OP: Post inline review**.
+   - **Bitbucket:** no verified draft-create path exists in the public REST API (see PROVIDERS.md "OP: Stage draft review" note). Print: "Note: Draft mode is not yet supported on Bitbucket — findings will be published as a PR comment (today's behavior)." then fall back to `POST_MODE=publish` semantics for this run only (single published comment via **OP: Post comment on PR/MR**, with the existing confirmation prompt). Do not silently upgrade to draft-looking language in the confirm prompt for this fallback.
 
 5. **Review body:**
    ```markdown
@@ -1378,6 +1435,7 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
    ### Findings not attached to specific lines
    <BODY findings, or "None — all findings are attached inline.">
    ```
+   **If `POST_MODE=draft` and Block A is being folded in (Phase 4 step above):** prepend Block A to this body, separated by `---`, so the single draft carries both summary and findings.
 
 6. **Comments array:** each entry `{ "path", "line", "body": "**[Severity]** **[agent]** description.\n\n**Remediation:** ..." }`. **Build the array with `jq -n --arg`/`--arg` per field, never by string-concatenating the values into a JSON literal** — `path` and `body` may contain attacker-influenced content (file paths from the diff, finding text derived from PR/commit content) and a stray double-quote, backslash, or newline would break the literal and inject sibling fields. For each finding, write one row to `findings.jsonl` using:
    ```bash
@@ -1390,19 +1448,53 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
    ```
    Then aggregate via `jq -s '.'`. See PROVIDERS.md → "OP: Post inline review" → **github** for the full pattern including the `touch findings.jsonl` guard and the error-checked aggregation step.
 
-7. **Confirm with user before submitting:** Display the review event type (`COMMENT` or `REQUEST_CHANGES`), the full review body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Post this review to ${PR_TERM} #<N>? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again.
+7. **Confirm with user before submitting:**
+   - **`POST_MODE=publish`:** Display the review event type (`COMMENT` or `REQUEST_CHANGES`), the full review body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Post this review to ${PR_TERM} #<N>? (yes/no)".
+   - **`POST_MODE=draft`:** Display the full draft body, and a summary of inline comments (count + each as `<file>:<line> [Severity] <one-line description>`). Ask: "Stage this as your draft review on ${PR_TERM} #<N>? You'll edit and submit it yourself in the web UI — nothing will be published. (yes/no)". Do not use "post" language for this prompt — the action is staging, not publishing.
+     **Migration notice for scripted/CI callers (one-time per run, before the prompt above):** if `--post-findings` was passed without either `--publish` or an explicit `--draft`, print to stderr: "Note: as of v1.13.0, --post-findings stages a draft instead of publishing immediately. Pass --publish to publish now (needed for CI/scripted use, since a non-interactive run cannot answer the confirmation prompt below), or pass --draft to pin this behavior and silence this notice." This is the one place a returning script author (who previously relied on bare `--post-findings` publishing immediately) gets a runtime signal that behavior changed — the CHANGELOG/README/HELP migration notes are passive documentation a script never reads. Suppress this notice when `--draft` was passed explicitly (the user has already acknowledged and pinned the new behavior).
+   - Either way: do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again.
 
-8. Once confirmed: **Submit** using **OP: Post inline review**, capturing provider-returned identifiers into named variables for Phase 5 citation. Initialize `POSTED_REVIEW_ID=""`, `POSTED_REVIEW_URL=""`, `INLINE_POSTED_COUNT=0`, `INLINE_FAILED_COUNT=0` before the call.
-   - **GitHub:** `REVIEW_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file> 2>&1)`. On exit 0: `POSTED_REVIEW_ID=$(echo "$REVIEW_RESPONSE" | jq -r '.id // empty')` and `POSTED_REVIEW_URL=$(echo "$REVIEW_RESPONSE" | jq -r '.html_url // empty')`. If both are empty after a successful exit, treat as a partial failure — log "Warning: GitHub review API returned 200 but no review ID/URL — cannot confirm posting." On non-zero exit: capture stderr into `POSTED_REVIEW_ERROR`, leave both ID/URL empty, and skip inline posting (do not retry).
-     **`INLINE_POSTED_COUNT` is parsed via a follow-up GET, not from the POST response:** GitHub silently drops inline comments whose target line is outside the diff hunk windows (despite the Phase 4b step 1 valid-line filter — GitHub's own validation is stricter and may differ for renamed files, large hunks, or trailing-newline edge cases). The POST `/pulls/{pull_number}/reviews` response does NOT include the `.comments` array — only the GET `/pulls/{pull_number}/reviews/{review_id}/comments` endpoint does. After a successful POST with non-empty `POSTED_REVIEW_ID`, run `REVIEW_COMMENTS=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews/${POSTED_REVIEW_ID}/comments 2>&1); REVIEW_COMMENTS_RC=$?` and set `INLINE_POSTED_COUNT=$(echo "$REVIEW_COMMENTS" | jq -r 'length' 2>/dev/null || echo 0)` only if `REVIEW_COMMENTS_RC=0`. If the follow-up GET fails, leave `INLINE_POSTED_COUNT=0` and log "Warning: Could not verify inline comment count — review posted but follow-up GET failed." If `INLINE_POSTED_COUNT` is less than the request comments-array length (and the GET succeeded), log "Warning: GitHub accepted the review but dropped <N> inline comment(s) as outside the diff." For a failed POST or empty `POSTED_REVIEW_ID`, `INLINE_POSTED_COUNT=0`.
-   - **GitLab:** First post the review body as an MR comment via `BODY_RESPONSE=$(glab mr comment <N> --message "<review body>" 2>&1); BODY_RC=$?`; on RC=0 capture `POSTED_REVIEW_URL=$(echo "$BODY_RESPONSE" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. Then, for each inline comment, run `THREAD_RESPONSE=$(glab api -X POST ... 2>&1); THREAD_RC=$?`. On `THREAD_RC=0` AND non-empty thread ID (`THREAD_ID=$(echo "$THREAD_RESPONSE" | jq -r '.id // empty' 2>/dev/null)`): increment `INLINE_POSTED_COUNT`. Otherwise: increment `INLINE_FAILED_COUNT` and log the warning with the actual captured response — `printf 'Warning: Failed to post inline comment for %s:%s — %s\n' "$file" "$line" "${THREAD_RESPONSE:-no thread ID returned}"`. (Use the actual variable expansion rather than a literal `<error or 'no thread ID returned'>` placeholder so warnings carry diagnostic content.)
-   - **Bitbucket:** N/A (handled in step 4 — that path uses **OP: Post comment on PR/MR** and must capture into `POSTED_COMMENT_REF` per the Phase 4 pattern above).
+8. Once confirmed: **Submit or stage**, capturing provider-returned identifiers into named variables for Phase 5 citation. Initialize `POSTED_REVIEW_ID=""`, `POSTED_REVIEW_URL=""`, `INLINE_POSTED_COUNT=0`, `INLINE_FAILED_COUNT=0` before the call (draft mode reuses the same variable names — see PROVIDERS.md "OP: Stage draft review" for the draft-specific request shape).
+   - **`POST_MODE=publish`:** use **OP: Post inline review**.
+     - **GitHub:** `REVIEW_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f event=<event> -f body=<body> --input <comments_json_file> 2>&1)`. On exit 0: `POSTED_REVIEW_ID=$(echo "$REVIEW_RESPONSE" | jq -r '.id // empty')` and `POSTED_REVIEW_URL=$(echo "$REVIEW_RESPONSE" | jq -r '.html_url // empty')`. If both are empty after a successful exit, treat as a partial failure — log "Warning: GitHub review API returned 200 but no review ID/URL — cannot confirm posting." On non-zero exit: capture stderr into `POSTED_REVIEW_ERROR`, leave both ID/URL empty, and skip inline posting (do not retry).
+       **`INLINE_POSTED_COUNT` is parsed via a follow-up GET, not from the POST response:** GitHub silently drops inline comments whose target line is outside the diff hunk windows (despite the Phase 4b step 1 valid-line filter — GitHub's own validation is stricter and may differ for renamed files, large hunks, or trailing-newline edge cases). The POST `/pulls/{pull_number}/reviews` response does NOT include the `.comments` array — only the GET `/pulls/{pull_number}/reviews/{review_id}/comments` endpoint does. After a successful POST with non-empty `POSTED_REVIEW_ID`, run `REVIEW_COMMENTS=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews/${POSTED_REVIEW_ID}/comments 2>&1); REVIEW_COMMENTS_RC=$?` and set `INLINE_POSTED_COUNT=$(echo "$REVIEW_COMMENTS" | jq -r 'length' 2>/dev/null || echo 0)` only if `REVIEW_COMMENTS_RC=0`. If the follow-up GET fails, leave `INLINE_POSTED_COUNT=0` and log "Warning: Could not verify inline comment count — review posted but follow-up GET failed." If `INLINE_POSTED_COUNT` is less than the request comments-array length (and the GET succeeded), log "Warning: GitHub accepted the review but dropped <N> inline comment(s) as outside the diff." For a failed POST or empty `POSTED_REVIEW_ID`, `INLINE_POSTED_COUNT=0`.
+     - **GitLab:** First post the review body as an MR comment via `BODY_RESPONSE=$(glab mr comment <N> --message "<review body>" 2>&1); BODY_RC=$?`; on RC=0 capture `POSTED_REVIEW_URL=$(echo "$BODY_RESPONSE" | grep -Eo 'https://[^[:space:]]+' | tail -1)`. Then, for each inline comment, run `THREAD_RESPONSE=$(glab api -X POST ... 2>&1); THREAD_RC=$?`. On `THREAD_RC=0` AND non-empty thread ID (`THREAD_ID=$(echo "$THREAD_RESPONSE" | jq -r '.id // empty' 2>/dev/null)`): increment `INLINE_POSTED_COUNT`. Otherwise: increment `INLINE_FAILED_COUNT` and log the warning with the actual captured response — `printf 'Warning: Failed to post inline comment for %s:%s — %s\n' "$file" "$line" "${THREAD_RESPONSE:-no thread ID returned}"`. (Use the actual variable expansion rather than a literal `<error or 'no thread ID returned'>` placeholder so warnings carry diagnostic content.)
+     - **Bitbucket:** N/A (handled in step 4 — that path uses **OP: Post comment on PR/MR** and must capture into `POSTED_COMMENT_REF` per the Phase 4 pattern above).
+   - **`POST_MODE=draft`:** use **OP: Stage draft review**. This OP contains no `event=`, no `bulk_publish`, no `/events` call — it stages and stops, per the "Draft mode never publishes" governance rule.
+     - **GitHub:** `REVIEW_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --method POST -f body=<body> --input <comments_json_file> 2>&1)` — note **no `-f event=`**. On exit 0: capture `POSTED_REVIEW_ID`/`POSTED_REVIEW_URL` the same way as the publish path. Non-zero exit (e.g., a 422 not caught by the step 0c pre-check, such as a race with a concurrently created pending review): capture stderr into `POSTED_REVIEW_ERROR`, leave both empty. Run the same follow-up GET as the publish path to get `INLINE_POSTED_COUNT` — the out-of-hunk-drop caveat applies identically to PENDING reviews.
+     - **GitLab:** for each inline comment, `THREAD_RESPONSE=$(glab api -X POST "projects/${PROJECT_ID}/merge_requests/<N>/draft_notes" -f "note=<body>" -f "position[base_sha]=<base_sha>" -f "position[head_sha]=<head_sha>" -f "position[start_sha]=<start_sha>" -f "position[position_type]=text" -f "position[new_path]=<file>" -f "position[new_line]=<line>" 2>&1); THREAD_RC=$?`. On `THREAD_RC=0` AND non-empty `id`: increment `INLINE_POSTED_COUNT` and record the first draft note's `id`/a constructed MR URL into `POSTED_REVIEW_URL` (draft notes have no single "review" resource — cite the MR URL with a note that says "review your drafts"). Otherwise increment `INLINE_FAILED_COUNT` and log the same warning pattern as the publish path. If Block A is being folded in (no inline position), post it as one additional non-positioned draft note (`-f "note=<body>"` with no `position[...]` args). Never call `.../draft_notes/bulk_publish`.
+     - **Bitbucket:** not applicable — step 4a routes Bitbucket to the publish fallback with its own notice; this branch is unreachable for Bitbucket.
 
 9. **Cite the captured result for Phase 5.** Build the Phase 5 status string from the captured variables, not from the fact that the command was invoked:
-   - If `POSTED_REVIEW_URL` (GitHub) or `POSTED_REVIEW_URL` (GitLab review-body comment URL) is non-empty: report "Review posted to ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline, <BODY_FINDINGS_COUNT> in body — <POSTED_REVIEW_URL>".
-   - If both are empty after the call: report "Failed to post review to ${PR_TERM} #<N>: <POSTED_REVIEW_ERROR or 'no identifier returned by ${PROVIDER} API'>". Do NOT report success.
-   - GitLab partial failure (`INLINE_FAILED_COUNT > 0`): append "Warning: <INLINE_FAILED_COUNT> of <INLINE_POSTED_COUNT + INLINE_FAILED_COUNT> inline comments failed to post on GitLab ${PR_TERM} #<N>."
-   - Bitbucket variant: report "Findings posted as comment on ${PR_TERM} #<N> (inline reviews not supported on Bitbucket) — <POSTED_COMMENT_REF>" if `POSTED_COMMENT_REF` is non-empty; otherwise report failure.
+   - **`POST_MODE=publish`:**
+     - If `POSTED_REVIEW_URL` (GitHub) or `POSTED_REVIEW_URL` (GitLab review-body comment URL) is non-empty: report "Review posted to ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline, <BODY_FINDINGS_COUNT> in body — <POSTED_REVIEW_URL>".
+     - If both are empty after the call: report "Failed to post review to ${PR_TERM} #<N>: <POSTED_REVIEW_ERROR or 'no identifier returned by ${PROVIDER} API'>". Do NOT report success.
+     - GitLab partial failure (`INLINE_FAILED_COUNT > 0`): append "Warning: <INLINE_FAILED_COUNT> of <INLINE_POSTED_COUNT + INLINE_FAILED_COUNT> inline comments failed to post on GitLab ${PR_TERM} #<N>."
+     - Bitbucket variant: report "Findings posted as comment on ${PR_TERM} #<N> (inline reviews not supported on Bitbucket) — <POSTED_COMMENT_REF>" if `POSTED_COMMENT_REF` is non-empty; otherwise report failure.
+   - **`POST_MODE=draft`:**
+     - GitHub, `POSTED_REVIEW_URL` non-empty: report "Staged a draft review on ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline comment(s)<, plus summary in the body if Block A was folded in>. **Nothing has been published.** Open <POSTED_REVIEW_URL> in the web UI to edit and submit it yourself."
+     - GitLab, `INLINE_POSTED_COUNT > 0` or a summary draft note was staged: report "Staged <INLINE_POSTED_COUNT> draft note(s) on ${PR_TERM} #<N>. **Nothing has been published.** Open the ${PR_TERM_LONG}, review your drafts, and click **Submit review** to publish."
+     - Both empty / all failed: report "Failed to stage draft on ${PR_TERM} #<N>: <POSTED_REVIEW_ERROR or 'no identifier returned by ${PROVIDER} API'>". Do NOT report success.
+     - GitHub step 0c refusal: report the "You already have a pending review..." message verbatim; nothing was staged this run.
+     - Partial failure (`INLINE_FAILED_COUNT > 0`): same warning pattern as publish mode, reworded to "failed to stage" instead of "failed to post."
+     - **Draft-mode verify caveat (both providers, on any successful staging report above):** immediately follow the success line with, to stderr: "Note: this tool cannot verify at runtime that the created review is genuinely a draft (see PROVIDERS.md 'If draft mode misbehaves') — confirm it shows as Pending/draft in the web UI before sharing this PR link with anyone." This is a direct consequence of the documented gap that no post-stage check re-fetches and confirms PENDING state; without this notice, a draft that silently published due to a provider-side behavior change would produce a success-looking status line with no signal anything went wrong.
+
+**Read-Back Pass** (`--read-back`; GitHub and GitLab only — Bitbucket is rejected before this pass is reached, see the Phase 4b entry point above):
+
+0. `PR_NUMBER` (GitHub/GitLab) is already resolved by Phase 4; `PROJECT_ID` (GitLab only) and the diff SHAs (`base_sha`/`head_sha`/`start_sha`, GitLab only) are already resolved by Phase 4b steps 0 and 0b above, both of which now run for `--read-back` per the Phase 4b entry point. Step 3 below (GitLab positioned draft notes) depends on those SHAs being fresh — do not skip step 0b for a read-back invocation. **GitHub only:** also resolve the invoking user's login here, since step 1's PENDING-review filter needs it and Phase 4b step 0c (the only other place this is computed) is scoped to the staging path and does not run for `--read-back`: `SELF_LOGIN=$(gh api user --jq .login 2>&1); SELF_LOGIN_RC=$?`. If `SELF_LOGIN_RC≠0`: report "Error: Could not verify your GitHub login for the read-back pass: ${SELF_LOGIN}. Retry once the API is reachable." and stop — do not proceed to step 1 with an unresolved login.
+1. **Fetch the human's current draft**, capturing exit code and stderr so an API failure is never confused with a genuinely empty draft:
+   - **GitHub:** `gh api`'s `--jq`/`-q` flag takes exactly one jq query string — it does not support jq's own `--arg` flag for parameterizing that query. Pipe to a standalone `jq --arg` instead: `DRAFT_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews 2>&1 | jq --arg login "$SELF_LOGIN" '[.[] | select(.state=="PENDING" and .user.login==$login)]' 2>&1); DRAFT_RC=$?`. On `DRAFT_RC≠0`: report "Error: Could not fetch your pending review from GitHub: ${DRAFT_RESPONSE}. Retry once the API is reachable, or omit --read-back to skip the read-back step." and stop — do NOT report "no draft found." (`--no-post`/`--local` is not a valid suggestion here: it is mutually exclusive with `--read-back` per the Phase 0 flag-conflict check.) On `DRAFT_RC=0`: parse the JSON array; if parsing fails (malformed response), treat as an error identically to `DRAFT_RC≠0`. If the array is genuinely empty, proceed to the "no draft" branch below. Otherwise fetch inline comments via `.../reviews/{id}/comments`.
+   - **GitLab:** `DRAFT_RESPONSE=$(glab api "projects/${PROJECT_ID}/merge_requests/<N>/draft_notes" 2>&1); DRAFT_RC=$?`. Same RC/parse handling as GitHub.
+   - **"No draft" branch** (only reached when the fetch succeeded AND the result is a genuinely empty array, never on a fetch failure): report "No draft review found on ${PR_TERM} #<N> that you authored — nothing to read back. Run --post-findings first to stage one, or confirm you're looking at the right ${PR_TERM_LONG} and account (drafts are visible only to the user who created them)." and stop; do not create a draft here.
+2. **Diff against this run's findings:** for each of this run's findings, check whether a semantically matching comment (same file, same/nearby line) still exists in the fetched draft. Report in the terminal (not posted anywhere) three groups: findings the human kept as-is, findings the human edited (text differs), findings the human removed. Also note any comments in the draft that don't correspond to an original finding (the human's own additions) — these are left untouched.
+3. **Stage net-new findings only — provider-dependent:**
+   - **GitLab:** if this read-back surfaces something the AI believes was missed (a genuine gap, not merely "restore what the human deleted"), stage it as an additional draft note via `POST .../draft_notes`. **Re-fetch `MR_VERSION` immediately before this POST** (re-run step 0b's `glab api .../versions` call) rather than reusing the SHAs captured at Phase 4b entry — steps 1 and 2 above (fetching the draft, re-running the full analysis pipeline, and the user confirmation prompt in step 7) can take an arbitrarily long time, during which a new commit on the MR would make the entry-time SHAs stale. A stale-SHA POST either gets rejected by GitLab (surfacing as the existing generic `INLINE_FAILED_COUNT` warning — not silent, but the user isn't told *why* without this note) or, worse, succeeds and anchors the new finding to an outdated diff view. Use the freshly re-fetched `base_sha`/`head_sha`/`start_sha` (same as **OP: Stage draft review**'s per-comment path — each draft note is independent, so appending after the draft already exists works with no special handling once fresh SHAs are in scope), with the same confirm-before-staging prompt as step 7. **If the re-fetch itself fails** (non-zero exit, or any of the three SHAs empty — e.g., a network error or expired `glab` auth in the gap between the analysis pipeline and this point): abort the net-new staging attempt for this specific finding and report "Could not re-fetch MR version SHAs before staging net-new finding — skipping. Re-run --post-findings to retry." Do NOT let this fall through to the generic `INLINE_FAILED_COUNT` path — that path was designed for a failed POST with valid SHAs, not a failed pre-POST version fetch, and reusing it here would misreport a fetch failure as a post failure with no diagnostic distinguishing the two.
+   - **GitHub:** do **NOT** attempt to stage net-new findings here. GitHub's pending-review creation is a single batch POST that only accepts comments at creation time (the same constraint documented in step 0c and PROVIDERS.md "OP: Stage draft review") — the pending review already exists by the time read-back runs, and a second `POST .../pulls/{n}/reviews` would 422 against the one-pending-review-per-PR limit. Appending to an *existing* pending review requires the GraphQL `addPullRequestReviewThread` mutation, which is not implemented in this version. Instead, **report the net-new findings in the terminal only** ("Read-back found N finding(s) not in your current draft — add these yourself if you agree: <list>") for the human to add via the web UI. This is a known GitHub limitation, not a silent failure — see PROVIDERS.md.
+   - Never delete or overwrite the human's existing draft comments, on either provider.
+4. Report a one-line summary:
+   - **GitLab:** "Read-back: <N> kept, <M> edited, <K> removed by you; <J> new draft note(s) staged for your review. Nothing published."
+   - **GitHub:** "Read-back: <N> kept, <M> edited, <K> removed by you; <J> new finding(s) reported above — add them to your pending review yourself in the web UI (GitHub's API doesn't support appending to an existing pending review). Nothing published."
+   - Fetch failure (step 1 `DRAFT_RC≠0` or unparseable response): report the captured error plainly; do NOT report a kept/edited/removed count of zero as if the draft were empty.
 
 ### Phase 5: Final Output
 
@@ -1476,13 +1568,22 @@ Note in terminal: "Review written to <path>"
    - `CREATED_PR_URL` non-empty → "${PR_TERM} created: ${CREATED_PR_URL}".
    - `--create-pr` was passed AND `CREATED_PR_URL` is empty → "${PR_TERM} creation FAILED: ${CREATED_PR_ERROR:-no URL returned by ${PROVIDER} API}".
    - No `--create-pr` and no PR/MR exists → "Tip: use --create-pr to create a ${PR_TERM_LONG}."
-2. Summary post outcome:
+2. Summary post outcome (skip if Block A was folded into a draft per Phase 4 — that outcome is reported under item 3 instead):
    - `POSTED_COMMENT_REF` non-empty → "Summary comment posted to ${PR_TERM} #<N>: ${POSTED_COMMENT_REF}".
    - `--post-summary` was passed AND `POSTED_COMMENT_REF` is empty → "Summary post FAILED: ${POSTED_COMMENT_ERROR:-no identifier returned by ${PROVIDER} API}".
 3. Review post outcome:
-   - `POSTED_REVIEW_URL` non-empty → "Review posted to ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline, <BODY_FINDINGS_COUNT> in body — ${POSTED_REVIEW_URL}".
-   - `--post-findings` was passed AND `POSTED_REVIEW_URL` is empty AND Bitbucket POSTED_COMMENT_REF is empty → "Review post FAILED: ${POSTED_REVIEW_ERROR:-no identifier returned by ${PROVIDER} API}".
-   - GitLab partial failure → append "Warning: <INLINE_FAILED_COUNT> of <total> inline comments failed to post."
+   - **`POST_MODE=publish`:**
+     - `POSTED_REVIEW_URL` non-empty → "Review posted to ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline, <BODY_FINDINGS_COUNT> in body — ${POSTED_REVIEW_URL}".
+     - `--post-findings` was passed AND `POSTED_REVIEW_URL` is empty AND Bitbucket POSTED_COMMENT_REF is empty → "Review post FAILED: ${POSTED_REVIEW_ERROR:-no identifier returned by ${PROVIDER} API}".
+     - GitLab partial failure → append "Warning: <INLINE_FAILED_COUNT> of <total> inline comments failed to post."
+   - **`POST_MODE=draft`:**
+     - GitHub, `POSTED_REVIEW_URL` non-empty → "Staged a draft review on ${PR_TERM} #<N>: <INLINE_POSTED_COUNT> inline comment(s)<, plus summary in the body>. **Nothing has been published.** Open ${POSTED_REVIEW_URL} in the web UI to edit and submit it yourself."
+     - GitLab, comments staged → "Staged <INLINE_POSTED_COUNT> draft note(s) on ${PR_TERM} #<N>. **Nothing has been published.** Open the ${PR_TERM_LONG} and click **Submit review** to publish."
+     - `--post-findings` was passed AND nothing staged → "Draft staging FAILED: ${POSTED_REVIEW_ERROR:-no identifier returned by ${PROVIDER} API}".
+     - GitHub step 0c refusal → report the "You already have a pending review..." message verbatim.
+     - **Draft-mode verify caveat** (any successful staging line above): immediately follow it with, to stderr: "Note: this tool cannot verify at runtime that the created review is genuinely a draft (see PROVIDERS.md 'If draft mode misbehaves') — confirm it shows as Pending/draft in the web UI before sharing this PR link with anyone."
+     - Partial failure → append "Warning: <INLINE_FAILED_COUNT> of <total> inline comments failed to stage."
+   - **`--read-back` was passed:** report its one-line summary (see Phase 4b Read-Back Pass step 4) instead of/in addition to the above.
 3a. `--pr` mode worktree cleanup:
    - `WORKTREE_REMOVED=true` → "Worktree at ${WORKTREE_PATH} removed."
    - `WORKTREE_REMOVED=false` → "Worktree cleanup INCOMPLETE: ${WORKTREE_CLEANUP_ERROR}. Run 'git worktree remove ${WORKTREE_PATH} --force' manually."
@@ -1537,6 +1638,7 @@ Note in terminal: "Review written to <path>"
 - Project-agnostic. Orchestrator reads CLAUDE.md at pre-flight and passes condensed context; agents should not read CLAUDE.md independently.
 - pr-review-toolkit agents are reused as-is. All remote operations use the provider-specific CLI (gh/glab/curl).
 - `--create-pr` is opt-in. Default is side-effect-free (no PR/MR created, no remote posts).
-- Findings posted to the hosting provider only via `--post-findings` (own PR/MR, GitHub/GitLab: inline review; Bitbucket: PR comment) or `--pr` mode (GitHub: `REQUEST_CHANGES` if Medium+, `COMMENT` if Low only; GitLab: discussion threads; Bitbucket: PR comment). `--create-pr` findings are local unless `--post-findings` also passed.
+- Findings posted to the hosting provider only via `--post-findings` (own PR/MR, GitHub/GitLab: **stages an editable draft by default** — a pending review or draft notes visible only to the invoking user; add `--publish` to post immediately instead, which is required on Bitbucket since no draft-create path is verified there) or `--pr` mode (same draft-by-default behavior; `--publish` on GitHub uses `REQUEST_CHANGES` if Medium+, `COMMENT` if Low only). `--create-pr` findings are local unless `--post-findings` also passed. `--read-back` (GitHub/GitLab only) reads an existing draft back, reports what the human kept/edited/removed, and stages any newly-noticed findings — never publishing and never overwriting the human's edits.
 - Inline comments capped at 25 per review (top findings by severity); overflow goes to review body.
+- **Migration note (pre-1.13.0 → 1.13.0):** `--post-findings` alone used to publish immediately. It now stages a draft instead. Scripts/CI that expect immediate publishing must add `--publish`.
 - If `--pr` mode is interrupted, clean up with `git worktree list` and `git worktree remove`.

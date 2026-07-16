@@ -95,23 +95,31 @@ The skill produces two distinct output blocks with different audiences:
 - **Block A** (informational) — summary, walkthrough table, related issues. Contains no findings.
 - **Block B** (findings) — severity-ranked issues from all agents. Always displayed in the terminal.
 
-Both blocks are always shown locally. What gets posted to the hosting provider depends on context:
+Both blocks are always shown locally. What gets posted to the hosting provider depends on context. **`--post-findings` stages an editable draft by default** (GitHub pending review / GitLab draft notes — visible only to the invoking user, nothing published until they submit it themselves); `--publish` restores immediate publishing. Bitbucket has no verified draft-create path and always publishes.
 
 | Scenario | Block A | Block B |
 |----------|---------|---------|
 | No PR/MR exists (default) | Not posted | Not posted |
 | No PR/MR exists + `--create-pr` | PR/MR description | Not posted |
-| No PR/MR exists + `--create-pr --post-findings` | PR/MR description | Inline review ¹ |
+| No PR/MR exists + `--create-pr --post-findings` | Folded into draft | Staged as draft review ² |
+| No PR/MR exists + `--create-pr --post-findings --publish` | PR/MR description | Inline review ¹ |
 | Existing own PR/MR (default) | Not posted | Not posted |
 | Existing own PR/MR + `--post-summary` | PR/MR comment | Not posted |
-| Existing own PR/MR + `--post-findings` | Not posted | Inline review ¹ |
+| Existing own PR/MR + `--post-findings` | Not posted | Staged as draft review ² |
+| Existing own PR/MR + `--post-findings --publish` | Not posted | Inline review ¹ |
 | `--pr <N>` mode (default) | Not posted | Not posted |
-| `--pr <N>` + `--post-findings` | Not posted | Inline review ¹ |
+| `--pr <N>` + `--post-findings` | Not posted | Staged as draft review ² |
+| `--pr <N>` + `--post-findings --publish` | Not posted | Inline review ¹ |
 | `--pr <N>` + `--post-summary` | PR/MR comment | Not posted |
-| `--pr <N>` + `--post-summary` + `--post-findings` | PR/MR comment | Inline review ¹ |
+| `--pr <N>` + `--post-summary` + `--post-findings --publish` | PR/MR comment | Inline review ¹ |
+| `--read-back` (GitHub/GitLab; requires an existing draft) | N/A | Reports kept/edited/removed; stages newly-noticed findings on GitLab (draft notes) / reports them in the terminal on GitHub (its API can't append to an existing pending review) — never publishes |
 | Any + `--no-post`/`--local` | Not posted | Not posted (explicit alias for the default) |
 
 ¹ Inline review behavior varies by provider: GitHub uses `COMMENT` or `REQUEST_CHANGES` events; GitLab posts individual discussion threads (no review event model); Bitbucket does not support inline diff comments — Block B is posted as a single PR comment instead.
+
+² Draft-review behavior varies by provider: GitHub creates a PENDING review (`POST .../pulls/{n}/reviews` with `event` omitted — never followed by a submit call); GitLab creates draft notes (`POST .../draft_notes` — never followed by `bulk_publish`); Bitbucket has no verified draft-create path in the public REST API, so `--post-findings` on Bitbucket always publishes a single PR comment regardless of `--publish`, with a one-line notice.
+
+**Migration note (pre-1.13.0):** `--post-findings` alone used to publish immediately; as of 1.13.0 it stages a draft. CI and scripted invocations that expect immediate publishing must add `--publish`.
 
 The key invariant: **no-post is the default**. All remote posting requires explicit opt-in flags. Block B is never hidden from the terminal.
 
@@ -156,7 +164,7 @@ When `--pr <N>` is passed, the skill:
 1. Fetches the PR/MR metadata via the provider-specific CLI
 2. Creates a temporary worktree and checks out the PR/MR branch
 3. Runs the standard analysis pipeline against the worktree
-4. Posts findings as an inline review (GitHub: REQUEST_CHANGES if Medium+, COMMENT if Low only; GitLab: discussion threads; Bitbucket: single PR comment)
+4. Stages findings as an inline review — draft by default (GitHub: pending review; GitLab: draft notes), or immediately with `--publish` (GitHub: REQUEST_CHANGES if Medium+, COMMENT if Low only; GitLab: discussion threads); Bitbucket: single PR comment, always published
 5. Cleans up the worktree in Phase 5
 
 This allows reviewing any accessible PR/MR without being on that branch locally.

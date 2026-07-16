@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - Unreleased
+
+### ⚠ Behavior change
+
+- **`--post-findings` now stages an editable draft by default instead of publishing immediately.** On GitHub this creates a PENDING review (`POST .../pulls/{n}/reviews` with no `event`); on GitLab it creates draft notes (`POST .../draft_notes`). Either way, the draft is visible only to the invoking user and nothing is published until they edit and submit it themselves in the provider's web UI. **Add `--publish` to restore the previous (pre-1.13.0) immediate-publish behavior** — this is required for any CI/scripted invocation, since a bot has no web UI to submit a draft from. Bitbucket is unaffected: it has no verified draft-create path in the public REST API, so `--post-findings` there always publishes a single PR comment, with a one-line notice.
+
+### Added
+
+- **"Human in the Middle" draft review mode** (`--draft`, `--publish`): implements the staging-layer workflow described in the "Human in the Middle" pattern — the AI drafts, the human edits and submits, never the other way around. `--draft` is an explicit no-op alias of the new default, for scripts that want to pin the behavior. New `PROVIDERS.md` operation "OP: Stage draft review" is kept separate from the existing publish operation so the "never call a submit/publish endpoint" invariant is greppable and covered by structural tests.
+- **`--read-back`** (GitHub/GitLab only): reads back the user's currently-staged draft (pending review comments / draft notes), reports which of this run's findings the human kept, edited, or removed. On GitLab, newly-noticed findings are staged as additional draft notes. **On GitHub, they are reported in the terminal only** — the REST pending-review API only accepts comments at creation time and cannot append to an existing pending review (appending would require the GraphQL `addPullRequestReviewThread` mutation, not implemented in this version), so the human adds any agreed-on findings themselves in the web UI. Never publishes and never overwrites the human's edits. Requires an existing draft from a prior `--post-findings` run. **Cost note:** since the comparison is against "this run's findings," `--read-back` re-runs the full Phase 0–3 analysis pipeline to regenerate them — it costs the same as a full review, not a lightweight diff.
+- **GitHub one-pending-review-per-PR pre-check**: before staging, the orchestrator checks for an existing self-authored PENDING review and refuses cleanly (rather than surfacing a raw 422) if one exists, directing the user to edit/submit or delete it in the web UI first.
+- New Orchestrator Governance rule: "Draft mode never publishes" — explicitly forbids calling any submit/publish endpoint (GitHub review-events, GitLab `bulk_publish`) while staging.
+- New structural tests in `tests/orchestration_contracts.bats` assert the draft OP never contains a live invocation of a publish/submit endpoint, and that `--draft`/`--publish`/`--read-back` are documented consistently across `SKILL.md`, `README.md`, `CLAUDE.md`, and `HELP.md`.
+
+### Known limitations
+
+- Bitbucket draft-review support is out of scope this release: the Cloud REST v2 comment schema has a `pending` field, but creating a pending comment via the public API is not confirmed in Atlassian's official documentation (the "Batched comments" feature is documented as UI-driven). Revisit with a live API spike.
+
 ## [1.12.2] - 2026-06-24
 
 ### Fixed

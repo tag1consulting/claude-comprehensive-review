@@ -17,6 +17,8 @@ The skill auto-detects your git hosting provider from the remote URL. Use `--pro
 | PR/MR creation (`--create-pr`) | Yes | Yes | Yes |
 | Summary posting (`--post-summary`) | Yes | Yes | Yes |
 | Inline review posting (`--post-findings`) | Yes | Yes | No ¹ |
+| Draft/staged review (`--post-findings` default) | Yes ⁴ | Yes ⁴ | No ¹ ⁴ |
+| `--read-back` (read your edited draft) | Yes | Yes | No ⁴ |
 | External review (`--pr <N>`) | Yes | Yes | Yes |
 | Inline review on external PR | Yes | Yes | No ¹ |
 | Issue cross-referencing (issue-linker) | Yes | No ² | No ² |
@@ -24,7 +26,8 @@ The skill auto-detects your git hosting provider from the remote URL. Use `--pro
 
 ¹ Bitbucket does not support inline diff comments via API. Findings are posted as a single PR comment.  
 ² Issue cross-referencing is currently GitHub-only. The issue-linker agent is gracefully skipped for other providers.  
-³ GitLab has no single-call "submit review" API. Inline comments are posted as individual discussion threads.
+³ GitLab has no single-call "submit review" API. Inline comments are posted as individual discussion threads.  
+⁴ `--post-findings` stages an editable draft by default (GitHub: pending review; GitLab: draft notes) — visible only to you until you submit it yourself; add `--publish` for the old immediate-post behavior. Bitbucket has no verified draft-create path in the public REST API, so `--post-findings` there always publishes, regardless of `--draft`/`--publish`, and `--read-back` is unavailable. `--read-back` works on both GitHub and GitLab for reporting what you kept/edited/removed, but staging newly-noticed findings into the existing draft only works on GitLab (draft notes can be appended one at a time) — on GitHub, the REST API can't append to an existing pending review, so new findings are reported in the terminal for you to add yourself.
 
 ## GitHub / GitHub Enterprise
 
@@ -51,7 +54,7 @@ GitLab uses "Merge Request" (MR) terminology. All user-facing output uses "MR" w
 | `BITBUCKET_EMAIL` | Your Atlassian account email address |
 | `BITBUCKET_TOKEN` | Atlassian API token from `id.atlassian.com` (`BITBUCKET_APP_PASSWORD` is auto-mapped if set) |
 
-Bitbucket does not support inline diff comments via the REST API. When `--post-findings` is used, all findings are posted as a single consolidated PR comment.
+Bitbucket does not support inline diff comments via the REST API, and there is no verified draft-create path in the public API (the Cloud "Batched comments" staging feature is documented as UI-driven, not API-driven). When `--post-findings` is used, all findings are always posted as a single, immediately published PR comment — `--draft`/`--publish` have no effect on Bitbucket, and `--read-back` is unavailable.
 
 ## Manual provider override
 

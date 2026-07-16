@@ -73,8 +73,13 @@ The skill executes in five phases:
 - Block B (findings) assembled from normalized findings
 
 **Phase 4 — Remote operations** (when posting flags are present)
-- PR/MR creation, summary posting, inline review posting
+- PR/MR creation, summary posting
 - Provider-specific API calls
+
+**Phase 4b — Findings posting** (when `--post-findings` is present)
+- Stages findings as an editable draft (GitHub pending review, GitLab draft notes) by default — the human edits and submits it themselves
+- `--publish` opts into immediate publishing (GitHub `REQUEST_CHANGES`/`COMMENT` review, GitLab discussion threads) instead of drafting
+- `--read-back` reads an existing draft back and reports kept/edited/removed findings (GitHub and GitLab only)
 
 **Phase 5 — Output and cleanup**
 - Terminal output of Block A + Block B
