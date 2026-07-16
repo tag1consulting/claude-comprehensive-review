@@ -561,7 +561,7 @@ brew install bats-core
 bats tests/*.bats
 ```
 
-Tests cover: `parse_go_mod` replace-directive ordering, TruffleHog invocation modes (including allowlist suppression), gate evaluation logic, golden orchestration contracts (SKILL.md structural integrity, PROVIDERS.md correctness, SEVERITY.md contract), and all static analyzer scripts (eslint, hadolint, kube-linter, phpcs, phpstan, tflint). All 150 tests are offline (no network, no Claude invocation).
+Tests cover: `parse_go_mod` replace-directive ordering, TruffleHog invocation modes (including allowlist suppression), gate evaluation logic, golden orchestration contracts (SKILL.md structural integrity, PROVIDERS.md correctness, SEVERITY.md contract), and all static analyzer scripts (eslint, hadolint, kube-linter, phpcs, phpstan, tflint). All 184 tests are offline (no network, no Claude invocation).
 
 ## Acknowledgments
 

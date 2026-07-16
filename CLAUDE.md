@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and seven custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. Deliverables are markdown files distributed via the `tag1consulting` plugin marketplace. The deterministic bash helpers have a bats test suite (`tests/*.bats`, 150 tests); run with `bats tests/*.bats` (requires `bats` and `jq`).
+This repo distributes a Claude Code skill (`/comprehensive-review`) and seven custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. Deliverables are markdown files distributed via the `tag1consulting` plugin marketplace. The deterministic bash helpers have a bats test suite (`tests/*.bats`, 184 tests); run with `bats tests/*.bats` (requires `bats` and `jq`).
 
 ## Installation
 

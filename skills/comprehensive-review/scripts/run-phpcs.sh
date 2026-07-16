@@ -54,6 +54,8 @@ if [[ ${#PHP_FILES[@]} -eq 0 ]]; then
   exit 0
 fi
 
+PHPCS_STANDARD="PSR12"
+
 if [[ -n "${PHPCS_MOCK_FILE:-}" ]]; then
   if [[ ! -r "$PHPCS_MOCK_FILE" ]]; then
     echo "WARNING: PHPCS_MOCK_FILE '${PHPCS_MOCK_FILE}' is not readable." >&2
@@ -63,7 +65,6 @@ if [[ -n "${PHPCS_MOCK_FILE:-}" ]]; then
   PHPCS_OUTPUT=$(cat "$PHPCS_MOCK_FILE")
 else
   # Select standard: prefer Drupal,DrupalPractice (via drupal/coder), fall back to PSR12
-  PHPCS_STANDARD="PSR12"
   if phpcs -i 2>/dev/null | grep -q "Drupal"; then
     PHPCS_STANDARD="Drupal,DrupalPractice"
   fi

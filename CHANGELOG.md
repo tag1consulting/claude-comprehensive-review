@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.13.0] - Unreleased
+## [1.13.0] - 2026-07-16
 
 ### ⚠ Behavior change
 
@@ -19,9 +19,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - New Orchestrator Governance rule: "Draft mode never publishes" — explicitly forbids calling any submit/publish endpoint (GitHub review-events, GitLab `bulk_publish`) while staging.
 - New structural tests in `tests/orchestration_contracts.bats` assert the draft OP never contains a live invocation of a publish/submit endpoint, and that `--draft`/`--publish`/`--read-back` are documented consistently across `SKILL.md`, `README.md`, `CLAUDE.md`, and `HELP.md`.
 
+### Fixed
+
+- **GitHub read-back's PENDING-review filter no longer uses an unresolved placeholder or invalid syntax.** Two bugs were found and fixed during live E2E and multi-agent review of this feature before release: an early version compared `.user.login` against a literal, never-resolved `"<self>"` string; a later fix for that introduced an invalid `gh api --jq --arg` invocation (`gh api`'s `--jq` flag takes exactly one query string and does not support jq's own `--arg`). Both made GitHub `--read-back` non-functional as written. Fixed by resolving the invoking user's login via `gh api user --jq .login` and piping the pending-review query to a standalone `jq --arg` call.
+- **The GitHub pending-review pre-check no longer silently reports "0 pending reviews" when the login lookup fails.** A prior version fell back to an empty-string login on lookup failure and queried with it — an empty string can never match a real GitHub login, so the pre-check always returned a false "all clear" instead of genuinely skipping the check. It now skips the query entirely on lookup failure and warns explicitly.
+- **GitLab read-back's net-new-finding staging no longer risks a stale-SHA race.** The diff-version SHAs used to position a new draft note were previously captured once at Phase 4b entry, before the full analysis pipeline reruns and the user confirms staging — an arbitrarily long window during which a new commit on the MR could make those SHAs stale. The SHAs are now re-fetched immediately before the staging call, and a failed re-fetch is reported as a distinct error rather than being misreported through the generic inline-post-failure path.
+- **Four missing `--read-back` flag-conflict checks added**, closing gaps found across two independent review passes: `--read-back` combined with `--publish`/`--draft` previously produced a contradictory error-message loop (each error told the user to do the thing the other error forbade); `--read-back` combined with `--create-pr` on a branch with no existing PR/MR silently created a new PR and then ran the read-back against it, which by construction could have no prior draft.
+- Corrected an overstated claim that GitHub's REST docs guarantee PENDING reviews are visible only to their author — the docs confirm the not-yet-submitted state but do not document an explicit access-control guarantee for who can see it beforehand. The docs and code comments now describe "unpublished" as the verified property and "author-only visible" as a reasonable but unverified assumption.
+- Added a documented rollback path ("if draft mode misbehaves") for the (unlikely, but possible) case that a future GitHub or GitLab API change breaks the draft-staging invariant, plus a runtime notice appended to every successful draft-staging report reminding the user to confirm the review shows as Pending/draft in the web UI before sharing the PR link.
+- Added a runtime migration notice printed when `--post-findings` is used without `--publish` or an explicit `--draft`, so a script or CI job that relied on the pre-1.13.0 immediate-publish default gets a live signal that behavior changed, not just a silent change in outcome.
+- Fixed a pre-existing, unrelated bug in `run-phpcs.sh`: `$PHPCS_STANDARD` was only initialized on the live-`phpcs` code path, leaving it unbound (and the resulting `jq` call silently discarding findings) whenever the mock/offline path was used — including every run of the bats test suite. Now initialized unconditionally.
+
 ### Known limitations
 
 - Bitbucket draft-review support is out of scope this release: the Cloud REST v2 comment schema has a `pending` field, but creating a pending comment via the public API is not confirmed in Atlassian's official documentation (the "Batched comments" feature is documented as UI-driven). Revisit with a live API spike.
+- GitLab's draft-note staging and `--read-back` net-new-finding staging paths were not exercised against a live GitLab instance for this release — only GitHub was live-E2E-tested. Both are covered by structural bats tests asserting API-call shape, not by a live run. Treat the GitLab path as less battle-tested than GitHub's until a live GitLab E2E is performed.
 
 ## [1.12.2] - 2026-06-24
 

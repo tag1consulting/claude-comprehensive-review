@@ -50,16 +50,14 @@ Run this skill on **Sonnet** — the orchestrator does structured workflow coord
 
 ## Token utilization table
 
-Phase 5 always prints a per-agent breakdown of input/output/cache tokens and estimated USD cost, so you can see where budget is going without running `/cost`:
+Phase 5 always prints a per-agent breakdown of tokens, tool calls, and estimated USD cost, so you can see where budget is going without running `/cost`:
 
 | Column | Description |
 |--------|-------------|
 | Agent | Agent name |
-| Model | Resolved model (e.g., "Sonnet 4.6") |
-| Input | Input tokens consumed |
-| Output | Output tokens generated |
-| Cache Read | Tokens read from prompt cache (when active) |
-| Total | Combined token count |
-| Est. Cost | Estimated cost at public list prices |
+| Model | Resolved model (e.g., "Sonnet", "Opus", "Haiku") |
+| Tokens | Combined token count (`subagent_tokens`) — the Agent tool returns only a single total per agent, with no input/output/cache breakdown |
+| Tools | Number of tool calls the agent made |
+| Est. Cost | Estimated cost from a blended per-model rate (Opus ~$45/M tokens, Sonnet ~$9/M, Haiku ~$0.8/M) |
 
-Costs use public list prices and do not reflect enterprise discounts.
+Costs are blended-rate estimates, not public list prices — the underlying token total doesn't distinguish input from output from cache reads, so an exact list-price calculation isn't possible from what the Agent tool returns. Run `/cost` for exact figures.
