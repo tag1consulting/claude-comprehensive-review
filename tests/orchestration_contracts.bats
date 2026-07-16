@@ -125,7 +125,10 @@ teardown() {
 
 @test "PROVIDERS.md: GitHub inline review uses gh api, not mcp tool" {
   grep -q "gh api" "$PROVIDERS_MD"
-  ! grep -q "mcp__github-pat__" "$PROVIDERS_MD"
+  if grep -q "mcp__github-pat__" "$PROVIDERS_MD"; then
+    echo "REGRESSION: mcp__github-pat__ tool reference found in PROVIDERS.md" >&2
+    return 1
+  fi
 }
 
 @test "PROVIDERS.md: fetch PR/MR metadata includes body field for all providers" {
@@ -153,26 +156,59 @@ teardown() {
 }
 
 @test "PROVIDERS.md: GitHub draft path omits event and never calls the submit endpoint" {
-  # Isolate the github bullet of the Stage draft review OP and assert it has
-  # no "event" key/flag. The prose is allowed (and expected) to mention the
-  # submit endpoint in a "never call this" warning — what must NOT appear is
-  # an actual invocation of it (gh api / curl / POST immediately preceding
-  # the events path). Match only inside backticked command spans so the
-  # cautionary prose sentence doesn't trip a false positive.
+  # Isolate the github bullet of the Stage draft review OP specifically (not
+  # the whole OP section, which also contains gitlab/bitbucket bullets and
+  # would let a gitlab-side false negative slip past this test).
   DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
-  echo "$DRAFT_OP_BLOCK" | grep -q "gh api"
-  echo "$DRAFT_OP_BLOCK" | grep -q "pulls/{pull_number}/reviews"
-  ! echo "$DRAFT_OP_BLOCK" | grep -q '\-f event='
-  ! echo "$DRAFT_OP_BLOCK" | grep -Eq '`[^`]*(gh api|curl)[^`]*reviews/\{review_id\}/events[^`]*`'
+  GITHUB_BULLET=$(echo "$DRAFT_OP_BLOCK" | awk '/\*\*github:\*\*/,/- \*\*gitlab:\*\*/')
+  echo "$GITHUB_BULLET" | grep -q "gh api"
+  echo "$GITHUB_BULLET" | grep -q "pulls/{pull_number}/reviews"
+  # The draft OP's jq payload is a fenced ```bash block using "event: $event"
+  # as an object KEY, never the "-f event=" gh-CLI-flag idiom (that idiom only
+  # appears in the separate publish OP). Assert absence of BOTH forms inside
+  # the actual jq-payload code fence, not just the -f flag form — a prior
+  # version of this test checked only "-f event=" and verifiably passed even
+  # with "event: $event" reintroduced into the payload, because that string
+  # never appears in the -f form here.
+  # NOTE: the range /```bash/,/```/ is a trap here — the opening fence line
+  # ("```bash") itself matches the closing pattern ("```"), so awk closes the
+  # range on the same line it opens and JQ_PAYLOAD ends up empty. Match the
+  # opening/closing fence lines exactly instead.
+  JQ_PAYLOAD=$(echo "$GITHUB_BULLET" | awk '/^  ```bash$/{p=1; next} p && /^  ```$/{p=0} p')
+  if echo "$JQ_PAYLOAD" | grep -q -- '-f event='; then
+    echo "REGRESSION: -f event= (gh CLI publish flag) found in GitHub draft jq payload" >&2
+    return 1
+  fi
+  if echo "$JQ_PAYLOAD" | grep -Eq '\bevent\s*:\s*\$event\b'; then
+    echo "REGRESSION: event: \$event key found in GitHub draft jq payload" >&2
+    return 1
+  fi
+  if echo "$JQ_PAYLOAD" | grep -Eq -- '--arg event\b'; then
+    echo "REGRESSION: --arg event found in GitHub draft jq payload" >&2
+    return 1
+  fi
+  if echo "$DRAFT_OP_BLOCK" | grep -Eq '`[^`]*(gh api|curl)[^`]*reviews/\{review_id\}/events[^`]*`'; then
+    echo "REGRESSION: draft OP references the reviews/{review_id}/events submit endpoint" >&2
+    return 1
+  fi
 }
 
 @test "PROVIDERS.md: GitLab draft path uses draft_notes and never calls bulk_publish" {
-  # Same reasoning as the GitHub test above: the "never call bulk_publish"
-  # warning is expected prose. Assert no backticked command span actually
-  # invokes it.
+  # Same reasoning as the GitHub test above. The "never call bulk_publish"
+  # warning is expected prose (and legitimately contains the string
+  # "bulk_publish"), so a plain whole-block substring check would false-fail
+  # on the warning itself. But the actual invocations in this file live in
+  # fenced ```bash blocks, not inline backticks — a prior version of this
+  # test required a single backtick pair around "bulk_publish", which does
+  # not match a real invocation added inside a fenced block. Scope the
+  # negative assertion to lines that look like actual API calls instead.
   DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
-  echo "$DRAFT_OP_BLOCK" | grep -q "draft_notes"
-  ! echo "$DRAFT_OP_BLOCK" | grep -Eq '`[^`]*(glab api|curl)[^`]*bulk_publish[^`]*`'
+  GITLAB_BULLET=$(echo "$DRAFT_OP_BLOCK" | awk '/- \*\*gitlab:\*\*/,/- \*\*bitbucket:\*\*/')
+  echo "$GITLAB_BULLET" | grep -q "draft_notes"
+  if echo "$GITLAB_BULLET" | grep -E '^\s*(glab api|curl)' | grep -q "bulk_publish"; then
+    echo "REGRESSION: GitLab draft path calls bulk_publish" >&2
+    return 1
+  fi
 }
 
 @test "PROVIDERS.md: Bitbucket draft support is explicitly not implemented" {
@@ -238,7 +274,15 @@ teardown() {
 @test "SKILL.md: follow-up GET for inline count is retained in draft mode (regression guard)" {
   # The GitHub POST /reviews response omits .comments even for PENDING reviews;
   # a regression here would silently report INLINE_POSTED_COUNT=0 always.
-  grep -q "reviews/\${POSTED_REVIEW_ID}/comments" "$SKILL_MD"
+  # A prior version of this test did an unscoped whole-file grep for the
+  # literal follow-up-GET path, which only ever appears in the pre-existing
+  # PUBLISH-path bullet (untouched by this feature) — verified empirically
+  # that deleting the draft-mode branch's own reference to reusing that GET
+  # still left this test passing. Scope to the POST_MODE=draft GitHub bullet
+  # specifically, which references the GET by prose ("the same follow-up GET
+  # as the publish path") rather than repeating the literal endpoint string.
+  DRAFT_STEP8_BLOCK=$(awk '/POST_MODE=draft.*use.*OP: Stage draft review/,/^9\. \*\*Cite/' "$SKILL_MD")
+  echo "$DRAFT_STEP8_BLOCK" | grep -qi "same follow-up GET as the publish path"
 }
 
 # ---------------------------------------------------------------------------

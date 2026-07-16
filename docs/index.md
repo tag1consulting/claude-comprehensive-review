@@ -19,7 +19,7 @@ hero_tagline: "Comprehensive PR/MR review using parallel specialized agents. Pro
   </div>
   <div class="feature">
     <h3><span class="feature-icon">&#9670;</span> GitHub, GitLab, Bitbucket</h3>
-    <p>Auto-detects your git provider. Creates PRs, posts inline reviews, and supports external PR review by number. Works with GitHub Enterprise.</p>
+    <p>Auto-detects your git provider. Creates PRs, stages findings as an editable draft review by default (you submit it yourself), and supports external PR review by number. Works with GitHub Enterprise.</p>
   </div>
   <div class="feature">
     <h3><span class="feature-icon">&#9670;</span> Token-Efficient by Design</h3>

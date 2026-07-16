@@ -466,7 +466,11 @@ PR/MR description (Block A only — no findings):
 Inline review (Block B — when `--post-findings` or `--pr` mode):
 ```
 Inline comments on specific diff lines, plus a review body summary.
-Uses REQUEST_CHANGES (Medium+ findings) or COMMENT (Low only).
+
+Staged as an editable draft by default (GitHub pending review / GitLab draft
+notes) -- nothing published until you submit it yourself. Add --publish to
+post immediately instead, using REQUEST_CHANGES (Medium+ findings) or
+COMMENT (Low only).
 ```
 
 ## Files installed

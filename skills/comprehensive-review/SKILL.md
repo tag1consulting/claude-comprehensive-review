@@ -109,6 +109,14 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
        "Error: --publish and --no-post/--local are mutually exclusive." and stop.
      - If `--draft` or `--publish` is present but `--post-findings` is not present (and not in `--pr <N> --post-findings` mode), report
        "Error: --draft/--publish modify how --post-findings posts; pass --post-findings." and stop. (`--post-summary` alone is unaffected by drafting — see the scope note at the top of Phase 4's "Post summary comment" subsection — so it does not satisfy this check.)
+     - If `--read-back` and `--post-findings` are both present, report
+       "Error: --read-back and --post-findings are mutually exclusive. --read-back operates on an existing draft from a prior --post-findings run; run them in two separate invocations (stage first, edit in the web UI, then read back)." and stop. (Without this check, the Phase 4b entry point jumps straight to the Read-Back Pass and skips staging entirely, so `--post-findings` would silently do nothing — the same silent-flag-swallowing failure mode the GitHub/GitLab pending-review pre-checks elsewhere in this file exist to avoid.)
+     - If `--read-back` and `--no-post`/`--local` are both present, report
+       "Error: --read-back and --no-post/--local are mutually exclusive." and stop. (`--read-back` always performs at least a remote read, and on GitLab can perform a remote write when staging net-new draft notes — both are the class of remote operation `--no-post`/`--local` exists to suppress.)
+     - If `--read-back` and `--quick` are both present, report
+       "Error: --read-back and --quick are mutually exclusive. --read-back re-runs the full analysis pipeline to regenerate the findings it compares your draft against; a --quick run would compare against a smaller findings set than the one used to originally stage the draft, producing a misleading kept/edited/removed report." and stop.
+     - If `--read-back` and `--summary-only` are both present, report
+       "Error: --read-back and --summary-only are mutually exclusive. --summary-only produces no findings, so there would be nothing to compare your draft against." and stop.
      - If `--read-back` is present without a prior `--post-findings` run having created a draft, this is only detectable at Phase 4b runtime (no draft found for this PR/MR) — see the Read-Back Pass step 1, and Phase 4's own-branch "no PR/MR exists" branch for the case where there is no PR/MR at all.
 
 1a. **Pre-flight Context** — the repository, branch, and diff stats were injected above by the harness at skill load time. Use them directly.
@@ -1361,7 +1369,7 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
 
 **Skip if POST_FINDINGS is false (i.e., `--post-findings` was not explicitly passed) AND `--read-back` was not passed.**
 
-**If `--read-back` was passed:** run step 0 below (GitLab PROJECT_ID resolution — needed to address `draft_notes`; GitHub doesn't need it), then jump to the Read-Back Pass instead of steps 0b–9. `--read-back` is independent of `POST_FINDINGS`/`POST_MODE` — it operates on an existing draft, not on this run's findings. `PR_NUMBER` is already resolved by Phase 4 (own-branch detection or `--pr <N>`) before Phase 4b runs — Phase 4's skip gate explicitly includes `--read-back` for this reason.
+**If `--read-back` was passed:** first check `PROVIDER`. If `PROVIDER=bitbucket`: report "Error: --read-back is not supported on Bitbucket — no draft-create path exists in the public REST API (see PROVIDERS.md 'OP: Stage draft review'), so there is nothing to read back." and skip the rest of Phase 4b. Otherwise (GitHub/GitLab): run step 0 below (GitLab PROJECT_ID resolution — needed to address `draft_notes`; GitHub doesn't need it) **and step 0b (GitLab MR diff SHA resolution — needed if step 3 stages a positioned draft note)**, then jump to the Read-Back Pass instead of steps 1–9. `--read-back` is independent of `POST_FINDINGS`/`POST_MODE` — it operates on an existing draft, not on this run's findings. `PR_NUMBER` is already resolved by Phase 4 (own-branch detection or `--pr <N>`) before Phase 4b runs — Phase 4's skip gate explicitly includes `--read-back` for this reason.
 
 0. **Resolve PROJECT_ID** (GitLab only): `glab api "projects/$(echo "$REPO_SLUG" | sed 's|/|%2F|g')" | jq -r '.id'`. If this fails, report "Error: Could not resolve GitLab project ID for '${REPO_SLUG}'. Inline comments will not be posted." and skip Phase 4b (Block B is still displayed in terminal).
 
@@ -1374,7 +1382,22 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
     ```
     If this call fails or any SHA is empty: report "Error: Could not fetch GitLab MR diff versions — inline comments cannot be posted." and fall back to posting Block B as a plain MR comment via `glab mr comment <N> --message "<Block B>"`. Skip steps 1–8.
 
-0c. **GitHub pending-review pre-check** (GitHub, `POST_MODE=draft` only): before staging, check whether the invoking user already has a PENDING review on this PR: `SELF_LOGIN=$(gh api user --jq .login 2>/dev/null); EXISTING_PENDING=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --jq "[.[] | select(.state==\"PENDING\" and .user.login==\"${SELF_LOGIN}\")] | length" 2>/dev/null)`. If `EXISTING_PENDING` is `1` or more: report "Error: You already have a pending review on ${PR_TERM} #<N>. Edit and submit it yourself in the web UI, or delete it there, then re-run." and skip the rest of Phase 4b. Do NOT create a second pending review and do NOT submit the existing one — GitHub allows only one pending review per PR per user (422 on a second create).
+0c. **GitHub pending-review pre-check** (GitHub, `POST_MODE=draft` only): before staging, check whether the invoking user already has a PENDING review on this PR, capturing exit codes so a query failure is visible rather than silently coalescing to "0 pending reviews":
+    ```bash
+    SELF_LOGIN=$(gh api user --jq .login 2>&1); SELF_LOGIN_RC=$?
+    if [[ $SELF_LOGIN_RC -ne 0 ]]; then
+      echo "Warning: Could not verify your GitHub login before the pending-review pre-check (${SELF_LOGIN}). Proceeding — if a pending review already exists, the create call below will fail with a 422 instead of the cleaner pre-check message." >&2
+      SELF_LOGIN=""
+    fi
+    EXISTING_PENDING=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews \
+      --jq "[.[] | select(.state==\"PENDING\" and .user.login==\"${SELF_LOGIN}\")] | length" 2>&1)
+    EXISTING_PENDING_RC=$?
+    if [[ $EXISTING_PENDING_RC -ne 0 ]]; then
+      echo "Warning: Could not check for an existing pending review (${EXISTING_PENDING}). Proceeding without the pre-check — a 422 below (if it occurs) means a pending review genuinely exists, not a bug." >&2
+      EXISTING_PENDING=0
+    fi
+    ```
+    If `EXISTING_PENDING` is `1` or more: report "Error: You already have a pending review on ${PR_TERM} #<N>. Edit and submit it yourself in the web UI, or delete it there, then re-run." and skip the rest of Phase 4b. Do NOT create a second pending review and do NOT submit the existing one — GitHub allows only one pending review per PR per user (422 on a second create). If either query failed, this pre-check degrades to a no-op (proceed to the actual create call) rather than blocking the run — the create call's own non-zero-exit handling (step 8) is the backstop that still catches a genuine 422 in this case, just with a less-friendly error message than the pre-check would have given.
 
 1. **Parse valid comment targets** from DIFF_FILE. For each hunk `@@ -a,b +c,d @@`, lines `c` through `c+d-1` are valid. Build lookup: `{file → set of valid lines}`.
 
@@ -1444,18 +1467,22 @@ Only treat **non-zero exit code** as failure: set `POSTED_COMMENT_REF=""` and `P
      - GitHub step 0c refusal: report the "You already have a pending review..." message verbatim; nothing was staged this run.
      - Partial failure (`INLINE_FAILED_COUNT > 0`): same warning pattern as publish mode, reworded to "failed to stage" instead of "failed to post."
 
-**Read-Back Pass** (`--read-back`; GitHub and GitLab only — see PROVIDERS.md for why Bitbucket is excluded):
+**Read-Back Pass** (`--read-back`; GitHub and GitLab only — Bitbucket is rejected before this pass is reached, see the Phase 4b entry point above):
 
-0. `PR_NUMBER` (GitHub/GitLab) is already resolved by Phase 4; `PROJECT_ID` (GitLab only) is already resolved by Phase 4b step 0 above, run before this pass. Nothing further to resolve here.
-1. **Fetch the human's current draft:** GitHub — `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --jq '[.[] | select(.state=="PENDING" and .user.login=="<self>")]'`, then `.../reviews/{id}/comments` for its inline comments. GitLab — `glab api "projects/${PROJECT_ID}/merge_requests/<N>/draft_notes"`. If no draft exists (empty result), report "No draft review found on ${PR_TERM} #<N> — nothing to read back. Run --post-findings first to stage one." and stop; do not create a draft here.
+0. `PR_NUMBER` (GitHub/GitLab) is already resolved by Phase 4; `PROJECT_ID` (GitLab only) and the diff SHAs (`base_sha`/`head_sha`/`start_sha`, GitLab only) are already resolved by Phase 4b steps 0 and 0b above, both of which now run for `--read-back` per the Phase 4b entry point. Step 3 below (GitLab positioned draft notes) depends on those SHAs being fresh — do not skip step 0b for a read-back invocation.
+1. **Fetch the human's current draft**, capturing exit code and stderr so an API failure is never confused with a genuinely empty draft:
+   - **GitHub:** `DRAFT_RESPONSE=$(gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --jq '[.[] | select(.state=="PENDING" and .user.login=="<self>")]' 2>&1); DRAFT_RC=$?`. On `DRAFT_RC≠0`: report "Error: Could not fetch your pending review from GitHub: ${DRAFT_RESPONSE}. Use --no-post to skip, or retry once the API is reachable." and stop — do NOT report "no draft found." On `DRAFT_RC=0`: parse the JSON array; if parsing fails (malformed response), treat as an error identically to `DRAFT_RC≠0`. If the array is genuinely empty, proceed to the "no draft" branch below. Otherwise fetch inline comments via `.../reviews/{id}/comments`.
+   - **GitLab:** `DRAFT_RESPONSE=$(glab api "projects/${PROJECT_ID}/merge_requests/<N>/draft_notes" 2>&1); DRAFT_RC=$?`. Same RC/parse handling as GitHub.
+   - **"No draft" branch** (only reached when the fetch succeeded AND the result is a genuinely empty array, never on a fetch failure): report "No draft review found on ${PR_TERM} #<N> that you authored — nothing to read back. Run --post-findings first to stage one, or confirm you're looking at the right ${PR_TERM_LONG} and account (drafts are visible only to the user who created them)." and stop; do not create a draft here.
 2. **Diff against this run's findings:** for each of this run's findings, check whether a semantically matching comment (same file, same/nearby line) still exists in the fetched draft. Report in the terminal (not posted anywhere) three groups: findings the human kept as-is, findings the human edited (text differs), findings the human removed. Also note any comments in the draft that don't correspond to an original finding (the human's own additions) — these are left untouched.
 3. **Stage net-new findings only — provider-dependent:**
-   - **GitLab:** if this read-back surfaces something the AI believes was missed (a genuine gap, not merely "restore what the human deleted"), stage it as an additional draft note via `POST .../draft_notes` (same as **OP: Stage draft review**'s per-comment path — each draft note is independent, so appending after the draft already exists works with no special handling), with the same confirm-before-staging prompt as step 7.
+   - **GitLab:** if this read-back surfaces something the AI believes was missed (a genuine gap, not merely "restore what the human deleted"), stage it as an additional draft note via `POST .../draft_notes` using the `base_sha`/`head_sha`/`start_sha` resolved by step 0b (same as **OP: Stage draft review**'s per-comment path — each draft note is independent, so appending after the draft already exists works with no special handling once those SHAs are in scope), with the same confirm-before-staging prompt as step 7.
    - **GitHub:** do **NOT** attempt to stage net-new findings here. GitHub's pending-review creation is a single batch POST that only accepts comments at creation time (the same constraint documented in step 0c and PROVIDERS.md "OP: Stage draft review") — the pending review already exists by the time read-back runs, and a second `POST .../pulls/{n}/reviews` would 422 against the one-pending-review-per-PR limit. Appending to an *existing* pending review requires the GraphQL `addPullRequestReviewThread` mutation, which is not implemented in this version. Instead, **report the net-new findings in the terminal only** ("Read-back found N finding(s) not in your current draft — add these yourself if you agree: <list>") for the human to add via the web UI. This is a known GitHub limitation, not a silent failure — see PROVIDERS.md.
    - Never delete or overwrite the human's existing draft comments, on either provider.
 4. Report a one-line summary:
    - **GitLab:** "Read-back: <N> kept, <M> edited, <K> removed by you; <J> new draft note(s) staged for your review. Nothing published."
    - **GitHub:** "Read-back: <N> kept, <M> edited, <K> removed by you; <J> new finding(s) reported above — add them to your pending review yourself in the web UI (GitHub's API doesn't support appending to an existing pending review). Nothing published."
+   - Fetch failure (step 1 `DRAFT_RC≠0` or unparseable response): report the captured error plainly; do NOT report a kept/edited/removed count of zero as if the draft were empty.
 
 ### Phase 5: Final Output
 
