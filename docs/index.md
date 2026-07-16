@@ -46,7 +46,7 @@ Then run on any branch:
 /comprehensive-review
 ```
 
-That's it — a full review runs locally with no PR created. Add `--create-pr` to open a PR with the summary as its description, or `--post-findings` to post inline findings on an existing PR.
+That's it — a full review runs locally with no PR created. Add `--create-pr` to open a PR with the summary as its description, or `--post-findings` to stage inline findings on an existing PR as an editable draft (GitHub pending review / GitLab draft notes) — nothing is published until you submit it yourself; add `--publish` to post immediately instead.
 
 ## Learn more
 

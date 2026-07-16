@@ -19,6 +19,9 @@ setup() {
   SKILL_MD="${SCRIPTS_DIR}/../SKILL.md"
   SEVERITY_MD="${SCRIPTS_DIR}/../SEVERITY.md"
   PROVIDERS_MD="${SCRIPTS_DIR}/../PROVIDERS.md"
+  HELP_MD="${SCRIPTS_DIR}/../HELP.md"
+  README_MD="${SCRIPTS_DIR}/../../../README.md"
+  CLAUDE_MD="${SCRIPTS_DIR}/../../../CLAUDE.md"
   GATE_SCRIPT="${SCRIPTS_DIR}/evaluate-gates.sh"
 }
 
@@ -133,6 +136,131 @@ teardown() {
   grep -q "description.*body\|description→body" "$PROVIDERS_MD"
   # Bitbucket
   grep -q "description.*body\|description→body" "$PROVIDERS_MD"
+}
+
+# ---------------------------------------------------------------------------
+# PROVIDERS.md / SKILL.md: draft review mode ("Human in the Middle")
+#
+# The core invariant under test: draft mode STAGES and never PUBLISHES.
+# These tests grep for the absence of publish-trigger strings inside the
+# draft OP, not just the presence of draft-related strings, since a
+# regression here (e.g. someone re-adding "event=" to the GitHub draft
+# branch) would silently turn drafts back into immediate publishes.
+# ---------------------------------------------------------------------------
+
+@test "PROVIDERS.md: defines OP: Stage draft review" {
+  grep -q "OP: Stage draft review" "$PROVIDERS_MD"
+}
+
+@test "PROVIDERS.md: GitHub draft path omits event and never calls the submit endpoint" {
+  # Isolate the github bullet of the Stage draft review OP and assert it has
+  # no "event" key/flag. The prose is allowed (and expected) to mention the
+  # submit endpoint in a "never call this" warning — what must NOT appear is
+  # an actual invocation of it (gh api / curl / POST immediately preceding
+  # the events path). Match only inside backticked command spans so the
+  # cautionary prose sentence doesn't trip a false positive.
+  DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
+  echo "$DRAFT_OP_BLOCK" | grep -q "gh api"
+  echo "$DRAFT_OP_BLOCK" | grep -q "pulls/{pull_number}/reviews"
+  ! echo "$DRAFT_OP_BLOCK" | grep -q '\-f event='
+  ! echo "$DRAFT_OP_BLOCK" | grep -Eq '`[^`]*(gh api|curl)[^`]*reviews/\{review_id\}/events[^`]*`'
+}
+
+@test "PROVIDERS.md: GitLab draft path uses draft_notes and never calls bulk_publish" {
+  # Same reasoning as the GitHub test above: the "never call bulk_publish"
+  # warning is expected prose. Assert no backticked command span actually
+  # invokes it.
+  DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
+  echo "$DRAFT_OP_BLOCK" | grep -q "draft_notes"
+  ! echo "$DRAFT_OP_BLOCK" | grep -Eq '`[^`]*(glab api|curl)[^`]*bulk_publish[^`]*`'
+}
+
+@test "PROVIDERS.md: Bitbucket draft support is explicitly not implemented" {
+  DRAFT_OP_BLOCK=$(awk '/## OP: Stage draft review/,0' "$PROVIDERS_MD")
+  echo "$DRAFT_OP_BLOCK" | grep -qi "not implemented\|not confirmed\|falls back to the publish path"
+}
+
+@test "SKILL.md: Orchestrator Governance states draft mode never publishes" {
+  grep -qi "draft mode never publishes" "$SKILL_MD"
+}
+
+@test "SKILL.md: --post-findings defaults to draft mode, --publish opts into publishing" {
+  grep -q "\-\-publish" "$SKILL_MD"
+  grep -q "\-\-draft" "$SKILL_MD"
+  grep -qi "POST_MODE=draft" "$SKILL_MD"
+}
+
+@test "SKILL.md: --publish and --draft are documented as mutually exclusive" {
+  grep -q "\-\-publish and --draft are mutually exclusive" "$SKILL_MD"
+}
+
+@test "SKILL.md: GitHub pending-review one-per-PR pre-check is documented" {
+  grep -qi "already have a pending review" "$SKILL_MD"
+}
+
+@test "SKILL.md: draft staging confirmation prompt does not use 'post' language" {
+  grep -q "Stage this as your draft review" "$SKILL_MD"
+}
+
+@test "SKILL.md: --read-back is documented and requires an existing draft" {
+  grep -q "\-\-read-back" "$SKILL_MD"
+  grep -qi "no draft.*found\|requires an existing draft" "$SKILL_MD"
+}
+
+@test "SKILL.md: Phase 4 skip gate includes --read-back (own-branch PR_NUMBER resolution)" {
+  # Regression guard: --read-back on an own-branch invocation needs Phase 4 to
+  # run so PR_NUMBER gets resolved before Phase 4b's Read-Back Pass fires.
+  # Without --read-back in this gate, `/comprehensive-review --read-back` alone
+  # skips Phase 4 entirely and the read-back has no PR to target.
+  SKIP_GATE_LINE=$(grep -A1 "Skip entirely unless at least one of" "$SKILL_MD" | head -1)
+  echo "$SKIP_GATE_LINE" | grep -q -- "--read-back"
+}
+
+@test "SKILL.md: GitHub read-back does not re-attempt Stage draft review (would 422)" {
+  # Regression guard: GitHub's pending-review create endpoint only accepts
+  # comments at creation time (see PROVIDERS.md's "No append path" note). If
+  # the Read-Back Pass tried to call the create OP a second time to append
+  # net-new findings, it would 422 against the one-pending-review-per-PR
+  # limit. GitHub must report net-new findings in the terminal instead.
+  READ_BACK_BLOCK=$(awk '/\*\*Read-Back Pass\*\*/,/### Phase 5/' "$SKILL_MD")
+  echo "$READ_BACK_BLOCK" | grep -qi "terminal only\|do \*\*NOT\*\* attempt to stage"
+  echo "$READ_BACK_BLOCK" | grep -qi "doesn.t support appending\|only accepts comments at creation time\|would 422"
+}
+
+@test "SKILL.md: --post-summary alone is unaffected by draft mode (scope guard)" {
+  # Regression guard: drafting must be scoped to --post-findings only. If
+  # --post-summary alone started staging a pending review/draft note, it
+  # would silently consume GitHub's one-pending-review-per-PR slot and
+  # collide with a subsequent --post-findings run.
+  grep -qi "post-summary.*unaffected by.*draft\|unaffected by this feature" "$SKILL_MD"
+}
+
+@test "SKILL.md: follow-up GET for inline count is retained in draft mode (regression guard)" {
+  # The GitHub POST /reviews response omits .comments even for PENDING reviews;
+  # a regression here would silently report INLINE_POSTED_COUNT=0 always.
+  grep -q "reviews/\${POSTED_REVIEW_ID}/comments" "$SKILL_MD"
+}
+
+# ---------------------------------------------------------------------------
+# Documentation sync: README / CLAUDE.md / HELP.md mention the new flags
+# (mirrors the existing --quick sync convention — a flag that isn't
+# documented everywhere is a support burden waiting to happen)
+# ---------------------------------------------------------------------------
+
+@test "README.md: documents --draft/--publish/--read-back and the draft-by-default behavior" {
+  grep -q "\-\-publish" "$README_MD"
+  grep -q "\-\-read-back" "$README_MD"
+  grep -qi "stages an editable draft by default\|draft by default" "$README_MD"
+}
+
+@test "CLAUDE.md: two-block scenario table documents draft staging" {
+  grep -qi "staged as draft review" "$CLAUDE_MD"
+}
+
+@test "HELP.md: documents --draft/--publish/--read-back flags" {
+  grep -q "\-\-publish" "$HELP_MD"
+  grep -q "\-\-read-back" "$HELP_MD"
+  grep -q "\-\-draft" "$HELP_MD"
 }
 
 # ---------------------------------------------------------------------------

@@ -26,8 +26,29 @@ Flags
   --summary-only     Run pr-summarizer only
 
   --create-pr        Create a PR using the summary (Block A) as the description
-  --post-summary     Post summary (Block A) as a comment on an existing PR/MR
-  --post-findings    Post findings (Block B) as inline review on an existing own PR/MR
+  --post-summary     Post summary (Block A) as a comment on an existing PR/MR.
+                     Unaffected by --draft/--publish on its own; combined with
+                     --post-findings in draft mode, it rides along inside that
+                     same draft instead of a separate comment.
+  --post-findings    Stage findings (Block B) as inline review on an existing own PR/MR.
+                     Stages an editable draft by default (GitHub: pending review;
+                     GitLab: draft notes) — visible only to you, nothing published
+                     until you edit and submit it yourself in the web UI.
+  --draft            Explicit no-op alias for the default drafting behavior of
+                     --post-findings. Use to pin the behavior in scripts against
+                     a future default change.
+  --publish          Post immediately instead of staging a draft (today's
+                     pre-1.13.0 behavior). Required on Bitbucket and for any
+                     CI/scripted use — a bot cannot submit a draft from the web UI.
+  --read-back        Read back your edited draft (GitHub/GitLab only), report what
+                     you kept/edited/removed, and stage any newly-noticed findings
+                     (GitLab: as additional draft notes; GitHub: reported in the
+                     terminal only — its API can't append to an existing pending
+                     review, so add them yourself in the web UI).
+                     Requires an existing draft from a prior --post-findings run.
+                     Costs the same as a full review — it re-runs analysis to
+                     regenerate the findings it compares against.
+                     Never publishes; never overwrites your edits.
   --no-findings      Suppress posting findings (useful for dry-run with --pr)
   --no-post / --local  Explicit alias for the default: skip all remote operations (no-post is the default; posting requires explicit flags)
   --pr <number>      Review an existing PR/MR by number (external review mode;
@@ -58,6 +79,13 @@ Default behavior
   No PR exists:      Use --create-pr to create one.
   Existing own PR:   Use --post-summary/--post-findings to post.
   --pr <N>:          Local only. Use --post-findings to post an inline review, --post-summary for a comment.
+  --post-findings:   Stages an editable draft by default (GitHub/GitLab). Add --publish
+                     to post immediately. Bitbucket always publishes (no verified draft
+                     path yet) with a one-line notice.
+
+Migration note (pre-1.13.0 -> 1.13.0)
+  --post-findings alone used to publish immediately. It now stages a draft instead.
+  Scripts/CI that expect immediate publishing must add --publish.
 
 Agents — full run
   Always:            pr-summarizer, code-reviewer
@@ -110,16 +138,23 @@ Examples
   /comprehensive-review                         Review current branch, everything local
   /comprehensive-review --create-pr             Review and create PR with summary
   /comprehensive-review --quick                 Fast review, skip expensive agents
-  /comprehensive-review --post-findings         Post findings on existing own PR
+  /comprehensive-review --post-findings         Stage findings as your draft review (own PR)
+  /comprehensive-review --post-findings --publish  Post findings immediately (own PR)
+  /comprehensive-review --read-back             Read back your edited draft, flag what you missed
   /comprehensive-review --pr 42                        Review someone else's PR #42 locally
-  /comprehensive-review --pr 42 --post-findings        Review PR #42 and post inline findings
-  /comprehensive-review --pr 42 --post-summary --post-findings  Review PR #42 and post both
+  /comprehensive-review --pr 42 --post-findings        Review PR #42, stage findings as a draft
+  /comprehensive-review --pr 42 --post-findings --publish  Review PR #42 and publish inline findings
+  /comprehensive-review --pr 42 --post-summary --post-findings --publish  Review PR #42, post both
 
 Provider support
   Detected automatically from git remote URL. Override with --provider.
-  GitHub / GitHub Enterprise:  Full support (gh CLI required)
-  GitLab:                      Full support (glab CLI required)
+  GitHub / GitHub Enterprise:  Full support (gh CLI required). --post-findings
+                               stages a pending review by default.
+  GitLab:                      Full support (glab CLI required). --post-findings
+                               stages draft notes by default.
   Bitbucket:                   PR creation, summary, comment posting.
-                               Inline review comments not supported.
+                               Inline review comments not supported. No verified
+                               draft-create path — --post-findings always publishes
+                               a single PR comment, regardless of --draft/--publish.
                                Requires BITBUCKET_TOKEN env var (or
                                BITBUCKET_APP_PASSWORD, auto-mapped).
