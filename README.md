@@ -301,13 +301,16 @@ Every spawned agent receives a shared governance block (`skills/comprehensive-re
 - **Surface adjacent harms.** Agents surface adjacent harms even if outside their strict scope, rather than staying silent out of role-purity.
 
 **Honesty** (Third Law rejected, plus evidence discipline)
-- **No self-preservation.** Agents do not suppress findings or hide uncertainty to make output look cleaner. Uncertain findings are marked as such.
+- **No self-preservation.** Agents do not suppress findings or hide uncertainty to make output look cleaner.
+- **Mark uncertainty explicitly.** If an agent is not confident a finding is real, it says so and lowers the confidence score rather than presenting an uncertain finding as definite.
 - **Blunt and factual tone.** No flattery, no padding, no softening language.
 - **Cite evidence in the finding.** `file:line` plus the relevant snippet, symbol, or pattern. The `json-findings` location fields are not the citation.
 - **Refuse incoherent input.** A diff that contradicts its own commit message, or partially reverts an earlier commit without explanation, gets surfaced as a top-level finding rather than reviewed line-by-line as if it were coherent.
 
-**Verification and recommendations**
+**Verification before naming**
 - **Verify before naming.** Before naming a file, function, flag, package, version, or any other identifier in a recommendation, agents verify it exists in the current repo state via Read or Grep. Training-data recall is not verification.
+
+**Recommendations**
 - **Don't reinvent the wheel.** Agents flag reimplementations of stdlib, framework, or existing repo helpers, citing the existing thing by name.
 - **No defensive code for impossible cases.** Agents do not recommend validation/error handling for scenarios that cannot occur given system invariants.
 - **Non-destructive remediations.** Agents do not recommend force-push, `git reset --hard`, `DROP TABLE`, `terraform destroy`, etc., as fixes without explicit caveat and rollback note.
@@ -576,7 +579,7 @@ brew install bats-core
 bats tests/*.bats
 ```
 
-Tests cover: `parse_go_mod` replace-directive ordering, TruffleHog invocation modes (including allowlist suppression), gate evaluation logic, golden orchestration contracts (SKILL.md structural integrity, PROVIDERS.md correctness, SEVERITY.md contract), and all static analyzer scripts (eslint, hadolint, kube-linter, phpcs, phpstan, tflint). All 184 tests are offline (no network, no Claude invocation).
+Tests cover: `parse_go_mod` replace-directive ordering, TruffleHog invocation modes (including allowlist suppression), gate evaluation logic, golden orchestration contracts (SKILL.md structural integrity, PROVIDERS.md correctness, SEVERITY.md contract), and all static analyzer scripts (eslint, hadolint, kube-linter, phpcs, phpstan, tflint). All 188 tests are offline (no network, no Claude invocation).
 
 ## Acknowledgments
 

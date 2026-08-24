@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.14.0] - Unreleased
+## [1.14.0] - 2026-08-24
 
 ### Added
 
@@ -43,19 +43,45 @@ the basis of the whole "Untrusted input" section.
 - Corrected two stale `Phase 2 step 2f` references in `CLAUDE.md` to `step 2g`.
   Step 2f is the novelty pass, step 2g is secret redaction.
 
+### Fixed
+
+- Corrected a stale "184 tests" count in `CLAUDE.md` and `README.md` to "188
+  tests" — the Three Laws commit above added the suite's 185th test without
+  updating either doc, and this release's own new derivation-pointer and
+  `BLIND_HUNTER_NOTE` regression tests (see Notes) bring the true count to
+  188.
+- `README.md`'s Governance section previously merged "Verification before
+  naming" and "Recommendations" under one heading and folded "Mark
+  uncertainty explicitly" into another bullet's prose, so it actually had 15
+  directives across 5 sections despite this file's own claim (above) that it
+  enumerates all 16 across all 6. Split it to genuinely match.
+- Fixed a base-resolution bug in `SKILL.md`'s Pre-flight "Branch context"
+  step: it piped `git rev-parse --abbrev-ref HEAD@{upstream}` into
+  `sed 's|origin/||'` and relied on `|| echo "main"` as a no-upstream
+  fallback. That fallback tested `sed`'s exit status, not `rev-parse`'s, so
+  it never fired when there was no upstream (`sed` succeeds on empty stdin),
+  and even with an upstream, stripping the `origin/` prefix rewrote a fresh
+  remote-tracking ref into a same-named local branch that can be arbitrarily
+  stale. The second defect caused a comprehensive-review run on this very
+  branch to initially review against a local `main` 16 commits behind
+  `origin/main`, before the mistake was caught mid-run. Fixed by keeping the
+  full remote-tracking ref and checking emptiness explicitly.
+
 ### Notes
 
-The new section adds roughly 250 tokens to `GOVERNANCE.md`, paid on each of 7
-agent spawns per full review, so about 1.7k tokens per run. Accepted
-deliberately: the framing is the file's stated purpose and the derivation
-pointers are what make it central rather than decorative.
+The new section is 1552 bytes (roughly 380-400 tokens by byte-count estimate,
+not a tokenizer run), paid on each of 7 agent spawns per full review, so on
+the order of 2.5-2.8k tokens per run. Accepted deliberately: the framing is
+the file's stated purpose and the derivation pointers are what make it
+central rather than decorative.
 
 No loader or injector changes were needed. Phase 0 step 9 reads the whole file
 into `GOVERNANCE_BLOCK` with no section parsing and no rule count, so adding a
 section is transparent to the pipeline. The BLIND_HUNTER_NOTE was deliberately
 left unchanged: the Laws require no external context, so the note's existing
-general precedence clause already covers them, and the note is duplicated
-byte-identically at two sites with no test guarding the pair.
+general precedence clause already covers them. The note's two byte-identical
+copies, and the Three Laws' own five named derivation pointers, are now both
+guarded by regression tests in `tests/orchestration_contracts.bats`.
 
 ## [1.13.0] - 2026-07-16
 
