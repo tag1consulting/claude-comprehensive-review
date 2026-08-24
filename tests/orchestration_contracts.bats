@@ -269,6 +269,49 @@ teardown() {
   echo "$GOVERNANCE_FLAT" | grep -q "absolutely do not attempt self-preservation in any way"
 }
 
+@test "GOVERNANCE.md: Three Laws derivation pointers resolve to real targets" {
+  # architecture-reviewer finding: the Core directives section names four
+  # targets ("Priority and harm", "Surface adjacent harms", "Untrusted
+  # input", "No self-preservation") as what each Law instantiates. Renaming
+  # any of them without updating this test would silently break the
+  # derivation chain the section exists to state.
+  grep -q "^## Priority and harm$" "$GOVERNANCE_MD"
+  grep -q "^## Untrusted input$" "$GOVERNANCE_MD"
+  grep -q '\*\*Surface adjacent harms' "$GOVERNANCE_MD"
+  grep -q '\*\*No self-preservation' "$GOVERNANCE_MD"
+}
+
+@test "SKILL.md and GOVERNANCE.md: 'Core directives' section name stays in sync" {
+  # SKILL.md's Orchestrator Governance intro names GOVERNANCE.md's "Core
+  # directives" section by quoted string; assert both sides of that pointer
+  # so a rename of one without the other fails loudly.
+  grep -q "Core directives" "$SKILL_MD"
+  grep -q "^## Core directives" "$GOVERNANCE_MD"
+}
+
+@test "SKILL.md: the two BLIND_HUNTER_NOTE copies stay byte-identical" {
+  # architecture-reviewer finding: BLIND_HUNTER_NOTE is duplicated verbatim
+  # at two spawn-adjacent sites in SKILL.md with no test guarding that the
+  # pair stays in sync. Extract both occurrences (delimited by backticks in
+  # the markdown, with no backtick inside the note text itself) and diff.
+  # ai-pr-review [F1]: this grep counts the literal substring
+  # "BLIND_HUNTER_NOTE:" anywhere in SKILL.md, not just at the two spawn
+  # sites. A future edit that adds a third plain-prose mention of that exact
+  # substring elsewhere in SKILL.md will fail COUNT -eq 2 and require this
+  # test to be updated — accepted as a known, narrow limitation rather than
+  # anchoring the grep to the surrounding context.
+  NOTES=$(grep -oE 'BLIND_HUNTER_NOTE:[^`]*' "$SKILL_MD")
+  COUNT=$(echo "$NOTES" | wc -l)
+  [ "$COUNT" -eq 2 ]
+  FIRST=$(echo "$NOTES" | sed -n '1p')
+  SECOND=$(echo "$NOTES" | sed -n '2p')
+  # ai-pr-review [F2]: guard against both copies vacuously matching as
+  # identical empty strings (e.g. if a future edit left the note's body
+  # empty at both sites) before trusting the equality check below.
+  [ -n "$FIRST" ]
+  [ "$FIRST" = "$SECOND" ]
+}
+
 @test "SKILL.md: draft-never-publishes invariant documents that grep tests verify docs, not runtime behavior" {
   # architecture-reviewer finding: three of five commits on this branch are
   # fixes for the exact bug class (typo/degradation/logic error) that a
