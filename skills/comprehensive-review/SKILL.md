@@ -30,7 +30,7 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 
 - **Repository:** !`git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`
 - **Branch:** !`git branch --show-current 2>/dev/null`
-- **Branch context:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main"); echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
+- **Branch context:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null); [[ -z "$BASE" ]] && BASE="main"; echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
 
 ## Orchestrator Governance
 
