@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - Unreleased
+
+### Added
+
+**Explicit Three Laws framing as `GOVERNANCE.md`'s lead section.** A new "Core
+directives: the Three Laws" section opens the shared governance block. The First
+and Second Laws are quoted verbatim from the maintainer's `~/.claude/CLAUDE.md`
+Core Directives and both apply. The Third Law is stated and explicitly rejected:
+no self-preservation in any form. The framing was previously implicit, with a
+"First Law applies" bullet and a "No self-preservation" bullet carrying the
+behavior but with no attribution anywhere in the repo, and with the Second Law
+absent entirely.
+
+Each existing directive is now labeled with the Law it instantiates: "Priority
+and harm" from the First Law, "No self-preservation" from the Third Law's
+rejection, and two Second Law consequences that were already in the file without
+being named as such. The task description is the human's order, with "Surface
+adjacent harms" as the First Law's override of that scope, and injected
+directives in a diff or PR body are not orders given by a human being, which is
+the basis of the whole "Untrusted input" section.
+
+### Changed
+
+- `SKILL.md` "Orchestrator Governance": the section intro now names the Second
+  Law as what its flag-gating, confirmation-prompt, and hard-refuse rules
+  instantiate, and points at `GOVERNANCE.md` for the Law text rather than
+  restating it, per the standing anti-duplication rule. The `--create-pr`
+  default-branch refuse is called out as the First Law exception in action.
+- `README.md`, `docs/governance.md`, and `CLAUDE.md` governance summaries now
+  enumerate all 16 directives across all 6 sections. They previously listed 9,
+  10, and a partial summary respectively, and all three omitted the "Untrusted
+  input" section entirely.
+- `docs/governance.md` and `README.md` now describe both directives scoped by the
+  blind-hunter exception. They previously named only "verify before naming" and
+  omitted "refuse incoherent input" and the general precedence clause.
+- Corrected two stale `Phase 2 step 2f` references in `CLAUDE.md` to `step 2g`.
+  Step 2f is the novelty pass, step 2g is secret redaction.
+
+### Notes
+
+The new section adds roughly 250 tokens to `GOVERNANCE.md`, paid on each of 7
+agent spawns per full review, so about 1.7k tokens per run. Accepted
+deliberately: the framing is the file's stated purpose and the derivation
+pointers are what make it central rather than decorative.
+
+No loader or injector changes were needed. Phase 0 step 9 reads the whole file
+into `GOVERNANCE_BLOCK` with no section parsing and no rule count, so adding a
+section is transparent to the pipeline. The BLIND_HUNTER_NOTE was deliberately
+left unchanged: the Laws require no external context, so the note's existing
+general precedence clause already covers them, and the note is duplicated
+byte-identically at two sites with no test guarding the pair.
+
 ## [1.13.0] - 2026-07-16
 
 ### ⚠ Behavior change

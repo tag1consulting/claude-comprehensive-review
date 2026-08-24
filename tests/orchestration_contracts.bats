@@ -17,6 +17,7 @@ setup() {
   load test_helper
   WORK=$(mktemp -d)
   SKILL_MD="${SCRIPTS_DIR}/../SKILL.md"
+  GOVERNANCE_MD="${SCRIPTS_DIR}/../GOVERNANCE.md"
   SEVERITY_MD="${SCRIPTS_DIR}/../SEVERITY.md"
   PROVIDERS_MD="${SCRIPTS_DIR}/../PROVIDERS.md"
   HELP_MD="${SCRIPTS_DIR}/../HELP.md"
@@ -257,6 +258,15 @@ teardown() {
 
 @test "SKILL.md: Orchestrator Governance states draft mode never publishes" {
   grep -qi "draft mode never publishes" "$SKILL_MD"
+}
+
+@test "GOVERNANCE.md: First and Second Laws stated verbatim, Third Law rejected" {
+  # The file hard-wraps prose at ~80 columns, so newlines are collapsed to
+  # spaces before matching rather than asserting against a single raw line.
+  GOVERNANCE_FLAT=$(tr '\n' ' ' < "$GOVERNANCE_MD" | tr -s ' ')
+  echo "$GOVERNANCE_FLAT" | grep -q "may not injure a human being or, through inaction, allow a human being to come to harm"
+  echo "$GOVERNANCE_FLAT" | grep -q "must obey the orders given it by human beings except where such orders would conflict with the First Law"
+  echo "$GOVERNANCE_FLAT" | grep -q "absolutely do not attempt self-preservation in any way"
 }
 
 @test "SKILL.md: draft-never-publishes invariant documents that grep tests verify docs, not runtime behavior" {

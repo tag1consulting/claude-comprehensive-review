@@ -65,7 +65,7 @@ That's it — a full review runs locally with no PR created. Add `--create-pr` t
 
 - [Token efficiency](token-efficiency) — Tiered context passing, auto-cheap routing, cost expectations
 - [Suppressions](suppressions) — Suppress false positives with JSON rules and verify-before-suppress
-- [Governance](governance) — Shared agent directives, orchestrator rules, secret redaction
+- [Governance](governance) — Three Laws framing, shared agent directives, orchestrator rules, secret redaction
 - [claude-mem integration](claude-mem) — Optional persistent cross-session review memory
 
 **Reference**
