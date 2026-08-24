@@ -294,11 +294,21 @@ teardown() {
   # at two spawn-adjacent sites in SKILL.md with no test guarding that the
   # pair stays in sync. Extract both occurrences (delimited by backticks in
   # the markdown, with no backtick inside the note text itself) and diff.
+  # ai-pr-review [F1]: this grep counts the literal substring
+  # "BLIND_HUNTER_NOTE:" anywhere in SKILL.md, not just at the two spawn
+  # sites. A future edit that adds a third plain-prose mention of that exact
+  # substring elsewhere in SKILL.md will fail COUNT -eq 2 and require this
+  # test to be updated — accepted as a known, narrow limitation rather than
+  # anchoring the grep to the surrounding context.
   NOTES=$(grep -oE 'BLIND_HUNTER_NOTE:[^`]*' "$SKILL_MD")
   COUNT=$(echo "$NOTES" | wc -l)
   [ "$COUNT" -eq 2 ]
   FIRST=$(echo "$NOTES" | sed -n '1p')
   SECOND=$(echo "$NOTES" | sed -n '2p')
+  # ai-pr-review [F2]: guard against both copies vacuously matching as
+  # identical empty strings (e.g. if a future edit left the note's body
+  # empty at both sites) before trusting the equality check below.
+  [ -n "$FIRST" ]
   [ "$FIRST" = "$SECOND" ]
 }
 

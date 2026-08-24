@@ -55,6 +55,12 @@ the basis of the whole "Untrusted input" section.
   uncertainty explicitly" into another bullet's prose, so it actually had 15
   directives across 5 sections despite this file's own claim (above) that it
   enumerates all 16 across all 6. Split it to genuinely match.
+- The new `BLIND_HUNTER_NOTE` byte-identity test's equality check would have
+  vacuously passed if both copies degraded to the same empty string (e.g. a
+  future edit leaving the note's body empty at both sites). Added an
+  explicit non-empty guard before the equality check, and documented that
+  the test's whole-file substring count is a known, narrow limitation
+  rather than anchoring the grep to the two spawn sites.
 - Fixed a base-resolution bug in `SKILL.md`'s Pre-flight "Branch context"
   step: it piped `git rev-parse --abbrev-ref HEAD@{upstream}` into
   `sed 's|origin/||'` and relied on `|| echo "main"` as a no-upstream
