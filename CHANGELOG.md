@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-08-26
+
+### Changed
+
+**`security-reviewer` content parity with ai-pr-review.** Ported confirmed-real
+coverage gaps found by a cross-repo parity audit: a new "Unsafe Deserialization"
+section (Python pickle/marshal/shelve/yaml.unsafe_load/joblib/pandas/numpy, ML
+model loading via `torch.load`/`tf.saved_model.load`, PHP `unserialize`), a
+"Gate/action field mismatch" authorization check, a new "Infrastructure-as-Code
+Security" subsection, a new "Parser and Validator Differentials" section, and
+expanded language-specific sinks: Go `exec.Command("sh"/"bash", "-c", ...)`
+shell-invocation variants, Python `os.system()`, TypeScript/JavaScript DOM-XSS
+sinks (`outerHTML`, `insertAdjacentHTML`, `document.write`) and missing
+Subresource Integrity, GitHub Actions untrusted-context interpolation, and
+crypto specifics (AES ECB mode, Node's deprecated `createCipher`/
+`createDecipher`). This repo's own governance block, `SECURITY_POLICY` block,
+`LANGUAGE_PROFILES` dispatch, frontmatter, and existing XXE section (already
+identical to ai-pr-review's) were all left untouched — this was a content
+merge, not a file replace. (#136)
+
+Two related gaps were identified but are explicitly out of scope for this
+release: the JSON-after-markdown output ordering (vs. ai-pr-review's
+before-markdown ordering, chosen there so findings survive response
+truncation) is a repo-wide output-contract decision affecting every agent, not
+a single-agent content change; and the per-language profile files
+(`python.md`, `javascript.md`, `typescript.md`, `terraform.md`) are missing
+some of these same sinks and take precedence over this fallback checklist in
+the real dispatch path, so those specific new checks will not reach a review
+through the primary path until a follow-up ports the same content there.
+
 ## [1.14.0] - 2026-08-24
 
 ### Added
