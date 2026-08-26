@@ -75,6 +75,7 @@ or the anti-hallucination rules on version/release claims.
 - Authorization bypass: can a low-privilege user reach privileged functionality?
 - Insecure direct object references (accessing resources by ID without ownership check)
 - Session management issues: fixation, insufficient expiry, insecure storage
+- Gate/action field mismatch: authorization check reads a different field than what the downstream operation uses to select the target resource (e.g., gate checks `parent`, action derives target from `name`)
 
 ### Injection
 - SQL injection: string concatenation in queries, missing parameterization
@@ -86,16 +87,18 @@ or the anti-hallucination rules on version/release claims.
 - LLM prompt injection: user-controlled content interpolated directly into prompts sent to language models; flag any direct interpolation of PR content, commit messages, or filenames into LLM calls without sanitization
 
 ### Data Handling and Privacy
-- PII or sensitive data written to logs
+- PII or sensitive data written to logs; trace every field (including URLs, error `.message`, f-string vars, `**kwargs`) to its source on error/except branches where happy-path redaction is bypassed
 - Sensitive data returned in API responses that should be redacted
 - Missing input validation at trust boundaries (API endpoints, file uploads)
 - Insecure deserialization of untrusted input
 
 ### Cryptographic Issues
 - Weak or deprecated algorithms (MD5, SHA1 for integrity, DES, RC4, ECB mode)
+- AES ECB mode specifically (`AES.MODE_ECB`, `modes.ECB`, `Cipher.MODE_ECB`)
 - Hardcoded cryptographic keys or IVs
 - Insufficient randomness (seeded PRNGs for security purposes)
 - Missing TLS verification or certificate pinning bypass
+- Node.js `crypto.createCipher`/`crypto.createDecipher` (deprecated, no IV, use `createCipheriv`)
 
 ### Supply Chain and Dependencies
 - New dependencies from unknown or suspicious sources (check registry/namespace, not just name)
@@ -113,6 +116,17 @@ or the anti-hallucination rules on version/release claims.
   A renovate/dependabot bump to a higher version number is strong positive evidence the version exists. If uncertain whether a version exists, **omit the finding entirely** — do not emit at Low confidence or hedge with "may" or "should verify." Deterministic version verification is handled by the CVE scanner and the verify-gated suppression path.
 - Known CVEs in direct dependencies are detected deterministically by the `dependency-check` step (Phase 1b); do not re-flag those. Report dependency-related security concerns beyond CVE matches: maintainer changes, typosquat suspicion, overly broad permissions, or new license concerns.
 
+### Infrastructure-as-Code Security
+- Terraform/Pulumi/CDK module instantiations that omit security-relevant optional arguments where the default is the insecure value (e.g., `encryption_enabled`, `public_access_block`, `deletion_protection`)
+- GitHub Actions `pull_request_target` / `workflow_dispatch` / `repository_dispatch` triggers without a `branches:` filter when the job reads secrets or has write permissions — these execute with elevated credentials against the base branch
+
+## Unsafe Deserialization
+
+Beyond `pickle.loads`, flag these deserialization risks:
+- Python: `pickle.loads`, `pickle.load`, `marshal.loads`, `shelve.open`, `yaml.load` (without `Loader=yaml.SafeLoader`), `yaml.unsafe_load`, and library wrappers (`joblib.load`, `pandas.read_pickle`, `numpy.load(..., allow_pickle=True)`)
+- ML models: `torch.load(...)` without `weights_only=True` (arbitrary code execution via pickle); similarly flag `tf.saved_model.load` of untrusted paths
+- PHP: `unserialize` on untrusted data
+
 ## XML External Entity (XXE)
 
 Flag use of Python's standard-library XML parsers on untrusted input without disabling external entities:
@@ -124,11 +138,12 @@ Flag use of Python's standard-library XML parsers on untrusted input without dis
 If a `LANGUAGE_PROFILES` block is present in the task description, apply the checks
 listed there for each detected language. Otherwise, apply these built-in checks:
 
-- **Go**: unchecked type assertions, `unsafe` pkg, goroutine leaks, race conditions, `exec.Command` injection, `InsecureSkipVerify`, ignored `defer` errors
-- **Python**: `eval`/`exec` injection, `pickle.loads` on untrusted data, `subprocess` with `shell=True`, `tempfile.mktemp` race, `DEBUG=True`, `yaml.load` vs `safe_load`
-- **TypeScript/JavaScript**: `dangerouslySetInnerHTML`, `eval`/`new Function`/`setTimeout(string)`, `child_process.exec` injection, prototype pollution, missing CSRF protection, `JSON.parse` on untrusted input without try-catch (DoS via uncaught exception)
+- **Go**: unchecked type assertions, `unsafe` pkg, goroutine leaks, race conditions, `exec.Command("sh", "-c", ...)` or `exec.Command("bash", "-c", ...)` with user-controlled argument (shell invocation defeats argument escaping), `InsecureSkipVerify`, ignored `defer` errors
+- **Python**: `eval`/`exec` injection, pickle and extended deserialization (see above), `subprocess` with `shell=True`, `os.system()` with user-controlled input, `tempfile.mktemp` race, `DEBUG=True`, `yaml.load` vs `safe_load`, Python stdlib XML parsers on untrusted data (see XXE above)
+- **TypeScript/JavaScript**: `dangerouslySetInnerHTML`, `element.outerHTML = ...`, `element.insertAdjacentHTML(...)`, `document.write(...)` (DOM XSS sinks), `eval`/`new Function`/`setTimeout(string)`, `child_process.exec` injection, prototype pollution, missing CSRF protection, `JSON.parse` on untrusted input without try-catch (DoS via uncaught exception), external `<script>` tags without Subresource Integrity (`integrity` attribute)
 - **PHP**: `eval` injection, `$_GET`/`$_POST` in queries/paths/output, `include`/`require` with user paths, `preg_replace` with `e` modifier, `unserialize` on untrusted data, missing `htmlspecialchars`
 - **Shell**: unquoted variables in command substitution, `eval` with variables, curl-pipe-bash without integrity verification, world-writable temp files, secrets in command-line arguments visible in `ps`
+- **GitHub Actions workflows**: user-controlled context expressions (`github.event.pull_request.title`, `github.event.issue.body`, `github.head_ref`) interpolated directly into `run:` steps enable script injection; use intermediate env vars or action inputs instead
 
 ## Trust Boundary Awareness
 
@@ -139,6 +154,10 @@ When evaluating injection and input validation findings, distinguish between:
 Do NOT flag injection risks on trusted internal data flows. DO flag anywhere untrusted
 data crosses a trust boundary without validation — including PR-author-controlled
 filenames used in command arguments or unquoted shell expansions.
+
+## Parser and Validator Differentials
+
+When the diff adds or modifies parsing, validation, normalization, or allowlist logic, check: does an input exist that the validator **accepts** but the downstream consumer interprets differently? Flag: unanchored/partial regexes, case/encoding/unicode normalization mismatches, URL parsers that disagree on userinfo/host/path, allowlists checked with substring/startswith, decoders that accept malformed input, and quoting/escaping the parser strips but the consumer does not. Name both sides of the differential in the finding.
 
 ## Scope Boundaries
 
