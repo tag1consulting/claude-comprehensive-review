@@ -30,7 +30,7 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 
 - **Repository:** !`git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`
 - **Branch:** !`git branch --show-current 2>/dev/null`
-- **Branch context:** !`BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null); [[ -z "$BASE" ]] && BASE="main"; echo "--- Upstream base: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
+- **Branch context:** !`BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null); if [[ -z "$BASE" ]]; then echo "WARNING: origin/HEAD symref not set. Falling back to a 4-name heuristic (main/master/develop/trunk) to detect the default branch." >&2; for c in main master develop trunk; do git rev-parse --verify --quiet "origin/$c" >/dev/null 2>&1 && { BASE="origin/$c"; break; }; done; fi; BASE="${BASE:-origin/main}"; echo "--- Default branch: $BASE"; echo "--- Changed files:"; git diff --name-only "$BASE...HEAD" 2>/dev/null | head -40; echo "--- Diff stats:"; git diff --stat "$BASE...HEAD" 2>/dev/null | tail -3; echo "--- Commit log:"; git log --oneline "$BASE...HEAD" 2>/dev/null | head -20`
 
 ## Orchestrator Governance
 
@@ -88,7 +88,7 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
 ### Phase 0: Pre-flight and Manifest Construction
 
 1. Parse `$ARGUMENTS`:
-   - Extract `--base <branch>` if present, otherwise use the detected upstream base, falling back to `main`
+   - Extract `--base <branch>` if present, otherwise use the detected default branch (from the pre-flight "Branch context" block above), falling back to `origin/main`. The detected value is a remote-tracking ref (e.g. `origin/main`), not a local branch name, so diffs and commit logs read against the freshest known state of the default branch rather than a possibly-stale local copy. When passing this value as a `--base`/`--target-branch` argument to a provider CLI (see the `--create-pr` OP), strip the leading `<remote>/` prefix first: GitHub/GitLab expect a bare branch name there, not a git ref path.
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
    - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
    - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--create-pr`,
@@ -1350,7 +1350,7 @@ elif [[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]]; then
 fi
 ```
 
-Once the pre-check passes: Before running the create operation, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body.
+Once the pre-check passes: Before running the create operation, display the proposed title and full body (Block A) to the user and ask: "Create this pull request? (yes/no)". Do not proceed unless the user confirms. If the user declines or requests changes, apply any edits they specify and re-display before asking again. Once confirmed: Use **OP: Create PR/MR** with title (under 70 chars), base branch, and Block A as body. The base branch argument must be a bare branch name (e.g. `main`), not the `origin/`-prefixed remote-tracking ref that `BASE` holds elsewhere in this document (see Phase 0 step 1): use `$DEFAULT_BRANCH` from the pre-check above (or `${BASE#*/}` if `--base <branch>` was passed explicitly) as the literal value for `--base`/`--target-branch`.
 
 **Capture the result.** Run the **OP: Create PR/MR** command via the Bash tool, capturing stdout and stderr into **separate** buffers so the URL extraction sees only the success-path output (warnings and remote-suggestion URLs land on stderr and would corrupt a combined-buffer grep):
 - **github:** `gh pr create` prints exactly the new PR URL to stdout on success. `CREATE_ERR_FILE=$(mktemp /tmp/cr-pr-create-err-XXXXXXXX) || CREATE_ERR_FILE=/dev/null; CREATE_OUT=$(gh pr create --title "<title>" --base "<base>" --body "<body>" 2>"$CREATE_ERR_FILE"); CREATE_RC=$?; CREATE_ERR=$(cat "$CREATE_ERR_FILE" 2>/dev/null); rm -f "$CREATE_ERR_FILE"`. On `CREATE_RC=0`: extract a URL matching the PR-path shape — `CREATED_PR_URL=$(echo "$CREATE_OUT" | grep -Eo 'https://[^[:space:]]+/pull/[0-9]+' | head -1)`. If empty (gh version that doesn't print URL), fall back **only when CREATE_RC=0** to `gh pr view --json url --jq '.url'` — but note that this fallback can return the wrong PR if HEAD is detached or another PR exists for this branch, so prefer the stdout extraction. On `CREATE_RC≠0` or empty URL from both paths: set `CREATED_PR_URL=""` and `CREATED_PR_ERROR="$CREATE_ERR"`.

@@ -18,7 +18,7 @@ Usage
   /comprehensive-review [flags]
 
 Flags
-  --base <branch>    Compare against a different base branch (default: auto-detect or main)
+  --base <branch>    Compare against a different base branch (default: auto-detected repository default branch, or main)
   --quick            Fast mode: pr-summarizer + code-reviewer + triggered error/test agents.
                      Skips security, architecture, blind-hunter, edge-case-hunter, comment,
                      and type analysis. Roughly 60–80% cheaper depending on diff composition.
