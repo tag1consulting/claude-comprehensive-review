@@ -21,7 +21,7 @@ By default, everything runs locally — no PR is created, no remote posting occu
 
 | Flag | Effect |
 |------|--------|
-| `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
+| `--base <branch>` | Compare against a specific base branch (default: auto-detected repository default branch, or `main`) |
 | `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. Roughly 60–80% cheaper. |
 | `--security-only` | Run security-reviewer + CVE check on changed dependency manifests only |
 | `--depth <tier>` | Agent depth: `normal` (default) or `deep`. In `deep` mode, blind-hunter and edge-case-hunter run on the `opus` alias, Opus agents use extended step-by-step reasoning, and a CVE reachability triage pass annotates which vulnerabilities are reachable in the diff. |
