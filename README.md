@@ -187,7 +187,7 @@ Run from any git repository, on the branch you want to review:
 
 | Flag | Effect |
 |------|--------|
-| `--base <branch>` | Compare against a specific base branch (default: auto-detected upstream or `main`) |
+| `--base <branch>` | Compare against a specific base branch (default: auto-detected repository default branch, or `main`) |
 | `--quick` | Fast mode: pr-summarizer + code-reviewer + triggered error/test agents only. Skips security, architecture, blind-hunter, edge-case-hunter, comment, and type analysis. Roughly 60–80% cheaper depending on diff composition. When the diff is also tiny (<50 lines, ≤3 files), auto-selected TIER=tiny further demotes pr-summarizer to Haiku. No flag needed. |
 | *(auto)* TIER=tiny | Automatically applied when the diff is under 50 lines AND ≤3 files. Routes pr-summarizer to Haiku; skips blind-hunter, edge-case-hunter, comment-analyzer, type-design-analyzer unconditionally; skips architecture-reviewer and security-reviewer unless triggered by infra/CI paths or auth/credential/dep-manifest paths respectively. Roughly 60–70% cheaper than `--quick` on tiny diffs (~$1 → ~$0.30). |
 | *(auto)* DOCS_ONLY | Automatically applied when all changed files are documentation/markdown/meta (no code or infra). Runs pr-summarizer + code-reviewer + triggered conditionals. Skips all Opus agents and blind/edge-case/comment/type agents. Phase 5 reports the reason. Overridden by `--depth deep`, `--quick`, `--security-only`, `--summary-only`. |
