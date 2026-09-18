@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] - 2026-09-18
+
+### Fixed
+
+- **Pre-flight base-branch detection no longer diffs a feature branch against itself** (#140): the pre-flight "Branch context" step computed the diff base from `HEAD@{upstream}`, which for a branch pushed with `git push -u origin <same-name>` resolves to the branch's own remote-tracking ref rather than the repository's default branch, silently producing an empty or nonsensical diff instead of comparing against `main`. A prior fix (`2d330a1`, in 1.14.0) addressed a related staleness and exit-status defect in the same line without fixing this one. Now resolves the default branch from `origin/HEAD`'s symbolic ref, with a local, network-free fallback to the first of main/master/develop/trunk that exists as a remote-tracking branch (matching the existing `--create-pr` default-branch pre-check pattern), and a visible `WARNING` when detection degrades to that fallback.
+
 ## [1.15.0] - 2026-08-26
 
 ### Changed
