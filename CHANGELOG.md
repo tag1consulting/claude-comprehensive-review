@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.3] - 2026-09-29
+
+### Fixed
+
+- **`SKILL.md` no longer breaks when the skill is invoked with arguments.** Claude Code replaces `$0`..`$9` (0-indexed positional arguments) anywhere in a skill body, including inside bash code fences, whenever that argument index is supplied. `SKILL.md` contained 23 such tokens, so invoking `/comprehensive-review --pr 143` rewrote the skill text the orchestrator follows: `awk -F/ '{print $1}'` in the tiny-tier architecture-promotion check became `'{print 143}'` (so the cross-directory trigger could never fire), `local agent_name="$1"` in `extract_findings` became `agent_name="143"` (stamping every finding's `source` with the PR number), and the dollar amounts in the cost guidance and the token utilization table were rendered as garbage such as `~--pr.25`. All dollar-digit tokens are gone: costs are written as `0.25 USD`, the awk calls use `cut` and `sed`, and `extract_findings` reads its arguments with `${@:1:1}` and `${@:2:1}`. The token utilization table's Est. Cost column now reads `~0.12 USD` instead of `~$0.12`.
+
+### Added
+
+- `tests/skill_substitution.bats` (6 tests): fails if any dollar-digit token appears in `SKILL.md`, calls `extract_findings` directly to check it reads its first argument, and runs the two rewritten pipelines. `CLAUDE.md` documents the rule for contributors.
+
 ## [1.15.2] - 2026-09-29
 
 ### Fixed

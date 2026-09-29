@@ -100,7 +100,7 @@ teardown() {
   for fam in Opus Sonnet Haiku; do
     local want got
     want=$(jq -r ".blended_rates.$(echo "$fam" | tr 'A-Z' 'a-z')" "$snap")
-    got=$(grep -oE "${fam} blended ~\\\$[0-9.]+/M" "$skill" | grep -oE '[0-9.]+' | head -1)
+    got=$(grep -oE "${fam} blended ~[0-9.]+ USD/M" "$skill" | grep -oE '[0-9.]+' | head -1)
     [ "$got" = "$want" ]
   done
 }
