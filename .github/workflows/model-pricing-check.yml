@@ -1,0 +1,84 @@
+name: Model pricing drift check
+
+# Weekly: compare Anthropic's published pricing table with the snapshot in
+# skills/comprehensive-review/model-pricing.json and file (or update) an issue
+# when they differ. See docs/token-efficiency.md "Keeping the rates current".
+
+on:
+  schedule:
+    - cron: '17 14 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: model-pricing-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run pricing check
+        id: check
+        run: |
+          set +e
+          scripts/check-model-pricing.sh > "$RUNNER_TEMP/report.txt" 2> "$RUNNER_TEMP/error.txt"
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -eq 2 ]; then
+            cp "$RUNNER_TEMP/error.txt" "$RUNNER_TEMP/report.txt"
+          fi
+          cat "$RUNNER_TEMP/report.txt"
+          # rc 0 = no drift, 1 = drift, 2 = fetch/parse failure. 1 and 2 are
+          # reported through an issue in the next step, not as a job failure.
+          if [ "$rc" -gt 2 ]; then exit "$rc"; fi
+
+      - name: File or update issue
+        if: steps.check.outputs.rc == '1' || steps.check.outputs.rc == '2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RC: ${{ steps.check.outputs.rc }}
+        run: |
+          if [ "$RC" = "1" ]; then
+            label="pricing-drift"
+            label_desc="Anthropic model pricing changed since the last snapshot"
+            title="Model pricing drift detected: update model-pricing.json and cost rates"
+            intro="Anthropic's published pricing table no longer matches \`skills/comprehensive-review/model-pricing.json\`."
+            todo=$'To resolve:\n1. Run `scripts/check-model-pricing.sh --update` to refresh the snapshot.\n2. If list prices changed, recalibrate the blended rates from measured subagent transcripts.\n3. Update the rates in `skills/comprehensive-review/SKILL.md` (Phase 5 step 7, including the example table) and `docs/token-efficiency.md`.\n4. `bats tests/model_pricing.bats` fails if those places disagree.'
+          else
+            label="pricing-check-broken"
+            label_desc="The pricing drift check could not fetch or parse the source page"
+            title="Pricing drift check could not parse the source page"
+            intro="\`scripts/check-model-pricing.sh\` exited with a fetch or parse failure, so pricing drift is not being monitored."
+            todo=$'The pricing page layout or URL may have changed. Update the parser in `scripts/check-model-pricing.sh` (and its fixtures in `tests/fixtures/pricing/`) or the source URL.'
+          fi
+
+          report=$(cat "$RUNNER_TEMP/report.txt")
+          # shellcheck disable=SC2016  # literal backticks form the Markdown code fence
+          body=$(printf '%s\n\n```\n%s\n```\n\n%s\n\nRun: %s/%s/actions/runs/%s' \
+            "$intro" "$report" "$todo" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+
+          gh label create "$label" --description "$label_desc" 2>/dev/null || true
+
+          existing=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$existing" ]; then
+            gh issue create --title "$title" --label "$label" --body "$body"
+            exit 0
+          fi
+
+          # Comment only when this exact report is not already in the issue.
+          seen=$(gh issue view "$existing" --json body,comments \
+            | jq --arg r "$report" '[.body] + [.comments[].body] | map(select(contains($r))) | length')
+          if [ "$seen" -eq 0 ]; then
+            gh issue comment "$existing" --body "The report changed:"$'\n\n'"$body"
+          else
+            echo "Issue #$existing already contains this report; nothing to do."
+          fi

@@ -13,7 +13,7 @@ Run a full PR/MR review of all changes on the current branch (or a specified PR/
 
 ## Orchestrator Model Recommendation
 
-The orchestrator performs template-filling, tool dispatch, and structured severity normalization — it does not require Opus-level reasoning. **Run this skill on Sonnet for 5× lower orchestrator cost.** The `opus` alias is reserved for `architecture-reviewer` and `security-reviewer` (and `blind-hunter`/`edge-case-hunter` in `--depth deep`), where deep reasoning pays off.
+The orchestrator performs template-filling, tool dispatch, and structured severity normalization — it does not require Opus-level reasoning. **Run this skill on Sonnet for ~2× lower orchestrator cost.** The `opus` alias is reserved for `architecture-reviewer` and `security-reviewer` (and `blind-hunter`/`edge-case-hunter` in `--depth deep`), where deep reasoning pays off.
 
 Haiku is not recommended: Phase 2 deduplication and severity normalization across 8 agent outputs benefits from Sonnet-tier instruction following.
 
@@ -1595,31 +1595,31 @@ Note in terminal: "Review written to <path>"
 6. Report diff tier and Opus agent tool-call usage:
    - `"Diff tier: <tiny|small|medium>  (<N> lines, <M> files)"` — if TIER=tiny, also show which agents were promoted or skipped, e.g.: `"TIER=tiny — architecture-reviewer: promoted (infra trigger) | security-reviewer: skipped | blind-hunter: skipped | edge-case-hunter: skipped"`
    - `"Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)"` — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time. Omit any agent that was skipped.
-7. **Display a token utilization table** (always shown, even if no findings). Include every agent that ran plus the orchestrator row as "orchestrator (this session)". The Agent tool returns only a single combined token total (`subagent_tokens`) per agent — it does **not** expose an input/output/cache breakdown. Use that total with a blended per-model rate for cost estimation: Opus blended ~$45/M tokens, Sonnet blended ~$9/M, Haiku blended ~$0.8/M. For the orchestrator row, note that cost is an estimate (exact figures require `/cost`):
+7. **Display a token utilization table** (always shown, even if no findings). Include every agent that ran plus the orchestrator row as "orchestrator (this session)". The Agent tool returns only a single combined token total (`subagent_tokens`) per agent — it does **not** expose an input/output/cache breakdown. `subagent_tokens` is the agent's final-turn context size (mostly cache reads, billed at a small fraction of the input price), not cumulative usage, so the blended rates below sit far under list price. Use that total with a blended per-model rate for cost estimation: Opus blended ~$8/M tokens, Sonnet blended ~$4/M, Haiku blended ~$2/M. These rates are calibrated from measured subagent transcripts at Opus 5.5 / Sonnet 5.5 / Haiku 4.5 list prices (see `model-pricing.json`): per-agent cost measured 2.7–4.5 $/M for Sonnet and 5.8–8.7 $/M for Opus, so treat each figure as roughly ±40%. The Haiku rate rests on a single sample. Recalibrate when list prices change (a weekly check files an issue) or when the total drifts from `/cost`. For the orchestrator row, note that cost is an estimate (exact figures require `/cost`):
    ```
    Token utilization:
    Agent                    Model    Tokens   Tools  Est. Cost
    ────────────────────────────────────────────────────────────
-   pr-summarizer            Sonnet   28,832     0    ~$0.26
-   code-reviewer            Sonnet   39,985     0    ~$0.36
-   architecture-reviewer    Opus     41,141     1    ~$1.85
-   security-reviewer        Opus     56,338     2    ~$2.54
-   blind-hunter             Sonnet   36,491     0    ~$0.33
-   edge-case-hunter         Sonnet   38,161     1    ~$0.34
-   adversarial-general      Opus     44,692     3    ~$2.01
-   issue-linker             Haiku    30,249    14    ~$0.02
+   pr-summarizer            Sonnet   28,832     0    ~$0.12
+   code-reviewer            Sonnet   39,985     0    ~$0.16
+   architecture-reviewer    Opus     41,141     1    ~$0.33
+   security-reviewer        Opus     56,338     2    ~$0.45
+   blind-hunter             Sonnet   36,491     0    ~$0.15
+   edge-case-hunter         Sonnet   38,161     1    ~$0.15
+   adversarial-general      Opus     44,692     3    ~$0.36
+   issue-linker             Haiku    30,249    14    ~$0.06
    ────────────────────────────────────────────────────────────
-   Agents total                     ~316k            ~$7.71
+   Agents total                     ~316k            ~$1.78
    Orchestrator (est.)      Sonnet   —         —      ~$0.25
    ────────────────────────────────────────────────────────────
-   Session total (est.)                               ~$7.96
+   Session total (est.)                               ~$2.03
    Note: costs are blended-rate estimates; run /cost for exact figures.
-   Tip: Run on Sonnet instead of Opus for ~5× lower orchestrator cost.
+   Tip: Run on Sonnet instead of Opus for ~2× lower orchestrator cost.
    ```
    Notes on the table:
    - **All five columns (Agent, Model, Tokens, Tools, Est. Cost) are required** — never drop columns. Do not add In/Out/Cache$W/Cache$R columns; that data is not available from agent results.
    - The `Tokens` column comes from the `subagent_tokens` value in each agent's `<usage>` block in the tool result. Read it directly. Show `—` only if an agent crashed before returning usage data.
-   - Cost = `(subagent_tokens / 1_000_000) × blended_rate`. Blended rates approximate the mix of input, output, and cache tokens in a typical agent run.
+   - Cost = `(subagent_tokens / 1_000_000) × blended_rate`. Blended rates approximate the mix of input, output, and cache tokens in a typical agent run, applied to the final-turn context size.
    - Populate the "orchestrator (est.)" row only if you can derive approximate figures from the session; otherwise show `— see /cost`.
    - Always show the "Tip: Run on Sonnet..." line if the orchestrator model is Opus.
    - Omit skipped agents from the table.

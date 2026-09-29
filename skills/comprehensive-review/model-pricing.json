@@ -1,0 +1,145 @@
+{
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+  "calibrated_on": "2026-09-29",
+  "calibration_note": "blended_rates are USD per 1M reported subagent_tokens. subagent_tokens is the agent's final-turn context size (mostly cache reads), so the rate is far below list price. Calibrated from ~40 subagent transcripts at Opus 5.5 / Sonnet 5.5 / Haiku 4.5 list prices. Measured ranges: Sonnet 2.7-4.5, Opus 5.8-8.7 (one outlier 13.4). Haiku rests on one sample and is set at half the Sonnet rate.",
+  "blended_rates": {
+    "opus": 8,
+    "sonnet": 4,
+    "haiku": 2
+  },
+  "models": {
+    "Claude Fable 5.1": {
+      "input": 10,
+      "cache_write_5m": 12.50,
+      "cache_write_1h": 20,
+      "cache_hit": 0.25,
+      "output": 50
+    },
+    "Claude Mythos 5.1": {
+      "input": 10,
+      "cache_write_5m": 12.50,
+      "cache_write_1h": 20,
+      "cache_hit": 0.25,
+      "output": 50
+    },
+    "Claude Fable 5": {
+      "input": 10,
+      "cache_write_5m": 12.50,
+      "cache_write_1h": 20,
+      "cache_hit": 1,
+      "output": 50
+    },
+    "Claude Mythos 5": {
+      "input": 10,
+      "cache_write_5m": 12.50,
+      "cache_write_1h": 20,
+      "cache_hit": 1,
+      "output": 50
+    },
+    "Claude Opus 5.5": {
+      "input": 4,
+      "cache_write_5m": 5,
+      "cache_write_1h": 8,
+      "cache_hit": 0.20,
+      "output": 20
+    },
+    "Claude Opus 5": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_hit": 0.50,
+      "output": 25
+    },
+    "Claude Opus 4.8": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_hit": 0.50,
+      "output": 25
+    },
+    "Claude Opus 4.7": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_hit": 0.50,
+      "output": 25
+    },
+    "Claude Opus 4.6": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_hit": 0.50,
+      "output": 25
+    },
+    "Claude Opus 4.5": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_hit": 0.50,
+      "output": 25
+    },
+    "Claude Opus 4.1": {
+      "input": 15,
+      "cache_write_5m": 18.75,
+      "cache_write_1h": 30,
+      "cache_hit": 1.50,
+      "output": 75
+    },
+    "Claude Opus 4": {
+      "input": 15,
+      "cache_write_5m": 18.75,
+      "cache_write_1h": 30,
+      "cache_hit": 1.50,
+      "output": 75
+    },
+    "Claude Sonnet 5.5": {
+      "input": 2,
+      "cache_write_5m": 2.50,
+      "cache_write_1h": 4,
+      "cache_hit": 0.20,
+      "output": 10
+    },
+    "Claude Sonnet 5": {
+      "input": 2,
+      "cache_write_5m": 2.50,
+      "cache_write_1h": 4,
+      "cache_hit": 0.20,
+      "output": 10
+    },
+    "Claude Sonnet 4.6": {
+      "input": 3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6,
+      "cache_hit": 0.30,
+      "output": 15
+    },
+    "Claude Sonnet 4.5": {
+      "input": 3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6,
+      "cache_hit": 0.30,
+      "output": 15
+    },
+    "Claude Sonnet 4": {
+      "input": 3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6,
+      "cache_hit": 0.30,
+      "output": 15
+    },
+    "Claude Haiku 4.5": {
+      "input": 1,
+      "cache_write_5m": 1.25,
+      "cache_write_1h": 2,
+      "cache_hit": 0.10,
+      "output": 5
+    },
+    "Claude Haiku 3.5": {
+      "input": 0.80,
+      "cache_write_5m": 1,
+      "cache_write_1h": 1.60,
+      "cache_hit": 0.08,
+      "output": 4
+    }
+  }
+}
