@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.15.2] - 2026-09-29
 
 ### Fixed
 
@@ -310,7 +310,7 @@ Robustness fixes to the Phase 4/4b/5 capture-variable patterns, addressing AI re
 ### Changed
 
 - Removed all `--help` / `-h` flag handling from `SKILL.md`. Every implementation approach tried in v1.8.1–v1.8.9 proved unreliable (see note below). `HELP.md` remains as reference documentation accessible in the repo and README.
-- Replaced "CodeRabbit-style" wording with neutral language across `SKILL.md`, `HELP.md`, `README.md`, `plugin.json`, and `CLAUDE.md`.
+- Replaced a competitor-specific descriptor with neutral language across `SKILL.md`, `HELP.md`, `README.md`, `plugin.json`, and `CLAUDE.md`.
 
 ---
 
