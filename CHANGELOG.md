@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Token utilization table overstated cost by roughly 4–5×**: the blended rates (Opus ~$45/M, Sonnet ~$9/M, Haiku ~$0.8/M) dated from the Opus 4/4.1 price era, and they were applied to a number that is not cumulative usage. Measured against subagent transcripts, `subagent_tokens` is the agent's final-turn context size, mostly cache reads billed at a small fraction of the input price. Rates are now Opus ~$8/M, Sonnet ~$4/M, Haiku ~$2/M, calibrated from about 40 transcripts at current list prices, and the Phase 5 note states the ±40% per-agent spread. The Haiku rate rests on one sample. The "~5× lower orchestrator cost" tip is now "~2×" to match current Opus vs. Sonnet pricing.
+
+### Added
+
+- **Weekly model and pricing drift check**: `scripts/check-model-pricing.sh` compares Anthropic's published pricing table with the snapshot in `skills/comprehensive-review/model-pricing.json`, and the `model-pricing-check.yml` workflow files a deduplicated `pricing-drift` issue when a model is added, removed, or repriced, or when the page can no longer be parsed. `tests/model_pricing.bats` also asserts that the blended rates in `SKILL.md`, `docs/token-efficiency.md`, and the snapshot agree.
+
 ## [1.15.1] - 2026-09-18
 
 ### Fixed

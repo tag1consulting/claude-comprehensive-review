@@ -56,8 +56,12 @@ Phase 5 always prints a per-agent breakdown of tokens, tool calls, and estimated
 |--------|-------------|
 | Agent | Agent name |
 | Model | Resolved model (e.g., "Sonnet", "Opus", "Haiku") |
-| Tokens | Combined token count (`subagent_tokens`) — the Agent tool returns only a single total per agent, with no input/output/cache breakdown |
+| Tokens | Combined token count (`subagent_tokens`). Measured against subagent transcripts, this is the agent's final-turn context size (mostly cache reads), not cumulative usage. The Agent tool returns no input/output/cache breakdown |
 | Tools | Number of tool calls the agent made |
-| Est. Cost | Estimated cost from a blended per-model rate (Opus ~$45/M tokens, Sonnet ~$9/M, Haiku ~$0.8/M) |
+| Est. Cost | Estimated cost from a blended per-model rate (Opus ~$8/M tokens, Sonnet ~$4/M, Haiku ~$2/M) |
 
-Costs are blended-rate estimates, not public list prices — the underlying token total doesn't distinguish input from output from cache reads, so an exact list-price calculation isn't possible from what the Agent tool returns. Run `/cost` for exact figures.
+Costs are blended-rate estimates, not public list prices. Because the token total is a final-turn context size that is mostly cheap cache reads, the blended rates are much lower than list price per token. They were calibrated from about 40 measured subagent transcripts at Opus 5.5 / Sonnet 5.5 / Haiku 4.5 list prices. Per-agent cost measured 2.7–4.5 $/M for Sonnet and 5.8–8.7 $/M for Opus, so treat each figure as roughly ±40%. The Haiku rate rests on a single sample. Run `/cost` for exact figures.
+
+### Keeping the rates current
+
+`skills/comprehensive-review/model-pricing.json` holds the blended rates and a snapshot of Anthropic's published per-model prices. A weekly GitHub Actions workflow (`model-pricing-check.yml`) runs `scripts/check-model-pricing.sh`, which compares the published pricing table with the snapshot and files an issue labeled `pricing-drift` when a model is added, removed, or repriced (or when the page can no longer be parsed). To resolve one: run `scripts/check-model-pricing.sh --update`, recalibrate the blended rates against measured transcripts if the list prices changed, and update the rates in `SKILL.md` Phase 5 and this page. `tests/model_pricing.bats` fails if those three places disagree.
