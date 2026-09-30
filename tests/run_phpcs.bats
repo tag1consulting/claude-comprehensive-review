@@ -54,9 +54,11 @@ teardown() {
 
 @test "phpcs: binary missing returns empty array" {
   unset PHPCS_MOCK_FILE
-  run --separate-stderr "$SCRIPT" "src/module.php"
+  # Hide the binary so the guard runs even where phpcs is installed.
+  PATH="$(path_without phpcs)" run --separate-stderr "$SCRIPT" "src/module.php"
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
+  [[ "$stderr" == *"phpcs not installed"* ]]
 }
 
 # ---------------------------------------------------------------------------

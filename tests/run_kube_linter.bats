@@ -59,9 +59,12 @@ teardown() {
 
 @test "kube-linter: binary missing returns empty array" {
   unset KUBELINTER_MOCK_FILE
-  run --separate-stderr "$SCRIPT" "$KL_FIX/deployment.yaml"
+  # Hide the binary so the guard runs even where kube-linter is installed. The
+  # input is a real manifest, so the script would otherwise run the binary on it.
+  PATH="$(path_without kube-linter)" run --separate-stderr "$SCRIPT" "$KL_FIX/deployment.yaml"
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
+  [[ "$stderr" == *"kube-linter not installed"* ]]
 }
 
 # ---------------------------------------------------------------------------

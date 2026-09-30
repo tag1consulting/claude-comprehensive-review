@@ -54,9 +54,11 @@ teardown() {
 
 @test "hadolint: binary missing returns empty array" {
   unset HADOLINT_MOCK_FILE
-  run --separate-stderr "$SCRIPT" "Dockerfile"
+  # Hide the binary so the guard runs even where hadolint is installed.
+  PATH="$(path_without hadolint)" run --separate-stderr "$SCRIPT" "Dockerfile"
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
+  [[ "$stderr" == *"hadolint not installed"* ]]
 }
 
 # ---------------------------------------------------------------------------

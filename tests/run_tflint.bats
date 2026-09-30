@@ -54,9 +54,11 @@ teardown() {
 
 @test "tflint: binary missing returns empty array" {
   unset TFLINT_MOCK_FILE
-  run --separate-stderr "$SCRIPT" "main.tf"
+  # Hide the binary so the guard runs even where tflint is installed.
+  PATH="$(path_without tflint)" run --separate-stderr "$SCRIPT" "main.tf"
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
+  [[ "$stderr" == *"tflint not installed"* ]]
 }
 
 # ---------------------------------------------------------------------------
