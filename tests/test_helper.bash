@@ -39,9 +39,19 @@ path_without() {
       # "ln -s a b c dir/" is valid on both GNU and BSD.
       local -a keep=()
       for f in "$dir"/*; do
-        [[ "${f##*/}" == "$bin" ]] || keep+=("$f")
+        [[ "${f##*/}" == "$bin" ]] && continue
+        [[ -e "$f" || -L "$f" ]] || continue  # unmatched glob in an empty directory
+        keep+=("$f")
       done
-      ln -s "${keep[@]}" "$root/$i/" 2>/dev/null || true
+      # Only an empty directory skips ln. A real ln failure must be loud: a
+      # silently incomplete PATH makes tests fail with a misleading "command
+      # not found", or pass for the wrong reason.
+      if ((${#keep[@]} > 0)); then
+        ln -s "${keep[@]}" "$root/$i/" || {
+          echo "path_without: could not mirror $dir without $bin" >&2
+          return 1
+        }
+      fi
       dir="$root/$i"
     fi
     out+="${out:+:}$dir"
