@@ -21,10 +21,10 @@ Haiku is not recommended: Phase 2 deduplication and severity normalization acros
 
 | Mode | Typical cost |
 |------|------------:|
-| `--quick` | **~$0.25** |
-| Full run | **~$0.50–$1.25** |
+| `--quick` | **~0.25 USD** |
+| Full run | **~0.50–1.25 USD** |
 
-- **Tiny-tier PRs (<50 lines, ≤3 files):** auto-selected TIER=tiny saves ~60–70% on top of `--quick` by routing pr-summarizer to Haiku and skipping/conditionally-promoting Opus agents. Floor cost drops from ~$0.25 to ~$0.10.
+- **Tiny-tier PRs (<50 lines, ≤3 files):** auto-selected TIER=tiny saves ~60–70% on top of `--quick` by routing pr-summarizer to Haiku and skipping/conditionally-promoting Opus agents. Floor cost drops from ~0.25 USD to ~0.10 USD.
 
 ## Pre-flight Context
 
@@ -430,7 +430,7 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
      ARCH_PROMOTED=false
      if echo "$TINY_DIFF_NAMES" | grep -qE '(^|/)(Dockerfile|\.nvmrc|\.node-version|\.ddev/|\.github/workflows/|\.gitlab-ci\.yml|bitbucket-pipelines\.yml|lagoon/|helm/|k8s/|kubernetes/|terraform/|docker-compose)'; then
        ARCH_PROMOTED=true
-     elif [[ $(echo "$TINY_DIFF_NAMES" | awk -F/ '{print $1}' | sort -u | wc -l | tr -d ' ') -ge 2 ]]; then
+     elif [[ $(echo "$TINY_DIFF_NAMES" | cut -d/ -f1 | sort -u | wc -l | tr -d ' ') -ge 2 ]]; then
        ARCH_PROMOTED=true
      fi
    fi
@@ -585,7 +585,7 @@ Step 2 — De-noise: from the raw candidate list, remove:
 - Cap at **50 candidate symbols** maximum (take highest-frequency first):
   ```bash
   grep -oE '\b[A-Za-z_][A-Za-z0-9_]{2,}\b' "$DIFF_FILE" | sort | uniq -c | sort -rn | \
-    awk '{print $2}' | head -50 > /tmp/cr-symbols-freq-$$.txt
+    sed -E 's/^ *[0-9]+ +//' | head -50 > /tmp/cr-symbols-freq-$$.txt
   comm -12 <(sort /tmp/cr-symbols-$$.txt) <(sort /tmp/cr-symbols-freq-$$.txt) | head -50 > /tmp/cr-symbols-final-$$.txt
   ```
 
@@ -984,7 +984,7 @@ For each findings-producing agent that returned output, extract the fenced `json
 
 ```bash
 extract_findings() {
-  local agent_name="$1" raw_output="$2"
+  local agent_name="${@:1:1}" raw_output="${@:2:1}"
   # Find the json-findings block between ```json-findings and ```
   local json_block
   json_block=$(echo "$raw_output" | awk '/^```json-findings/{p=1; next} p && /^```/{p=0; next} p')
@@ -1595,24 +1595,24 @@ Note in terminal: "Review written to <path>"
 6. Report diff tier and Opus agent tool-call usage:
    - `"Diff tier: <tiny|small|medium>  (<N> lines, <M> files)"` — if TIER=tiny, also show which agents were promoted or skipped, e.g.: `"TIER=tiny — architecture-reviewer: promoted (infra trigger) | security-reviewer: skipped | blind-hunter: skipped | edge-case-hunter: skipped"`
    - `"Agent tool calls: architecture-reviewer=<N> (budget 25), security-reviewer=<N> (budget 25)"` — flag with ⚠ if either exceeds 25 so you can tighten the prompt over time. Omit any agent that was skipped.
-7. **Display a token utilization table** (always shown, even if no findings). Include every agent that ran plus the orchestrator row as "orchestrator (this session)". The Agent tool returns only a single combined token total (`subagent_tokens`) per agent — it does **not** expose an input/output/cache breakdown. `subagent_tokens` is the agent's final-turn context size (mostly cache reads, billed at a small fraction of the input price), not cumulative usage, so the blended rates below sit far under list price. Use that total with a blended per-model rate for cost estimation: Opus blended ~$8/M tokens, Sonnet blended ~$4/M, Haiku blended ~$2/M. These rates are calibrated from measured subagent transcripts at Opus 5.5 / Sonnet 5.5 / Haiku 4.5 list prices (see `model-pricing.json`): per-agent cost measured 2.7–4.5 $/M for Sonnet and 5.8–8.7 $/M for Opus, so treat each figure as roughly ±40%. The Haiku rate rests on a single sample. Recalibrate when list prices change (a weekly check files an issue) or when the total drifts from `/cost`. For the orchestrator row, note that cost is an estimate (exact figures require `/cost`):
+7. **Display a token utilization table** (always shown, even if no findings). Include every agent that ran plus the orchestrator row as "orchestrator (this session)". The Agent tool returns only a single combined token total (`subagent_tokens`) per agent — it does **not** expose an input/output/cache breakdown. `subagent_tokens` is the agent's final-turn context size (mostly cache reads, billed at a small fraction of the input price), not cumulative usage, so the blended rates below sit far under list price. Use that total with a blended per-model rate for cost estimation: Opus blended ~8 USD/M tokens, Sonnet blended ~4 USD/M, Haiku blended ~2 USD/M. These rates are calibrated from measured subagent transcripts at Opus 5.5 / Sonnet 5.5 / Haiku 4.5 list prices (see `model-pricing.json`): per-agent cost measured 2.7–4.5 USD/M for Sonnet and 5.8–8.7 USD/M for Opus, so treat each figure as roughly ±40%. The Haiku rate rests on a single sample. Recalibrate when list prices change (a weekly check files an issue) or when the total drifts from `/cost`. For the orchestrator row, note that cost is an estimate (exact figures require `/cost`):
    ```
    Token utilization:
    Agent                    Model    Tokens   Tools  Est. Cost
    ────────────────────────────────────────────────────────────
-   pr-summarizer            Sonnet   28,832     0    ~$0.12
-   code-reviewer            Sonnet   39,985     0    ~$0.16
-   architecture-reviewer    Opus     41,141     1    ~$0.33
-   security-reviewer        Opus     56,338     2    ~$0.45
-   blind-hunter             Sonnet   36,491     0    ~$0.15
-   edge-case-hunter         Sonnet   38,161     1    ~$0.15
-   adversarial-general      Opus     44,692     3    ~$0.36
-   issue-linker             Haiku    30,249    14    ~$0.06
+   pr-summarizer            Sonnet   28,832     0    ~0.12 USD
+   code-reviewer            Sonnet   39,985     0    ~0.16 USD
+   architecture-reviewer    Opus     41,141     1    ~0.33 USD
+   security-reviewer        Opus     56,338     2    ~0.45 USD
+   blind-hunter             Sonnet   36,491     0    ~0.15 USD
+   edge-case-hunter         Sonnet   38,161     1    ~0.15 USD
+   adversarial-general      Opus     44,692     3    ~0.36 USD
+   issue-linker             Haiku    30,249    14    ~0.06 USD
    ────────────────────────────────────────────────────────────
-   Agents total                     ~316k            ~$1.78
-   Orchestrator (est.)      Sonnet   —         —      ~$0.25
+   Agents total                     ~316k            ~1.78 USD
+   Orchestrator (est.)      Sonnet   —         —      ~0.25 USD
    ────────────────────────────────────────────────────────────
-   Session total (est.)                               ~$2.03
+   Session total (est.)                               ~2.03 USD
    Note: costs are blended-rate estimates; run /cost for exact figures.
    Tip: Run on Sonnet instead of Opus for ~2× lower orchestrator cost.
    ```
