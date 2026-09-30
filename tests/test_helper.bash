@@ -7,9 +7,47 @@
 # environment variables each script supports. No network access is required.
 
 # shellcheck disable=SC2034  # consumed by .bats files that load this helper
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/comprehensive-review/scripts" && pwd)"
+SCRIPTS_DIR="${CR_SCRIPTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/comprehensive-review/scripts" && pwd)}"
 # shellcheck disable=SC2034
 FIXTURES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/fixtures" && pwd)"
+
+# Close stdin for the test. Several scripts read their file list from stdin when
+# called with no argument (for example `run "$SCRIPT" ""`), which blocks forever
+# if the harness leaves stdin as an open pipe that never sends EOF. `load` sources
+# this file inside the test, so the redirect applies to setup, the test body and
+# teardown.
+exec </dev/null
+
+# Print a PATH equal to the current one but without <binary>. Every PATH entry
+# that contains the binary is replaced by a mirror directory of symlinks to that
+# entry's other files, so the remaining tools (jq, grep, ...) still resolve.
+# Lets a test prove a script's "binary not installed" guard runs even on a machine
+# where the binary is installed.
+#
+# Usage: PATH="$(path_without kube-linter)" run "$SCRIPT" ...
+path_without() {
+  local bin="$1" root dir out="" i=0 f
+  root=$(mktemp -d "${BATS_TEST_TMPDIR:-${TMPDIR:-/tmp}}/nopath-XXXXXX")
+  local IFS=:
+  local -a dirs
+  read -ra dirs <<<"$PATH"
+  for dir in "${dirs[@]}"; do
+    if [[ -x "$dir/$bin" ]]; then
+      i=$((i + 1))
+      mkdir -p "$root/$i"
+      # One ln call for the whole directory (per-file forks made this slow).
+      # "ln -s a b c dir/" is valid on both GNU and BSD.
+      local -a keep=()
+      for f in "$dir"/*; do
+        [[ "${f##*/}" == "$bin" ]] || keep+=("$f")
+      done
+      ln -s "${keep[@]}" "$root/$i/" 2>/dev/null || true
+      dir="$root/$i"
+    fi
+    out+="${out:+:}$dir"
+  done
+  printf '%s' "$out"
+}
 
 # Extract a single function definition from a script and eval it into the
 # current shell, so it can be tested in isolation without sourcing the whole

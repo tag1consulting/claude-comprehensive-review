@@ -54,9 +54,11 @@ teardown() {
 
 @test "phpstan: binary missing returns empty array" {
   unset PHPSTAN_MOCK_FILE
-  run --separate-stderr "$SCRIPT" "src/MyService.php"
+  # Hide the binary so the guard runs even where phpstan is installed.
+  PATH="$(path_without phpstan)" run --separate-stderr "$SCRIPT" "src/MyService.php"
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
+  [[ "$stderr" == *"phpstan not installed"* ]]
 }
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Analyzer tests no longer depend on which tools are installed, and no longer hang on an open stdin.** The "binary missing" tests for `kube-linter`, `hadolint`, `tflint`, `phpcs`, `phpstan` and `eslint` assumed the tool was absent: the `kube-linter` one failed on any machine with `kube-linter` installed, and the other five passed without ever reaching the script's guard (they fed nonexistent paths, so the script returned `[]` before needing the binary, and would have stayed green with the guard deleted). They now hide the binary with a new `path_without` helper in `tests/test_helper.bash`, use a real fixture, and assert the `not installed` warning. Separately, the suite could block forever when stdin was an open pipe that never closed (seven test files call a script with no argument, so it fell through to `cat`); `test_helper.bash` now closes stdin for each test. No change to the skill or scripts.
+
 ## [1.15.3] - 2026-09-29
 
 ### Fixed

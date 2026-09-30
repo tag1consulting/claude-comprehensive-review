@@ -59,10 +59,13 @@ teardown() {
 
 @test "eslint: binary missing returns empty array" {
   unset ESLINT_MOCK_FILE
-  # No node_modules and npx not available in CI PATH for eslint; expects skip.
-  run --separate-stderr "$SCRIPT" "src/app.ts"
+  # The script looks for ./node_modules/.bin/eslint, then npx. Run from an empty
+  # directory and hide npx so the "not found" path runs even where npx exists.
+  cd "$WORK"
+  PATH="$(path_without npx)" run --separate-stderr "$SCRIPT" "src/app.ts"
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
+  [[ "$stderr" == *"eslint not found"* ]]
 }
 
 # ---------------------------------------------------------------------------
