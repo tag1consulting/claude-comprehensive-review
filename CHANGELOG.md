@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.5] - 2026-10-07
+
+Pricing snapshot refresh only. There is no change to the skill, agents or scripts, and the cost estimates in the review output are the same as in 1.15.4.
+
+### Changed
+
+- **Pricing snapshot refreshed** (#151): `skills/comprehensive-review/model-pricing.json` now lists Claude Haiku 5.5 (0.50 USD input, 2.50 USD output, 0.05 USD cache hit per MTok) and the Claude Sonnet 5.5 cache-hit price of 0.10 USD per MTok (was 0.20 USD). Only the weekly pricing drift check reads this snapshot. The `blended_rates` that drive the cost estimate are unchanged, because they come from measured transcripts and no new measurement exists. The Sonnet rate (measured at the old cache-hit price) and the Haiku rate (one sample, at Haiku 4.5 prices) are probably out of date and need recalibration.
+
 ## [1.15.4] - 2026-09-30
 
 Test and documentation changes only. There is no change to the skill, agents or scripts, so plugin users get no behavior difference from this release.
