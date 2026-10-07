@@ -96,7 +96,7 @@
       "input": 2,
       "cache_write_5m": 2.50,
       "cache_write_1h": 4,
-      "cache_hit": 0.20,
+      "cache_hit": 0.10,
       "output": 10
     },
     "Claude Sonnet 5": {
@@ -126,6 +126,13 @@
       "cache_write_1h": 6,
       "cache_hit": 0.30,
       "output": 15
+    },
+    "Claude Haiku 5.5": {
+      "input": 0.50,
+      "cache_write_5m": 0.625,
+      "cache_write_1h": 1,
+      "cache_hit": 0.05,
+      "output": 2.50
     },
     "Claude Haiku 4.5": {
       "input": 1,
