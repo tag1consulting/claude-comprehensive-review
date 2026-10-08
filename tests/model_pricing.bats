@@ -91,6 +91,49 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
+# Prompt-length tiers (Claude Haiku 5.5 has two rows with the same name).
+# ---------------------------------------------------------------------------
+
+@test "prompt-length tiers: the up-to row keeps the plain name, the over row gets its own key" {
+  PRICING_MOCK_FILE="${FIX}/tiered.md" "$SCRIPT" --update >/dev/null
+  run jq -e '.models["Claude Haiku 5.5"] == {input: 0.1, cache_write_5m: 0.125, cache_write_1h: 0.2, cache_hit: 0.01, output: 0.5}' "$PRICING_SNAPSHOT"
+  [ "$status" -eq 0 ]
+  run jq -e '.models["Claude Haiku 5.5 (over 100,000 tokens)"] == {input: 0.5, cache_write_5m: 0.625, cache_write_1h: 1, cache_hit: 0.05, output: 2.5}' "$PRICING_SNAPSHOT"
+  [ "$status" -eq 0 ]
+}
+
+@test "prompt-length tiers: retired and availability notes are still dropped" {
+  PRICING_MOCK_FILE="${FIX}/tiered.md" "$SCRIPT" --update >/dev/null
+  run jq -e '.models | has("Claude Opus 4.1")' "$PRICING_SNAPSHOT"
+  [ "$status" -eq 0 ]
+  run jq -e '.models | keys | map(select(startswith("Claude Opus 4.1"))) == ["Claude Opus 4.1"]' "$PRICING_SNAPSHOT"
+  [ "$status" -eq 0 ]
+}
+
+@test "prompt-length tiers: no drift against the same page" {
+  PRICING_MOCK_FILE="${FIX}/tiered.md" "$SCRIPT" --update >/dev/null
+  PRICING_MOCK_FILE="${FIX}/tiered.md" run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "No pricing drift (8 models"* ]]
+}
+
+@test "prompt-length tiers: a changed long-prompt price is reported on its own key" {
+  PRICING_MOCK_FILE="${FIX}/tiered.md" "$SCRIPT" --update >/dev/null
+  sed '/over 100,000/ s/2\.50 \/ MTok/3 \/ MTok/' "${FIX}/tiered.md" > "${WORK}/tiered-changed.md"
+  PRICING_MOCK_FILE="${WORK}/tiered-changed.md" run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"**Changed:** Claude Haiku 5.5 (over 100,000 tokens)"* ]]
+  [[ "$output" != *"**Changed:** Claude Haiku 5.5 ("*"up to"* ]]
+}
+
+@test "prompt-length tiers: the plain Haiku 5.5 key is not overwritten by the over row" {
+  PRICING_MOCK_FILE="${FIX}/tiered.md" "$SCRIPT" --update >/dev/null
+  # Compare as numbers: jq 1.7 prints the literal 0.50 from the page, not 0.5.
+  run jq -e '.models["Claude Haiku 5.5"].output == 0.5' "$PRICING_SNAPSHOT"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
 # Blended rates must agree across the snapshot, SKILL.md, and the docs page.
 # ---------------------------------------------------------------------------
 

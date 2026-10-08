@@ -55,10 +55,20 @@ parse_table() {
       if (match(s, /\$[0-9]+(\.[0-9]+)?/)) return substr(s, RSTART + 1, RLENGTH - 1)
       return "NaN"
     }
-    function model(s) {
+    function model(s,   tier) {
       s = clean(s)
-      sub(/ \(.*$/, "", s)          # drop "(retired, ...)" and "(limited availability)" notes
+      # A prompt-length tier is a price, not a note. Claude Haiku 5.5 has one row
+      # "(for prompts up to 100,000 tokens)" and one "(for prompts over 100,000
+      # tokens)". Keep the long-prompt row under its own key, "<name> (over 100,000
+      # tokens)", and let the "up to" row keep the plain name. Without this, both
+      # rows collapse to one key and the later (dearer) row silently wins.
+      tier = ""
+      if (match(s, /\(for prompts over [0-9,]+ tokens\)/)) {
+        tier = substr(s, RSTART + 13, RLENGTH - 14)
+      }
+      sub(/ \(.*$/, "", s)          # drop "(retired, ...)", "(limited availability)", and tier notes
       gsub(/\[|\]/, "", s)
+      if (tier != "") s = s " (" tier ")"
       return s
     }
     !intable && /^\|/ && /Base input tokens/ { intable = 1; skip = 1; next }

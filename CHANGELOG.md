@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The pricing snapshot listed the wrong Claude Haiku 5.5 price, and the drift check could not see a price change in the cheaper row.** Anthropic lists Haiku 5.5 twice: one row for prompts up to 100,000 tokens (0.10 USD input, 0.50 USD output, 0.01 USD cache hit per MTok) and one for prompts over 100,000 tokens (0.50 USD, 2.50 USD, 0.05 USD). `scripts/check-model-pricing.sh` dropped the text in brackets from both names, so both rows got the same key and the second row replaced the first. The snapshot in 1.15.5 therefore held the over-100,000-token price, which is five times the price of a normal prompt. A change to the over row would have shown as drift. A change to the up-to row would not. The script now keeps the up-to row under the plain name and the over row under `Claude Haiku 5.5 (over 100,000 tokens)`, and `--update` has rewritten the snapshot. Notes such as "retired" and "limited availability" are still dropped. Only the weekly pricing drift check reads these per-model rows. The `blended_rates` that drive the cost estimate are unchanged, so review output does not change. `tests/model_pricing.bats` has five new tests and a new fixture, `tests/fixtures/pricing/tiered.md`.
+
 ## [1.15.5] - 2026-10-07
 
 Pricing snapshot refresh only. There is no change to the skill, agents or scripts, and the cost estimates in the review output are the same as in 1.15.4.
