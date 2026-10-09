@@ -128,6 +128,13 @@
       "output": 15
     },
     "Claude Haiku 5.5": {
+      "input": 0.10,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.20,
+      "cache_hit": 0.01,
+      "output": 0.50
+    },
+    "Claude Haiku 5.5 (over 100,000 tokens)": {
       "input": 0.50,
       "cache_write_5m": 0.625,
       "cache_write_1h": 1,
