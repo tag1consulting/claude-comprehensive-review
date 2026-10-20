@@ -75,11 +75,11 @@ Then register the plugin in `~/.claude/plugins/installed_plugins.json` and insta
 |-------------|-------|
 | [Claude Code](https://claude.ai/code) | CLI or desktop app |
 | `git` | Required for diff analysis |
-| [gh CLI](https://cli.github.com/) | Required for GitHub / GitHub Enterprise |
-| [glab CLI](https://gitlab.com/gitlab-org/cli) | Required for GitLab |
-| `BITBUCKET_EMAIL` env var | Required for Bitbucket — your Atlassian account email address |
-| `BITBUCKET_TOKEN` env var | Required for Bitbucket — Atlassian API token from `id.atlassian.com` |
-| `jq` | Required for GitLab and Bitbucket (JSON parsing) |
+| [gh CLI](https://cli.github.com/) | Required for GitHub / GitHub Enterprise remote operations (`--pr`, `--create-pr`, `--post-*`, `--read-back`); not needed for a local review |
+| [glab CLI](https://gitlab.com/gitlab-org/cli) | Required for GitLab remote operations; not needed for a local review |
+| `BITBUCKET_EMAIL` env var | Required for Bitbucket remote operations — your Atlassian account email address; not needed for a local review |
+| `BITBUCKET_TOKEN` env var | Required for Bitbucket remote operations — Atlassian API token from `id.atlassian.com`; not needed for a local review |
+| `jq` | Required for GitLab and Bitbucket remote operations (JSON parsing); not needed for a local review |
 | `pr-review-toolkit@claude-plugins-official` | Required — provides code-reviewer, silent-failure-hunter, pr-test-analyzer, comment-analyzer, type-design-analyzer |
 | `security-guidance@claude-plugins-official` | Recommended — ambient hook-based security review; also wires up the shared org security policy |
 

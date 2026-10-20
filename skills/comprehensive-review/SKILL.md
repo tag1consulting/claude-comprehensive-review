@@ -52,6 +52,14 @@ The orchestrator is a software-engineering actor: it spawns subagents, calls pro
 
 Detect the git hosting provider from the remote URL. This determines which CLI tool and API to use for all PR/MR operations.
 
+0. **Local-mode detection.** Set `REMOTE_FLAGS=true` if at least one of `--pr`, `--create-pr`, `--post-summary`, `--post-findings`, or `--read-back` was passed (the same flag set that gates Phase 4), otherwise `REMOTE_FLAGS=false`. When `REMOTE_FLAGS=false`, detection is best effort and never fatal. Run steps 1–4 as written, with these relaxations:
+   - Step 3d runs its `gh auth status` and `glab auth status` probes only when that CLI is on `PATH` (`command -v gh`, `command -v glab`). If no provider matches, set `PROVIDER=none` and continue instead of stopping. Step 4 then uses PR_TERM "PR", PR_TERM_LONG "pull request", and an empty CLI_TOOL.
+   - Step 5 (CLI validation) is skipped.
+   - REPO_SLUG: best effort, never fatal. Use the same `git remote get-url origin | sed ...` extraction as step 4; if there is no `origin` remote or the result does not match `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`, use `local/<basename of git rev-parse --show-toplevel>` when that basename matches `^[a-zA-Z0-9._-]+$`, and the constant `local/repo` otherwise. The value must always pass the slug regex: Phase 5 interpolates it into a bash assignment (`MEM_TITLE`) and the claude-mem search query, so an unvalidated directory name could inject shell syntax. Use this one validated value everywhere, including the claude-mem search in Phase 0 step 5b and `MEM_TITLE` in Phase 5. Set `REPO_SLUG_FALLBACK=true` when either `local/` fallback was used (otherwise `false`): the claude-mem search and save are then skipped, so unrelated repositories never share prior-review history.
+   - PROJECT_ID: not resolved.
+
+   A purely local review therefore never stops on a missing `gh`/`glab` or an unrecognized remote (e.g. `git.drupal.org`, self-hosted Gitea). issue-linker keeps running when PROVIDER is `github`, and it already returns `NONE` when `gh` is missing or not authenticated (see `agents/issue-linker.md`). Phase 4/4b are skipped and PROVIDERS.md is not read. `--provider <name>` only overrides the detected provider. In local mode it does not trigger the CLI check in step 5.
+
 1. Extract the remote URL: `git remote get-url origin 2>/dev/null`
 2. If `--provider <name>` was passed: if the value is not one of `github`, `gitlab`, `bitbucket`, report "Error: Unknown provider '<name>'. Valid values: github, gitlab, bitbucket." and stop. Otherwise, use that value and skip auto-detection.
 3. Otherwise, auto-detect:
@@ -69,19 +77,19 @@ Detect the git hosting provider from the remote URL. This determines which CLI t
    - PR_TERM_LONG: "pull request" (github, bitbucket) or "merge request" (gitlab)
    - CLI_TOOL: "gh" (github) or "glab" (gitlab) or "curl" (bitbucket)
    - REPO_SLUG: extract from remote URL via `git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^:/]*\/[^:/]*\)\.git$|\1|; s|.*[:/]\([^:/]*\/[^:/]*\)$|\1|'`. Validate it matches `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`; if not, report "Error: Could not extract valid repository slug from remote URL." and stop. Used by Bitbucket API URLs.
-   - PROJECT_ID (gitlab only, **deferred**): not resolved here. Resolved in Phase 4b when inline comments are actually needed. Skip if `--no-post`/`--local` is set or PROVIDER is not gitlab.
+   - PROJECT_ID (gitlab only, **deferred**): not resolved here. Resolved in Phase 4b when inline comments are actually needed. Skip if `REMOTE_FLAGS=false` or PROVIDER is not gitlab.
 
-5. Validate CLI tool availability (always runs, regardless of whether provider was auto-detected or manually specified via `--provider`):
+5. Validate CLI tool availability (runs only when `REMOTE_FLAGS=true`, regardless of whether the provider was auto-detected or manually specified via `--provider`):
    - GitHub: `gh --version` must succeed. If not: "Error: gh CLI is required for GitHub repositories. Install: https://cli.github.com/"
    - GitLab: `glab --version` must succeed. If not: "Error: glab CLI is required for GitLab repositories. Install: https://gitlab.com/gitlab-org/cli"
-   - GitLab/Bitbucket: `jq --version` must succeed **unless `--no-post`/`--local` was passed** (no JSON parsing needed in local mode). If not: "Error: jq is required for GitLab/Bitbucket repositories. Install: https://jqlang.org/"
-   - Bitbucket: `curl --version` must succeed (should always be available). Also verify both `BITBUCKET_EMAIL` and `BITBUCKET_TOKEN` env vars are set **unless `--no-post`/`--local` was passed** (no API calls needed in local mode). If `BITBUCKET_APP_PASSWORD` is set but `BITBUCKET_TOKEN` is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If `BITBUCKET_TOKEN` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your Atlassian API token." If `BITBUCKET_EMAIL` is not set and `--no-post`/`--local` was NOT passed: "Error: BITBUCKET_EMAIL environment variable is required for Bitbucket repositories. Set BITBUCKET_EMAIL to your Atlassian account email address."
+   - GitLab/Bitbucket: `jq --version` must succeed **unless `REMOTE_FLAGS=false`** (no JSON parsing needed in local mode). If not: "Error: jq is required for GitLab/Bitbucket repositories. Install: https://jqlang.org/"
+   - Bitbucket: `curl --version` must succeed (should always be available). Also verify both `BITBUCKET_EMAIL` and `BITBUCKET_TOKEN` env vars are set **unless `REMOTE_FLAGS=false`** (no API calls needed in local mode). If `BITBUCKET_APP_PASSWORD` is set but `BITBUCKET_TOKEN` is not, set `BITBUCKET_TOKEN=$BITBUCKET_APP_PASSWORD`. If `BITBUCKET_TOKEN` is not set and `REMOTE_FLAGS=true`: "Error: BITBUCKET_TOKEN environment variable is required for Bitbucket repositories. Set BITBUCKET_TOKEN to your Atlassian API token." If `BITBUCKET_EMAIL` is not set and `REMOTE_FLAGS=true`: "Error: BITBUCKET_EMAIL environment variable is required for Bitbucket repositories. Set BITBUCKET_EMAIL to your Atlassian account email address."
 
 Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in PROVIDERS.md). No `mcp__github-pat__*` tools are used. For GitLab and Bitbucket, all operations use CLI tools (glab, curl) via Bash.
 
 ### Provider Operations Reference
 
-> **Skip reading PROVIDERS.md** if `--no-post` or `--local` was passed — no provider operations will fire in that mode.
+> **Skip reading PROVIDERS.md** if `REMOTE_FLAGS=false` (local mode, the default — including an explicit `--no-post`/`--local`) — no provider operations will fire in that mode.
 >
 > When a provider operation is needed in Phase 0 (external PR checkout), Phase 4, or Phase 4b, read the full command reference from `skills/comprehensive-review/PROVIDERS.md`. All OP names referenced below are defined there.
 
@@ -90,7 +98,7 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
 1. Parse `$ARGUMENTS`:
    - Extract `--base <branch>` if present, otherwise use the detected default branch (from the pre-flight "Branch context" block above), falling back to `origin/main`. The detected value is a remote-tracking ref (e.g. `origin/main`), not a local branch name, so diffs and commit logs read against the freshest known state of the default branch rather than a possibly-stale local copy. When passing this value as a `--base`/`--target-branch` argument to a provider CLI (see the `--create-pr` OP), strip the leading `<remote>/` prefix first: GitHub/GitLab expect a bare branch name there, not a git ref path.
    - Extract `--pr <number>` if present — set PR_NUMBER and enable external review mode
-   - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`)
+   - Extract `--provider <name>` if present — passed to Provider Detection (valid: `github`, `gitlab`, `bitbucket`).
    - Note mode flags: `--quick`, `--security-only`, `--summary-only`, `--create-pr`,
      `--no-post`/`--local`, `--post-summary`, `--post-findings`, `--no-findings`, `--publish`, `--draft`, `--read-back`, `--no-enrich-context`, `--no-mem`, `--no-suppress`, `--no-cost`
    - Extract `--output-file <path>` if present — set OUTPUT_FILE to the given path for Phase 5 file write
@@ -328,10 +336,10 @@ Note: GitHub inline review posting uses `gh api` (see OP: Post inline review in 
    of changed files for a CLAUDE.md (stop at repo root); concatenate matches up to the
    ~500-token cap. If none exists: "No project-specific context available."
 
-5b. **Retrieve prior review history** (skip if MEM_AVAILABLE is false, or `--quick`, `--summary-only`, or `--security-only` mode is active):
+5b. **Retrieve prior review history** (skip if MEM_AVAILABLE is false, `REPO_SLUG_FALLBACK=true`, or `--quick`, `--summary-only`, or `--security-only` mode is active):
    - Search for prior reviews of this project using the MCP tool:
      `mcp__plugin_claude-mem_mcp-search__search` with `query: "Review: <REPO_SLUG>"` and `limit: 5`.
-     (REPO_SLUG is the `owner/repo` value from the pre-flight context.)
+     (REPO_SLUG is the validated value from Provider Detection, never the raw pre-flight remote.)
    - If the MCP tool fails: set PRIOR_REVIEW_CONTEXT to empty string and continue silently (no curl fallback).
    - If results are returned, fetch full details via `mcp__plugin_claude-mem_mcp-search__get_observations`, passing the `ids` field from each search result entry.
      If `get_observations` fails: use the title and timestamp fields from the search index entries directly.
@@ -1051,7 +1059,7 @@ For each finding in ALL_FINDINGS, check against SUPPRESSION_RULES:
    - If rule has both `match.file` and `match.pattern`: both must match.
 2. If a rule matches and has **no** `verify` field: suppress the finding immediately.
 3. If a rule matches and has a `verify` field: call the appropriate registry API to confirm the referenced version exists. Cap total verify calls per run at 20; if the cap is reached, skip remaining verify-gated rules for this run.
-   - `github-release`: `gh api repos/{owner}/{repo}/releases/tags/{tag}` (extract owner/repo/tag from finding text)
+   - `github-release`: `gh api repos/{owner}/{repo}/releases/tags/{tag}` (extract owner/repo/tag from finding text). Independent of PROVIDER and runs in local mode too; if `gh` is not installed or not authenticated, treat it as the "any other error" case below (fail open, keep the finding).
    - `npm`: `curl -sf --max-time 5 "https://registry.npmjs.org/{pkg}/{version}"`
    - `pypi`: `curl -sf --max-time 5 "https://pypi.org/pypi/{pkg}/{version}/json"`
    - `go-module`: `curl -sf --max-time 5 "https://proxy.golang.org/{module}/@v/{version}.info"`
@@ -1283,7 +1291,7 @@ If `REDACTION_DEGRADED=true` (set in Phase 2 step 2g when `perl` was unavailable
 
 ### Phase 4: PR/MR Operations
 
-**Skip entirely unless at least one of `--pr`, `--create-pr`, `--post-summary`, `--post-findings`, or `--read-back` was explicitly passed.** (`--no-post`/`--local` is now the default; these flags are explicit aliases for the default behavior.) `--read-back` is included here specifically so its own-branch invocation (`/comprehensive-review --read-back`, with no other posting flag) still resolves a `PR_NUMBER` — without this, Phase 4 would be skipped entirely and Phase 4b's Read-Back Pass would have no PR to read from.
+**Skip entirely unless at least one of `--pr`, `--create-pr`, `--post-summary`, `--post-findings`, or `--read-back` was explicitly passed, i.e. unless `REMOTE_FLAGS=true` (set in Provider Detection step 0).** (`--no-post`/`--local` is now the default; these flags are explicit aliases for the default behavior.) `--read-back` is included here specifically so its own-branch invocation (`/comprehensive-review --read-back`, with no other posting flag) still resolves a `PR_NUMBER` — without this, Phase 4 would be skipped entirely and Phase 4b's Read-Back Pass would have no PR to read from.
 
 Determine PR/MR state:
 - `--pr` mode: PR_NUMBER from arg. POST_SUMMARY = `--post-summary`. POST_FINDINGS = `--post-findings` was passed (NOT auto-enabled in `--pr` mode; must be explicit).
@@ -1515,7 +1523,7 @@ fi
 ```
 The terminal report below cites `WORKTREE_REMOVED` and (on failure) the captured `WORKTREE_REMOVE_ERR` rather than asserting cleanup succeeded from the fact that `git worktree remove` was run.
 
-**Store review summary to claude-mem** (skip if MEM_AVAILABLE is false, or mode is `--summary-only` or `--security-only`):
+**Store review summary to claude-mem** (skip if MEM_AVAILABLE is false, `REPO_SLUG_FALLBACK=true`, or mode is `--summary-only` or `--security-only`):
 
 Compose a compact summary and POST it to the worker API. The summary text should be:
 ```
@@ -1569,7 +1577,7 @@ Note in terminal: "Review written to <path>"
 1. PR/MR creation outcome:
    - `CREATED_PR_URL` non-empty → "${PR_TERM} created: ${CREATED_PR_URL}".
    - `--create-pr` was passed AND `CREATED_PR_URL` is empty → "${PR_TERM} creation FAILED: ${CREATED_PR_ERROR:-no URL returned by ${PROVIDER} API}".
-   - No `--create-pr` and no PR/MR exists → "Tip: use --create-pr to create a ${PR_TERM_LONG}."
+   - No `--create-pr` and no PR/MR exists (only known when Phase 4 ran, so print this only when `REMOTE_FLAGS=true`) → "Tip: use --create-pr to create a ${PR_TERM_LONG}."
 2. Summary post outcome (skip if Block A was folded into a draft per Phase 4 — that outcome is reported under item 3 instead):
    - `POSTED_COMMENT_REF` non-empty → "Summary comment posted to ${PR_TERM} #<N>: ${POSTED_COMMENT_REF}".
    - `--post-summary` was passed AND `POSTED_COMMENT_REF` is empty → "Summary post FAILED: ${POSTED_COMMENT_ERROR:-no identifier returned by ${PROVIDER} API}".
@@ -1634,7 +1642,7 @@ Note in terminal: "Review written to <path>"
    If MIN_CONFIDENCE > 0 → note "Confidence filter: ≥ <N> (dropped <M> findings below threshold)."
    If NOVELTY_DEMOTED_COUNT > 0 → note "Novelty pass: annotated <N> repeated low-value finding(s) from prior reviews."
 10. No findings + no failures → "No significant issues found. Ready for review."
-11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, mode is `--summary-only` or `--security-only`, or POST failed)
+11. claude-mem summary stored → "Review summary stored to claude-mem." (omit if MEM_AVAILABLE is false, `REPO_SLUG_FALLBACK=true`, mode is `--summary-only` or `--security-only`, or POST failed)
 
 ## Notes
 

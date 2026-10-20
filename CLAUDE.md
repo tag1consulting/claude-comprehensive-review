@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-This repo distributes a Claude Code skill (`/comprehensive-review`) and seven custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. Deliverables are markdown files distributed via the `tag1consulting` plugin marketplace. The deterministic bash helpers have a bats test suite (`tests/*.bats`, 227 tests); run with `bats tests/*.bats` (requires `bats` and `jq`).
+This repo distributes a Claude Code skill (`/comprehensive-review`) and seven custom agents as a Claude Code plugin. The skill supports GitHub (including Enterprise), GitLab, and Bitbucket repositories. Deliverables are markdown files distributed via the `tag1consulting` plugin marketplace. The deterministic bash helpers have a bats test suite (`tests/*.bats`, 237 tests); run with `bats tests/*.bats` (requires `bats` and `jq`).
 
 ## Installation
 
@@ -174,6 +174,8 @@ This allows reviewing any accessible PR/MR without being on that branch locally.
 ### Provider abstraction
 
 The skill auto-detects the git hosting provider (GitHub, GitHub Enterprise, GitLab, Bitbucket) from the remote URL in the Provider Detection step of Phase 0. A `--provider` flag allows manual override for self-hosted instances with non-standard hostnames.
+
+Without a remote flag (`--pr`, `--create-pr`, `--post-summary`, `--post-findings`, `--read-back`, i.e. `REMOTE_FLAGS=false`), Provider Detection is best effort and never fatal: the self-hosted `gh`/`glab auth status` probes run only when that CLI is installed, an unrecognized remote sets `PROVIDER=none`, the CLI check in step 5 is skipped, and `REPO_SLUG` falls back to a validated `local/<dir>` or `local/repo` (claude-mem is skipped for a fallback slug). Every copy of the remote flag list must match the Phase 4 gate; `tests/orchestration_contracts.bats` enforces this.
 
 Provider-specific operations (PR metadata, checkout, create, comment, inline review) are defined in the Provider Operations Reference block in SKILL.md. Phases 0, 4, and 4b reference these operations by name rather than hardcoding provider-specific commands.
 

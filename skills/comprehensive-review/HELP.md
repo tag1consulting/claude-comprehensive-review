@@ -153,6 +153,10 @@ Examples
 
 Provider support
   Detected automatically from git remote URL. Override with --provider.
+  A local review needs no provider CLI. Without --pr, --create-pr,
+  --post-summary, --post-findings, or --read-back, detection is best
+  effort and never stops (an unrecognized remote such as git.drupal.org
+  runs with no provider), and the CLI and credential checks are skipped.
   GitHub / GitHub Enterprise:  Full support (gh CLI required). --post-findings
                                stages a pending review by default.
   GitLab:                      Full support (glab CLI required). --post-findings

@@ -68,6 +68,114 @@ teardown() {
   grep -q "default branch\|refused.*create-pr\|create-pr.*refused\|refused.*default" "$SKILL_MD"
 }
 
+# ---------------------------------------------------------------------------
+# Provider Detection: best effort and never fatal in local mode (no remote flag)
+# ---------------------------------------------------------------------------
+
+provider_detection_block() {
+  awk '/^### Provider Detection/{f=1;next} /^### /{f=0} f' "$SKILL_MD"
+}
+
+# Flags named before the end of a remote flag list (which always ends with
+# --read-back), sorted, so lists can be compared regardless of markup.
+remote_flags_of() {
+  tr '\n' ' ' | sed 's/--read-back.*/--read-back/' | grep -oE -- '--[a-z][a-z-]*' | sort -u | tr '\n' ' '
+}
+
+phase4_flags() {
+  grep "^\*\*Skip entirely unless" "$SKILL_MD" | remote_flags_of
+}
+
+@test "SKILL.md: Provider Detection has a best-effort local mode that never stops" {
+  BLOCK=$(provider_detection_block)
+  echo "$BLOCK" | grep -q "Local-mode detection"
+  echo "$BLOCK" | grep -q "REMOTE_FLAGS=false"
+  echo "$BLOCK" | grep -q "best effort and never fatal"
+  echo "$BLOCK" | grep -q "set \`PROVIDER=none\`"
+  # CLI validation must run only for remote flags.
+  echo "$BLOCK" | grep -q "runs only when \`REMOTE_FLAGS=true\`"
+  # The self-hosted auth probes must not require the CLI to be installed.
+  echo "$BLOCK" | grep -q '`command -v gh`'
+}
+
+@test "SKILL.md: local-mode detection uses the same remote flag set as the Phase 4 skip gate" {
+  SKIP_FLAGS=$(provider_detection_block | grep "Local-mode detection" | remote_flags_of)
+  PHASE4_FLAGS=$(phase4_flags)
+  [ -n "$SKIP_FLAGS" ]
+  if [ "$SKIP_FLAGS" != "$PHASE4_FLAGS" ]; then
+    echo "Provider Detection flags: $SKIP_FLAGS" >&2
+    echo "Phase 4 gate flags:       $PHASE4_FLAGS" >&2
+    return 1
+  fi
+}
+
+@test "docs: every copy of the remote flag list matches the Phase 4 gate" {
+  PHASE4_FLAGS=$(phase4_flags)
+  DOCS_DIR="${SCRIPTS_DIR}/../../../docs"
+  check() {
+    local name="$1" flags="$2"
+    if [ -z "$flags" ] || [ "$flags" != "$PHASE4_FLAGS" ]; then
+      echo "$name flags: '$flags'" >&2
+      echo "Phase 4 flags: '$PHASE4_FLAGS'" >&2
+      return 1
+    fi
+  }
+  check README.md "$(grep '^³ A local review' "$README_MD" | remote_flags_of)"
+  check HELP.md "$(grep -A2 'A local review needs no provider CLI. Without' "$HELP_MD" | remote_flags_of)"
+  check CLAUDE.md "$(grep '^Without a remote flag' "$CLAUDE_MD" | remote_flags_of)"
+  check docs/providers.md "$(grep '^A local review (no' "$DOCS_DIR/providers.md" | remote_flags_of)"
+  # The entry also names `gh --version`, so start at the flag list itself.
+  check CHANGELOG.md "$(grep '^- \*\*A local review no longer stops' "${SCRIPTS_DIR}/../../../CHANGELOG.md" | sed 's/.*runs only when //' | remote_flags_of)"
+}
+
+@test "SKILL.md: CLI validation no longer claims to always run" {
+  if provider_detection_block | grep -q "Validate CLI tool availability (always runs"; then
+    echo "REGRESSION: CLI validation runs unconditionally, local reviews need gh/glab again" >&2
+    return 1
+  fi
+}
+
+@test "SKILL.md: local-mode REPO_SLUG fallback is validated before use in bash" {
+  # Phase 5 interpolates REPO_SLUG into MEM_TITLE="..."; a raw directory
+  # name such as $(cmd) must never reach it.
+  LINE=$(provider_detection_block | grep "REPO_SLUG: best effort")
+  echo "$LINE" | grep -q 'matches `^\[a-zA-Z0-9._-\]+\$`'
+  echo "$LINE" | grep -q '`local/repo`'
+  echo "$LINE" | grep -q 'REPO_SLUG_FALLBACK=true'
+}
+
+@test "SKILL.md: claude-mem search and save use the validated REPO_SLUG and skip a fallback slug" {
+  grep "Retrieve prior review history" "$SKILL_MD" | grep -q '`REPO_SLUG_FALLBACK=true`'
+  grep "Store review summary to claude-mem" "$SKILL_MD" | grep -q '`REPO_SLUG_FALLBACK=true`'
+  if grep -q 'REPO_SLUG is the `owner/repo` value from the pre-flight context' "$SKILL_MD"; then
+    echo "REGRESSION: claude-mem search uses the unvalidated pre-flight remote" >&2
+    return 1
+  fi
+}
+
+@test "SKILL.md: jq and Bitbucket credential checks are gated on REMOTE_FLAGS" {
+  BLOCK=$(provider_detection_block)
+  echo "$BLOCK" | grep "jq --version" | grep -q 'unless `REMOTE_FLAGS=false`'
+  echo "$BLOCK" | grep "BITBUCKET_TOKEN" | grep -q 'unless `REMOTE_FLAGS=false`'
+  if echo "$BLOCK" | grep -q 'unless `--no-post`/`--local` was passed'; then
+    echo "REGRESSION: step 5 gated on the explicit --local flag instead of REMOTE_FLAGS" >&2
+    return 1
+  fi
+}
+
+@test "SKILL.md: Phase 5 create-pr tip is guarded" {
+  grep "Tip: use --create-pr" "$SKILL_MD" | grep -q 'only when `REMOTE_FLAGS=true`'
+}
+
+@test "SKILL.md: issue-linker still runs only for a github provider" {
+  grep "subagent_type: \`comprehensive-review:issue-linker\`" "$SKILL_MD" | grep -q 'PROVIDER is not `github`'
+}
+
+@test "HELP.md and README.md: provider CLIs documented as needed only for remote flags" {
+  grep -q "needs no provider CLI" "$HELP_MD"
+  grep -q "needs no provider CLI" "$README_MD"
+}
+
 @test "SKILL.md: Write tool is in allowed-tools frontmatter" {
   head -10 "$SKILL_MD" | grep -q '"Write"'
 }

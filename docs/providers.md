@@ -9,6 +9,8 @@ render_with_liquid: false
 
 The skill auto-detects your git hosting provider from the remote URL. Use `--provider <name>` to override for self-hosted instances with non-standard hostnames.
 
+A local review (no `--pr`, `--create-pr`, `--post-summary`, `--post-findings`, or `--read-back`, the default) needs no `gh`/`glab`/Bitbucket credentials. Detection is best effort and never stops: the `gh auth status`/`glab auth status` probes for a self-hosted host run only when that CLI is installed, a remote that is still unrecognized (e.g. `git.drupal.org`) runs with no provider, and the CLI and credential checks are skipped. `--provider <name>` only overrides the detected provider.
+
 ## Feature matrix
 
 | Feature | GitHub / GHE | GitLab | Bitbucket |
@@ -21,17 +23,18 @@ The skill auto-detects your git hosting provider from the remote URL. Use `--pro
 | `--read-back` (read your edited draft) | Yes | Yes | No ⁴ |
 | External review (`--pr <N>`) | Yes | Yes | Yes |
 | Inline review on external PR | Yes | Yes | No ¹ |
-| Issue cross-referencing (issue-linker) | Yes | No ² | No ² |
+| Issue cross-referencing (issue-linker) | Yes ⁵ | No ² | No ² |
 | `REQUEST_CHANGES` review event | Yes | N/A ³ | N/A |
 
 ¹ Bitbucket does not support inline diff comments via API. Findings are posted as a single PR comment.  
 ² Issue cross-referencing is currently GitHub-only. The issue-linker agent is gracefully skipped for other providers.  
 ³ GitLab has no single-call "submit review" API. Inline comments are posted as individual discussion threads.  
-⁴ `--post-findings` stages an editable draft by default (GitHub: pending review; GitLab: draft notes) — visible only to you until you submit it yourself; add `--publish` for the old immediate-post behavior. Bitbucket has no verified draft-create path in the public REST API, so `--post-findings` there always publishes, regardless of `--draft`/`--publish`, and `--read-back` is unavailable. `--read-back` works on both GitHub and GitLab for reporting what you kept/edited/removed, but staging newly-noticed findings into the existing draft only works on GitLab (draft notes can be appended one at a time) — on GitHub, the REST API can't append to an existing pending review, so new findings are reported in the terminal for you to add yourself.
+⁴ `--post-findings` stages an editable draft by default (GitHub: pending review; GitLab: draft notes) — visible only to you until you submit it yourself; add `--publish` for the old immediate-post behavior. Bitbucket has no verified draft-create path in the public REST API, so `--post-findings` there always publishes, regardless of `--draft`/`--publish`, and `--read-back` is unavailable. `--read-back` works on both GitHub and GitLab for reporting what you kept/edited/removed, but staging newly-noticed findings into the existing draft only works on GitLab (draft notes can be appended one at a time) — on GitHub, the REST API can't append to an existing pending review, so new findings are reported in the terminal for you to add yourself.  
+⁵ issue-linker uses `gh`. When `gh` is missing or not authenticated (possible in a local review, which does not check for it), it returns `NONE` and the Related Issues & PRs section is empty.
 
 ## GitHub / GitHub Enterprise
 
-**CLI required:** [gh CLI](https://cli.github.com/)
+**CLI required for remote operations:** [gh CLI](https://cli.github.com/)
 
 For GitHub Enterprise with a non-standard hostname, use:
 
@@ -41,13 +44,13 @@ For GitHub Enterprise with a non-standard hostname, use:
 
 ## GitLab
 
-**CLI required:** [glab CLI](https://gitlab.com/gitlab-org/cli)
+**CLI required for remote operations:** [glab CLI](https://gitlab.com/gitlab-org/cli)
 
 GitLab uses "Merge Request" (MR) terminology. All user-facing output uses "MR" when on GitLab. GitLab inline comments are posted as individual discussion threads rather than a single review event (GitLab's API does not have a review-submission model).
 
 ## Bitbucket
 
-**Environment variables required:**
+**Environment variables required for remote operations:**
 
 | Variable | Description |
 |----------|-------------|
