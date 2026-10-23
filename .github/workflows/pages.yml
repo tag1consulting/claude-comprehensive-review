@@ -30,7 +30,7 @@ jobs:
         # SHA bumps via the existing tag1consulting/renovate-config.
         uses: ruby/setup-ruby@26e5b7d197ebf60545ee9667bcbace0be11ccaec  # v1.334.0
         with:
-          ruby-version: '4.0.7'
+          ruby-version: '4.0.9'
           bundler-cache: true
           working-directory: docs
 
